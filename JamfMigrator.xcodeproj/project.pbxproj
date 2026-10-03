@@ -16,6 +16,7 @@
 		08ABF35D3071BADD00606B36 /* Tenant.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF35C3071BADD00606B36 /* Tenant.swift */; };
 		08ABF35F3071BAE900606B36 /* SecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF35E3071BAE900606B36 /* SecretStore.swift */; };
 		08ABF3613071BAF800606B36 /* TenantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3603071BAF800606B36 /* TenantStore.swift */; };
+		08ABF39F3071C0A600606B36 /* ObjectType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF39E3071C0A600606B36 /* ObjectType.swift */; };
 		9BC01C601DFB0C07007E634E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC01C5F1DFB0C07007E634E /* AppDelegate.swift */; };
 		9BC01C621DFB0C07007E634E /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC01C611DFB0C07007E634E /* ViewController.swift */; };
 		9BC01C641DFB0C07007E634E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9BC01C631DFB0C07007E634E /* Assets.xcassets */; };
@@ -86,6 +87,7 @@
 		08ABF35C3071BADD00606B36 /* Tenant.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tenant.swift; sourceTree = "<group>"; };
 		08ABF35E3071BAE900606B36 /* SecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretStore.swift; sourceTree = "<group>"; };
 		08ABF3603071BAF800606B36 /* TenantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TenantStore.swift; sourceTree = "<group>"; };
+		08ABF39E3071C0A600606B36 /* ObjectType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObjectType.swift; sourceTree = "<group>"; };
 		9BC01C5C1DFB0C07007E634E /* JamfMigrator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = JamfMigrator.app; path = "Jamf Migrator.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9BC01C5F1DFB0C07007E634E /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		9BC01C611DFB0C07007E634E /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
@@ -198,6 +200,14 @@
 			path = Tenants;
 			sourceTree = "<group>";
 		};
+		08ABF39D3071C0A600606B36 /* Objects */ = {
+			isa = PBXGroup;
+			children = (
+				08ABF39E3071C0A600606B36 /* ObjectType.swift */,
+			);
+			path = Objects;
+			sourceTree = "<group>";
+		};
 		9BC01C531DFB0C07007E634E = {
 			isa = PBXGroup;
 			children = (
@@ -274,6 +284,7 @@
 				B5E179EF1F1FDACF00A20AAA /* help */,
 				08ABF34E3071BA8300606B36 /* Platform */,
 				08ABF35B3071BADD00606B36 /* Tenants */,
+				08ABF39D3071C0A600606B36 /* Objects */,
 			);
 			path = JamfMigrator;
 			sourceTree = "<group>";
@@ -489,6 +500,7 @@
 				B5165E1620E580A00086E31D /* XmlDelegate.swift in Sources */,
 				CE310A722D10BBE6007C2C6F /* RemoveData.swift in Sources */,
 				CE310A732D10BBE6007C2C6F /* RemoveObjects.swift in Sources */,
+				08ABF39F3071C0A600606B36 /* ObjectType.swift in Sources */,
 				08ABF3563071BAC100606B36 /* PlatformClient.swift in Sources */,
 				9BC01C621DFB0C07007E634E /* ViewController.swift in Sources */,
 				CEF467D82EB8444B00160D32 /* SummaryView.swift in Sources */,
@@ -570,17 +582,16 @@
 		08ABF3473071B13E00606B36 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Jamf Migrator.app/Contents/MacOS/Jamf Migrator";
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = K3LQ9NPBMG;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = K3LQ9NPBMG;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -601,6 +612,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Jamf Migrator.app/Contents/MacOS/Jamf Migrator";
 				XROS_DEPLOYMENT_TARGET = 27.0;
 			};
 			name = Debug;
@@ -608,17 +620,16 @@
 		08ABF3483071B13E00606B36 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Jamf Migrator.app/Contents/MacOS/Jamf Migrator";
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = K3LQ9NPBMG;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = K3LQ9NPBMG;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -637,6 +648,7 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2,7";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Jamf Migrator.app/Contents/MacOS/Jamf Migrator";
 				XROS_DEPLOYMENT_TARGET = 27.0;
 			};
 			name = Release;
