@@ -45,14 +45,16 @@ actor MigrationEngine {
     }
 
     /// Migrates the selected types in registry order and returns the report.
-    func migrate(typeKeys: Set<String>) async -> RunReport {
+    /// `excluding` holds per-type source object ids that were unchecked.
+    func migrate(typeKeys: Set<String>, excluding: [String: Set<String>] = [:]) async -> RunReport {
         var report = RunReport()
         let types = ObjectRegistry.types.filter { typeKeys.contains($0.key) }
 
         for type in types {
             guard !isCancelled else { break }
             do {
-                try await migrateType(type, included: typeKeys, report: &report)
+                try await migrateType(type, included: typeKeys,
+                                      excluded: excluding[type.key] ?? [], report: &report)
             } catch {
                 WriteToLog.shared.message("[MigrationEngine] \(type.key) failed: \(error.localizedDescription)")
                 report.add(type: type, ref: ObjectRef(id: "-", name: "(whole step)"),
@@ -62,7 +64,7 @@ actor MigrationEngine {
         return report
     }
 
-    private func migrateType(_ type: ObjectType, included: Set<String>, report: inout RunReport) async throws {
+    private func migrateType(_ type: ObjectType, included: Set<String>, excluded: Set<String>, report: inout RunReport) async throws {
         // lookups the transform needs, even when those types aren't being migrated
         for dependency in type.dependencies + ["sites"] {
             try await loadLookups(for: dependency, destination: true, source: true)
@@ -73,7 +75,7 @@ actor MigrationEngine {
         try await loadLookups(for: type.key, destination: true, source: false)
 
         var completed = 0
-        for ref in sourceRefs {
+        for ref in sourceRefs where !excluded.contains(ref.id) {
             guard !isCancelled else { return }
             completed += 1
 

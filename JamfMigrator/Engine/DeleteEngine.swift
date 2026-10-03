@@ -34,16 +34,17 @@ actor DeleteEngine {
         isCancelled = true
     }
 
-    func delete(typeKeys: Set<String>) async -> RunReport {
+    func delete(typeKeys: Set<String>, excluding: [String: Set<String>] = [:]) async -> RunReport {
         var report = RunReport()
         var retryQueue = [(ObjectType, ObjectRef)]()
 
         for type in ObjectRegistry.deletionOrder where typeKeys.contains(type.key) {
             guard !isCancelled else { break }
+            let excluded = excluding[type.key] ?? []
             do {
                 let refs = try await ObjectLister.list(type, on: client)
                 var completed = 0
-                for ref in refs {
+                for ref in refs where !excluded.contains(ref.id) {
                     guard !isCancelled else { break }
                     completed += 1
                     if Self.protectedNames[type.key]?.contains(ref.name) == true {

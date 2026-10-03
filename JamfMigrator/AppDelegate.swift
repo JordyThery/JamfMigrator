@@ -10,7 +10,8 @@ import AppKit
 import ApplicationServices
 import Cocoa
 
-@NSApplicationMain
+// Legacy AppKit delegate. No longer the app entry point (see JamfMigratorApp);
+// Phase 7 deletes it together with the storyboards.
 class AppDelegate: NSObject, NSApplicationDelegate {
     
     static let shared = AppDelegate()

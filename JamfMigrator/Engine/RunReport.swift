@@ -37,7 +37,7 @@ struct RunReport: Codable, Sendable {
 }
 
 /// Live progress, one event per finished object.
-struct ProgressEvent: Sendable {
+struct ProgressEvent: Sendable, Equatable {
     let type: String
     let objectName: String
     let completed: Int
