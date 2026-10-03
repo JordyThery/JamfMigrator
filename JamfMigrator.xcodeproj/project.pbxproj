@@ -7,6 +7,15 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		08ABF3503071BA8300606B36 /* Region.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF34F3071BA8300606B36 /* Region.swift */; };
+		08ABF3523071BA9400606B36 /* GatewayError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3513071BA9400606B36 /* GatewayError.swift */; };
+		08ABF3543071BAA400606B36 /* TokenProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3533071BAA400606B36 /* TokenProvider.swift */; };
+		08ABF3563071BAC100606B36 /* PlatformClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3553071BAC100606B36 /* PlatformClient.swift */; };
+		08ABF3583071BAC800606B36 /* Poll.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3573071BAC800606B36 /* Poll.swift */; };
+		08ABF35A3071BAD600606B36 /* PermissionProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3593071BAD600606B36 /* PermissionProbe.swift */; };
+		08ABF35D3071BADD00606B36 /* Tenant.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF35C3071BADD00606B36 /* Tenant.swift */; };
+		08ABF35F3071BAE900606B36 /* SecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF35E3071BAE900606B36 /* SecretStore.swift */; };
+		08ABF3613071BAF800606B36 /* TenantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3603071BAF800606B36 /* TenantStore.swift */; };
 		9BC01C601DFB0C07007E634E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC01C5F1DFB0C07007E634E /* AppDelegate.swift */; };
 		9BC01C621DFB0C07007E634E /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC01C611DFB0C07007E634E /* ViewController.swift */; };
 		9BC01C641DFB0C07007E634E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9BC01C631DFB0C07007E634E /* Assets.xcassets */; };
@@ -68,6 +77,15 @@
 
 /* Begin PBXFileReference section */
 		08ABF3433071B13E00606B36 /* JamfMigratorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JamfMigratorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		08ABF34F3071BA8300606B36 /* Region.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Region.swift; sourceTree = "<group>"; };
+		08ABF3513071BA9400606B36 /* GatewayError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayError.swift; sourceTree = "<group>"; };
+		08ABF3533071BAA400606B36 /* TokenProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenProvider.swift; sourceTree = "<group>"; };
+		08ABF3553071BAC100606B36 /* PlatformClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformClient.swift; sourceTree = "<group>"; };
+		08ABF3573071BAC800606B36 /* Poll.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Poll.swift; sourceTree = "<group>"; };
+		08ABF3593071BAD600606B36 /* PermissionProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionProbe.swift; sourceTree = "<group>"; };
+		08ABF35C3071BADD00606B36 /* Tenant.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tenant.swift; sourceTree = "<group>"; };
+		08ABF35E3071BAE900606B36 /* SecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretStore.swift; sourceTree = "<group>"; };
+		08ABF3603071BAF800606B36 /* TenantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TenantStore.swift; sourceTree = "<group>"; };
 		9BC01C5C1DFB0C07007E634E /* JamfMigrator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = JamfMigrator.app; path = "Jamf Migrator.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9BC01C5F1DFB0C07007E634E /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		9BC01C611DFB0C07007E634E /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
@@ -157,6 +175,29 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		08ABF34E3071BA8300606B36 /* Platform */ = {
+			isa = PBXGroup;
+			children = (
+				08ABF34F3071BA8300606B36 /* Region.swift */,
+				08ABF3513071BA9400606B36 /* GatewayError.swift */,
+				08ABF3533071BAA400606B36 /* TokenProvider.swift */,
+				08ABF3553071BAC100606B36 /* PlatformClient.swift */,
+				08ABF3573071BAC800606B36 /* Poll.swift */,
+				08ABF3593071BAD600606B36 /* PermissionProbe.swift */,
+			);
+			path = Platform;
+			sourceTree = "<group>";
+		};
+		08ABF35B3071BADD00606B36 /* Tenants */ = {
+			isa = PBXGroup;
+			children = (
+				08ABF35C3071BADD00606B36 /* Tenant.swift */,
+				08ABF35E3071BAE900606B36 /* SecretStore.swift */,
+				08ABF3603071BAF800606B36 /* TenantStore.swift */,
+			);
+			path = Tenants;
+			sourceTree = "<group>";
+		};
 		9BC01C531DFB0C07007E634E = {
 			isa = PBXGroup;
 			children = (
@@ -231,6 +272,8 @@
 				9BC01C681DFB0C07007E634E /* Info.plist */,
 				9BC01C6E1DFBC564007E634E /* settings.plist */,
 				B5E179EF1F1FDACF00A20AAA /* help */,
+				08ABF34E3071BA8300606B36 /* Platform */,
+				08ABF35B3071BADD00606B36 /* Tenants */,
 			);
 			path = JamfMigrator;
 			sourceTree = "<group>";
@@ -446,11 +489,13 @@
 				B5165E1620E580A00086E31D /* XmlDelegate.swift in Sources */,
 				CE310A722D10BBE6007C2C6F /* RemoveData.swift in Sources */,
 				CE310A732D10BBE6007C2C6F /* RemoveObjects.swift in Sources */,
+				08ABF3563071BAC100606B36 /* PlatformClient.swift in Sources */,
 				9BC01C621DFB0C07007E634E /* ViewController.swift in Sources */,
 				CEF467D82EB8444B00160D32 /* SummaryView.swift in Sources */,
 				CEE65A2F2CB953C5002AB294 /* Headless.swift in Sources */,
 				CEDB6A132CE05E7A00171FB0 /* PatchDelegate.swift in Sources */,
 				CEAA10022F00000200171FB0 /* AppInstallersDelegate.swift in Sources */,
+				08ABF35D3071BADD00606B36 /* Tenant.swift in Sources */,
 				CEAA10042F00000400171FB0 /* ApiRequest.swift in Sources */,
 				B5C25B0727DA0499008E4B0F /* JamfPro.swift in Sources */,
 				B574AA722767563E00E4E3E2 /* PackagesDelegate.swift in Sources */,
@@ -460,17 +505,22 @@
 				B556A79E2773A100003CBEE9 /* Alert.swift in Sources */,
 				CE1935B22D852A830065862C /* LastUser.swift in Sources */,
 				B54154FF2BD8597700084439 /* Package.swift in Sources */,
+				08ABF3613071BAF800606B36 /* TenantStore.swift in Sources */,
 				B5927AFC20CC394F0059C25B /* VersionCheck.swift in Sources */,
 				B5E1912D21AAD9F300A1A9CA /* PreferencesViewController.swift in Sources */,
+				08ABF3583071BAC800606B36 /* Poll.swift in Sources */,
 				B53ECDF82391F8FB005EE6E5 /* Globals.swift in Sources */,
 				CE310A692D10BB49007C2C6F /* ExportItem.swift in Sources */,
+				08ABF35F3071BAE900606B36 /* SecretStore.swift in Sources */,
 				CE310A752D10BC3A007C2C6F /* IconDelegate.swift in Sources */,
 				B53ECDFC2394474B005EE6E5 /* Json.swift in Sources */,
 				B54509412904D96500094739 /* Awake.swift in Sources */,
 				CE310A612D10BACD007C2C6F /* Cleanup.swift in Sources */,
 				9BC01C601DFB0C07007E634E /* AppDelegate.swift in Sources */,
 				CE03BFC52E101010000EADA9 /* Queues.swift in Sources */,
+				08ABF3503071BA8300606B36 /* Region.swift in Sources */,
 				CEF467D62EB8413200160D32 /* EndpointData.swift in Sources */,
+				08ABF35A3071BAD600606B36 /* PermissionProbe.swift in Sources */,
 				B56CA91828E88DE200236A8A /* SourceDestVC.swift in Sources */,
 				B5B4FAFC1FF0B21C0007BD34 /* SummaryViewController.swift in Sources */,
 				B5FD9DAE27434B8A0044C321 /* Jpapi.swift in Sources */,
@@ -479,10 +529,12 @@
 				B56CBA8A277B939100F26E8C /* SaveDelegate.swift in Sources */,
 				CE310A652D10BAEC007C2C6F /* EndpointXml.swift in Sources */,
 				CE75A6B92E4EE02D008B4C08 /* XmlTagParser.swift in Sources */,
+				08ABF3523071BA9400606B36 /* GatewayError.swift in Sources */,
 				CE310A632D10BAD9007C2C6F /* CreateEndpoints.swift in Sources */,
 				CE8935E82CD14C2F00C30F72 /* JsonObjects.swift in Sources */,
 				B58CCCD3249B016100AD0052 /* TimeDelegate.swift in Sources */,
 				CE9720C22E57633C00D45718 /* PreferencesTabVC.swift in Sources */,
+				08ABF3543071BAA400606B36 /* TokenProvider.swift in Sources */,
 				CE310A6D2D10BB95007C2C6F /* ObjectDelegate.swift in Sources */,
 				B5BD6ADB233510F6001D244A /* Credentials.swift in Sources */,
 				CEDB6A152CE0D71E00171FB0 /* PatchManagementApi.swift in Sources */,
@@ -518,19 +570,23 @@
 		08ABF3473071B13E00606B36 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Jamf Migrator.app/Contents/MacOS/Jamf Migrator";
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = K3LQ9NPBMG;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
@@ -552,19 +608,23 @@
 		08ABF3483071B13E00606B36 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Jamf Migrator.app/Contents/MacOS/Jamf Migrator";
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
 				CLANG_ENABLE_OBJC_WEAK = YES;
 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = K3LQ9NPBMG;
 				CURRENT_PROJECT_VERSION = 1;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 27.0;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 1.0;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = be.jordythery.JamfMigratorTests;
@@ -632,7 +692,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = macosx;
@@ -686,7 +746,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = macosx;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -703,7 +763,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				DEAD_CODE_STRIPPING = YES;
+				DEAD_CODE_STRIPPING = NO;
 				DEVELOPMENT_TEAM = K3LQ9NPBMG;
 				ENABLE_HARDENED_RUNTIME = YES;
 				EXCLUDED_RECURSIVE_SEARCH_PATH_SUBDIRECTORIES = "*.nib *.lproj *.framework *.gch *.xcode* *.xcassets (*) .DS_Store CVS .svn .git .hg *.pbproj *.pbxproj Notes";
@@ -715,7 +775,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 13.5;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = be.jordythery.jamfmigrator;
 				PRODUCT_MODULE_NAME = JamfMigrator;
@@ -746,7 +806,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 13.5;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = be.jordythery.jamfmigrator;
 				PRODUCT_MODULE_NAME = JamfMigrator;
