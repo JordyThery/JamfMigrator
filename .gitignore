@@ -4,3 +4,7 @@ Bookmarks.*
 **/.DS_Store
 *.xcuserstate
 *.xcbkptlist
+
+# Screenshots containing API credentials
+/Sandbox platform API.png
+/Beta platform API.png
