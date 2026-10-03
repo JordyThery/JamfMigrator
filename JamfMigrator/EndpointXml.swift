@@ -219,7 +219,7 @@ class EndpointXml: NSObject, URLSessionDelegate {
                 endpointPath = endpointPath.replacingOccurrences(of: "JSSResource/jamfusers/id", with: "JSSResource/accounts/userid")
                 endpointPath = endpointPath.replacingOccurrences(of: "JSSResource/jamfgroups/id", with: "JSSResource/accounts/groupid")
                 endpointPath = endpointPath.replacingOccurrences(of: "id/id/", with: "id/")
-                let myURL = ApiRequest.endpointUrl(whichServer: "source", path: endpointPath).urlFix
+                let myURL = ApiRequest.endpointUrl(whichServer: "source", path: endpointPath)
                 
                 SourceGetQueue.shared.addOperation {
 //                endpointsIdQ.async {

@@ -90,10 +90,6 @@ class Jpapi: NSObject, URLSessionDelegate {
             return
         }
                 
-        // cookie stuff
-        var sessionCookie: HTTPCookie?
-        var cookieName         = "" // name of cookie to look for
-        
         URLCache.shared.removeAllCachedResponses()
         var path = ""
         var contentType: String = "application/json"
@@ -168,12 +164,6 @@ class Jpapi: NSObject, URLSessionDelegate {
         print("[apiCall] \(#function.description) endpoint: \(url?.absoluteString ?? "")")
         print("")
         
-//        print("jpapi sticky session for \(serverUrl)")
-        // sticky session
-        if JamfProServer.sessionCookie.count > 0 && JamfProServer.stickySession {
-            URLSession.shared.configuration.httpCookieStorage!.setCookies(JamfProServer.sessionCookie, for: URL(string: serverUrl), mainDocumentURL: URL(string: serverUrl))
-        }
-        
         let session = Foundation.URLSession(configuration: configuration, delegate: self as URLSessionDelegate, delegateQueue: OperationQueue.main)
         
         let task = session.dataTask(with: request as URLRequest, completionHandler: {
@@ -191,39 +181,6 @@ class Jpapi: NSObject, URLSessionDelegate {
                     
 //                    print("[jpapi] endpoint: \(endpoint)")
 
-                    if endpoint == "jamf-pro-version" {
-                        JamfProServer.sessionCookie.removeAll()
-            //            let cookies = HTTPCookieStorage.shared.cookies!
-            //            print("total cookies: \(cookies.count)")
-                        
-                        for theCookie in HTTPCookieStorage.shared.cookies! {
-//                            print("cookie name \(theCookie.name)")
-                            if ["jpro-ingress", "APBALANCEID"].contains(theCookie.name) {
-                                sessionCookie = theCookie
-                                cookieName    = theCookie.name
-                                break
-                            }
-                        }
-                        // look for alternalte cookie to use with sticky sessions
-                        if sessionCookie == nil {
-                            for theCookie in HTTPCookieStorage.shared.cookies! {
-//                                print("cookie name \(theCookie.name)")
-                                if ["AWSALB"].contains(theCookie.name) {
-                                    sessionCookie = theCookie
-                                    cookieName    = theCookie.name
-                                    break
-                                }
-                            }
-                        }
-                        
-                        if sessionCookie != nil && (sessionCookie?.domain == JamfProServer.destination.fqdnFromUrl) {
-                            WriteToLog.shared.message("[Jpapi.action] set cookie (name:value) \(String(describing: cookieName)):\(String(describing: sessionCookie!.value)) for \(String(describing: sessionCookie!.domain))")
-                            JamfProServer.sessionCookie.append(sessionCookie!)
-                        } else {
-                            HTTPCookieStorage.shared.removeCookies(since: History.startTime)
-                        }
-                    }
-                    
                     if accept == "text/xml" {
                         let objectXml = String(data: data ?? Data(), encoding: .utf8) ?? ""
                         completion(["objectXml": objectXml])

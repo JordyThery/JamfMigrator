@@ -60,7 +60,6 @@ class PreferencesViewController: NSViewController, NSTextFieldDelegate {
     @IBOutlet weak var concurrentThreads_slider: NSSlider!
     @IBOutlet weak var concurrentThreads_textfield: NSTextField!
     @IBOutlet weak var logFilesCountPref_textfield: NSTextField!
-    @IBOutlet weak var stickySession_button: NSButton!
     @IBOutlet weak var maskServerNames_button: NSButton!
     @IBOutlet weak var colorScheme_button: NSPopUpButton!
     @IBOutlet weak var sourceDestListSize_button: NSPopUpButton!
@@ -193,13 +192,6 @@ class PreferencesViewController: NSViewController, NSTextFieldDelegate {
         userDefaults.setValue(listSize, forKey: "sourceDestListSize")
     }
     
-    
-    @IBAction func stickySession_action(_ sender: NSButton) {
-        JamfProServer.stickySession = sender.state == .on
-        userDefaults.set(JamfProServer.stickySession, forKey: "stickySession")
-//        userDefaults.synchronize()
-        NotificationCenter.default.post(name: .stickySessionToggle, object: self)
-    }
     
     @IBAction func maskServerNames_action(_ sender: NSButton) {
         userDefaults.set(Int(sender.state.rawValue), forKey: "maskServerNames")
@@ -619,7 +611,6 @@ class PreferencesViewController: NSViewController, NSTextFieldDelegate {
             concurrentThreads_textfield.stringValue = "\((userDefaults.integer(forKey: "concurrentThreads") < 1) ? 2:userDefaults.integer(forKey: "concurrentThreads"))"
             concurrentThreads_slider.stringValue = concurrentThreads_textfield.stringValue
             logFilesCountPref_textfield.stringValue = "\((userDefaults.integer(forKey: "logFilesCountPref") < 1) ? 20:userDefaults.integer(forKey: "logFilesCountPref"))"
-            stickySession_button.state = userDefaults.bool(forKey: "stickySession") ? NSControl.StateValue(1):NSControl.StateValue(0)
             
             maskServerNames_button.state = NSControl.StateValue(userDefaults.integer(forKey: "maskServerNames"))
             let currentTitle = userDefaults.string(forKey: "colorScheme")

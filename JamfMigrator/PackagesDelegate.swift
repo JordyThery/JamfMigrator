@@ -169,7 +169,7 @@ class PackagesDelegate: NSObject, URLSessionDelegate {
         return Package(uapiPackageDetail: jsonPackage)
     }
     
-    func getFilename(whichServer: String, theServer: String, base64Creds: String, theEndpoint: String, theEndpointID: Int, skip: Bool, currentTry: Int, completion: @escaping (_ result: (Int,String)) -> Void) {
+    func getFilename(whichServer: String, theServer: String, theEndpoint: String, theEndpointID: Int, skip: Bool, currentTry: Int, completion: @escaping (_ result: (Int,String)) -> Void) {
         logFunctionCall()
         
         if skip || WipeData.state.on {
@@ -187,7 +187,7 @@ class PackagesDelegate: NSObject, URLSessionDelegate {
             URLCache.shared.removeAllCachedResponses()
             var existingDestUrl = ""
             
-            existingDestUrl = ApiRequest.endpointUrl(onServer: theServer, path: "JSSResource/\(theEndpoint)/id/\(theEndpointID)").urlFix
+            existingDestUrl = ApiRequest.endpointUrl(onServer: theServer, path: "JSSResource/\(theEndpoint)/id/\(theEndpointID)")
             
             WriteToLog.shared.message("[PackagesDelegate.getFilename] Get filename for package the following package: \(existingDestUrl)")
 
@@ -255,7 +255,7 @@ class PackagesDelegate: NSObject, URLSessionDelegate {
                         WriteToLog.shared.message("[PackagesDelegate.getFilename] error with response for package ID \(theEndpointID) from \(String(describing: jsonRequest.url!))")
                         //                    print("[PackagesDelegate.getFilename] response error for package ID \(theEndpointID) on try \(currentTry)")
                         if currentTry < maxTries {
-                            self.getFilename(whichServer: whichServer, theServer: theServer, base64Creds: base64Creds, theEndpoint: "packages", theEndpointID: theEndpointID, skip: false, currentTry: currentTry+1) {
+                            self.getFilename(whichServer: whichServer, theServer: theServer, theEndpoint: "packages", theEndpointID: theEndpointID, skip: false, currentTry: currentTry+1) {
                                 (result: (Int,String)) in
                                 let (resultCode,returnedName) = result
                                 //                            print("[PackagesDelegate.getFilename] got filename (\(returnedName)) for package ID \(theEndpointID) on try \(currentTry+1)")
@@ -277,7 +277,7 @@ class PackagesDelegate: NSObject, URLSessionDelegate {
 //        }
     }
     
-    func filenameIdDict(whichServer: String, theServer: String, base64Creds: String, currentPackageIDsNames: [Int:String], currentPackageNamesIDs: [String:Int], currentDuplicates: [String:[String]], currentTry: Int, maxTries: Int, completion: @escaping (_ result: [String:Int]) -> Void) {
+    func filenameIdDict(whichServer: String, theServer: String, currentPackageIDsNames: [Int:String], currentPackageNamesIDs: [String:Int], currentDuplicates: [String:[String]], currentTry: Int, maxTries: Int, completion: @escaping (_ result: [String:Int]) -> Void) {
         logFunctionCall()
         
 //        print("[PackageDelegate.filenameIdDict] lookup attempt \(currentTry) of \(maxTries)")
@@ -303,7 +303,7 @@ class PackagesDelegate: NSObject, URLSessionDelegate {
                     i += 1
                     ExistingPackages.shared.packageGetsPending += 1
 
-                        getFilename(whichServer: whichServer, theServer: theServer, base64Creds: base64Creds, theEndpoint: "packages", theEndpointID: packageID, skip: false, currentTry: 3) { [self]
+                        getFilename(whichServer: whichServer, theServer: theServer, theEndpoint: "packages", theEndpointID: packageID, skip: false, currentTry: 3) { [self]
                             (result: (Int,String)) in
                             ExistingPackages.shared.packageGetsPending -= 1
                             lookupCount += 1
@@ -346,7 +346,7 @@ class PackagesDelegate: NSObject, URLSessionDelegate {
                                 //                    print("[PackageDelegate.filenameIdDict] done looking up packages on \(theServer)")
                                 if currentTry < maxTries+1 && ExistingPackages.shared.packageIDsNames.count > 0 {
                                     WriteToLog.shared.message("[PackageDelegate.filenameIdDict] \(ExistingPackages.shared.packageIDsNames.count) filename(s) were not found.  Retry attempt \(currentTry)")
-                                    filenameIdDict(whichServer: whichServer, theServer: theServer, base64Creds: base64Creds, currentPackageIDsNames: ExistingPackages.shared.packageIDsNames, currentPackageNamesIDs: existingNameId, currentDuplicates: duplicatePackagesDict, currentTry: currentTry+1, maxTries: maxTries) {
+                                    filenameIdDict(whichServer: whichServer, theServer: theServer, currentPackageIDsNames: ExistingPackages.shared.packageIDsNames, currentPackageNamesIDs: existingNameId, currentDuplicates: duplicatePackagesDict, currentTry: currentTry+1, maxTries: maxTries) {
                                         (result: [String:Int]) in
                                         WriteToLog.shared.message("[PackageDelegate.filenameIdDict] returned from retry \(currentTry)")
                                         //                            print("               currentTry1: \(currentTry)")

@@ -12,7 +12,6 @@ class Sites: NSObject, URLSessionDelegate {
     
     let vc           = ViewController()
     var resourcePath = ""
-    var base64Creds  = ""
     
     var jamfpro: JamfPro?
     
@@ -22,7 +21,6 @@ class Sites: NSObject, URLSessionDelegate {
 //        jamfpro = JamfPro(controller: ViewController())
         var siteArray = [String]()
 //        var siteDict  = Dictionary<String, Any>()
-        base64Creds   = Data("\(creds)".utf8).base64EncodedString()
         
         if "\(server)" == "" {
             vc.alert_dialog(header: "Attention:", message: "Destination Jamf server is required.")
@@ -33,7 +31,7 @@ class Sites: NSObject, URLSessionDelegate {
             completion((401,siteArray))
         }
         
-        resourcePath = ApiRequest.endpointUrl(onServer: server, path: "JSSResource/sites").urlFix
+        resourcePath = ApiRequest.endpointUrl(onServer: server, path: "JSSResource/sites")
         
         // get all the sites - start
         WriteToLog.shared.message("[Sites] Fetching sites from \(server)")

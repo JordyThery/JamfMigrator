@@ -705,15 +705,6 @@
                                     <action selector="fileImport_action:" target="eUd-vB-D7a" id="IyQ-t4-0Vn"/>
                                 </connections>
                             </button>
-                            <textField hidden="YES" toolTip="sticky session enabled" focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="iVA-8Z-Tm7">
-                                <rect key="frame" x="818" y="132" width="25" height="20"/>
-                                <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
-                                <textFieldCell key="cell" lineBreakMode="clipping" alignment="center" title="S" id="bve-jQ-wj1">
-                                    <font key="font" textStyle="title3" name=".SFNS-Regular"/>
-                                    <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
-                                    <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
-                                </textFieldCell>
-                            </textField>
                             <button verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="sw5-wd-hho">
                                 <rect key="frame" x="3" y="132" width="20" height="20"/>
                                 <buttonCell key="cell" type="bevel" bezelStyle="rounded" alignment="center" imageScaling="proportionallyDown" inset="2" id="SkL-Eh-ytn">
@@ -855,7 +846,6 @@
                         <outlet property="sourceUsername_TextField" destination="p4o-Ag-YsM" id="DOA-7s-l5c"/>
                         <outlet property="source_jp_server_field" destination="oWq-4n-u3f" id="BbU-Pq-hyS"/>
                         <outlet property="source_pwd_field" destination="mdU-Bj-ruz" id="XWj-4o-yeD"/>
-                        <outlet property="stickySessions_label" destination="iVA-8Z-Tm7" id="3t1-Ab-tbk"/>
                     </connections>
                 </viewController>
                 <customObject id="2G4-j2-SWo" userLabel="First Responder" customClass="NSResponder" sceneMemberID="firstResponder"/>

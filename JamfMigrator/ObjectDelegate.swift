@@ -51,7 +51,7 @@ class ObjectDelegate: NSObject, URLSessionDelegate {
                 completion(result as [Any])
             }
         default:
-            Json.shared.getRecord(whichServer: (WipeData.state.on ? "dest":whichServer), base64Creds: "", theEndpoint: endpoint) {
+            Json.shared.getRecord(whichServer: (WipeData.state.on ? "dest":whichServer), theEndpoint: endpoint) {
                 (result: Any) in
 //                print("[ObjectDelegate.getAll] default - \(endpoint): \(result)")
                 completion([result])

@@ -186,12 +186,6 @@ class PatchManagementApi: NSObject, URLSessionDelegate {
         print("[apiCall] \(#function.description) endpoint: \(url?.absoluteString ?? "")")
         print("")
 
-//        print("jpapi sticky session for \(serverUrl)")
-        // sticky session
-        if JamfProServer.sessionCookie.count > 0 && JamfProServer.stickySession {
-            URLSession.shared.configuration.httpCookieStorage!.setCookies(JamfProServer.sessionCookie, for: URL(string: serverUrl), mainDocumentURL: URL(string: serverUrl))
-        }
-        
         let method = createUpdateMethod.lowercased() == "patch" ? "update" : "create"
         
         let theMethod = (createUpdateMethod.lowercased() == "patch") ? "update" : createUpdateMethod.lowercased()

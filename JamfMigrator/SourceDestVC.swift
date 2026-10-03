@@ -138,7 +138,6 @@ class SourceDestVC: NSViewController, URLSessionDelegate, NSTableViewDelegate, N
      
     @IBOutlet weak var siteMigrate_button: NSButton!
     @IBOutlet weak var availableSites_button: NSPopUpButtonCell!
-    @IBOutlet weak var stickySessions_label: NSTextField!
     
     var itemToSite      = false
     
@@ -180,8 +179,6 @@ class SourceDestVC: NSViewController, URLSessionDelegate, NSTableViewDelegate, N
     var destServerArray     = [String]()
     
     // credentials
-    var sourceCreds = ""
-    var destCreds   = ""
     var accountsDict = [String:String]()
     
     // settings variables
@@ -192,8 +189,6 @@ class SourceDestVC: NSViewController, URLSessionDelegate, NSTableViewDelegate, N
     var dest_jp_server: String      = ""
     var dest_user: String           = ""
     var dest_pass: String           = ""
-    var sourceBase64Creds: String   = ""
-    var destBase64Creds: String     = ""
         
     // import file vars
     var dataFilesRoot   = ""
@@ -319,16 +314,12 @@ class SourceDestVC: NSViewController, URLSessionDelegate, NSTableViewDelegate, N
             itemToSite = true
             availableSites_button.removeAllItems()
             
-            self.destCreds = "\(self.destinationUser_TextField.stringValue):\(self.dest_pwd_field.stringValue)"
-            self.destBase64Creds = self.destCreds.data(using: .utf8)?.base64EncodedString() ?? ""
-            JamfProServer.base64Creds["dest"] = self.destCreds.data(using: .utf8)?.base64EncodedString() ?? ""
-
             DispatchQueue.main.async {
                 self.siteMigrate_button.isEnabled = false
                 self.sitesSpinner_ProgressIndicator.startAnimation(self)
             }
                     
-            JamfPro.shared.getToken(whichServer: "dest", serverUrl: "\(dest_jp_server_field.stringValue)", base64creds: JamfProServer.base64Creds["dest"] ?? "", localSource: false, renew: false) { [self]
+            JamfPro.shared.getToken(whichServer: "dest", serverUrl: "\(dest_jp_server_field.stringValue)") { [self]
                 (authResult: (Int,String)) in
                 let (authStatusCode, _) = authResult
 
@@ -533,14 +524,10 @@ class SourceDestVC: NSViewController, URLSessionDelegate, NSTableViewDelegate, N
             if whichField.range(of: "^source", options: [.regularExpression, .caseInsensitive]) != nil {
                 JamfProServer.sourceUser = sourceUser_TextField.stringValue
                 JamfProServer.sourcePwd  = source_pwd_field.stringValue
-                let sourceCreds = "\(sourceUser_TextField.stringValue):\(source_pwd_field.stringValue)"
-                sourceBase64Creds = sourceCreds.data(using: .utf8)?.base64EncodedString() ?? ""
                 JamfProServer.validToken["source"] = false
             } else {
                 JamfProServer.destUser = destinationUser_TextField.stringValue
                 JamfProServer.destPwd  = dest_pwd_field.stringValue
-                let destCreds = "\(destinationUser_TextField.stringValue):\(dest_pwd_field.stringValue)"
-                destBase64Creds = destCreds.data(using: .utf8)?.base64EncodedString() ?? ""
                 JamfProServer.validToken["dest"] = false
             }
         }
@@ -560,7 +547,6 @@ class SourceDestVC: NSViewController, URLSessionDelegate, NSTableViewDelegate, N
                     (result: String) in
                     switch textField.identifier!.rawValue {
                     case "sourceServer", "sourceUser":
-                        source_jp_server_field.stringValue = source_jp_server_field.stringValue.urlFix
                         fetchPassword(whichServer: "source", url: source_jp_server_field.stringValue)
                     default:
                         break
@@ -576,7 +562,6 @@ class SourceDestVC: NSViewController, URLSessionDelegate, NSTableViewDelegate, N
                 }
                 switch textField.identifier!.rawValue {
                 case "destServer", "destUser":
-                    dest_jp_server_field.stringValue = dest_jp_server_field.stringValue.urlFix
                     fetchPassword(whichServer: "dest", url: dest_jp_server_field.stringValue)
                 default:
                     break
@@ -840,10 +825,6 @@ class SourceDestVC: NSViewController, URLSessionDelegate, NSTableViewDelegate, N
         
     }   //viewDidAppear - end
     
-    @objc func stickySessionToggle(_ notification: Notification) {
-        logFunctionCall()
-        stickySessions_label.isHidden = !JamfProServer.stickySession
-    }
     @objc func toggleExportOnly(_ notification: Notification) {
         logFunctionCall()
         disableSource()
@@ -886,7 +867,6 @@ class SourceDestVC: NSViewController, URLSessionDelegate, NSTableViewDelegate, N
         NotificationCenter.default.addObserver(self, selector: #selector(setColorScheme_sdvc(_:)), name: .setColorScheme_sdvc, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(deleteMode_sdvc(_:)), name: .deleteMode_sdvc, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(toggleExportOnly(_:)), name: .saveOnlyButtonToggle, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(stickySessionToggle(_:)), name: .stickySessionToggle, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(updateSourceServerList(_:)), name: .updateSourceServerList, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(updateDestServerList(_:)), name: .updateDestServerList, object: nil)
         
@@ -900,8 +880,6 @@ class SourceDestVC: NSViewController, URLSessionDelegate, NSTableViewDelegate, N
         dest_pwd_field.delegate            = self
         
         fileImport = userDefaults.bool(forKey: "fileImport")
-        JamfProServer.stickySession = userDefaults.bool(forKey: "stickySession")
-        stickySessions_label.isHidden = !JamfProServer.stickySession
     
         initVars()
         
@@ -1105,7 +1083,6 @@ extension Notification.Name {
     public static let setColorScheme_sdvc    = Notification.Name("setColorScheme_sdvc")
     public static let deleteMode_sdvc        = Notification.Name("deleteMode_sdvc")
     public static let saveOnlyButtonToggle   = Notification.Name("toggleExportOnly")
-    public static let stickySessionToggle    = Notification.Name("stickySessionToggle")
     public static let dryRunToggle           = Notification.Name("dryRunToggle")
     public static let updateSourceServerList = Notification.Name("updateSourceServerList")
     public static let updateDestServerList   = Notification.Name("updateDestServerList")

@@ -47,10 +47,9 @@ class ApiRequest: NSObject {
         return endpointUrl(onServer: serverUrl, path: path)
     }
 
-    // authorization header value for the server
-    // tokenOnly: always use the bearer token (Jamf Pro API); otherwise use the stored auth type, which can fall back to Basic
-    class func authorization(whichServer: String, tokenOnly: Bool = false) -> String {
-        return tokenOnly ? "Bearer \(JamfProServer.accessToken[whichServer] ?? "")" : "\(JamfProServer.authType[whichServer] ?? "Bearer") \(JamfProServer.authCreds[whichServer] ?? "")"
+    // authorization header value for the server; the gateway always uses a bearer token
+    class func authorization(whichServer: String, tokenOnly: Bool = true) -> String {
+        return "Bearer \(JamfProServer.accessToken[whichServer] ?? "")"
     }
 
     // context headers required by the platform API gateway, empty for direct server connections

@@ -720,7 +720,7 @@ class Cleanup: NSObject {
                 destEndpoint = theEndpoint
             }
             
-            XmlDelegate.shared.apiAction(method: "GET", theServer: JamfProServer.destination, base64Creds: JamfProServer.base64Creds["dest"] ?? "", theEndpoint: "\(destEndpoint)/id/\(destEpId)") {
+            XmlDelegate.shared.apiAction(method: "GET", theServer: JamfProServer.destination, theEndpoint: "\(destEndpoint)/id/\(destEpId)") {
                 (xmlResult: (Int,String)) in
                 let (_, fullXML) = xmlResult
                 

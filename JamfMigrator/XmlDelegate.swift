@@ -23,7 +23,7 @@ class XmlDelegate: NSObject, URLSessionDelegate {
     var endpointPath  = ""
     let getRecordQ    = OperationQueue()
 
-    func apiAction(method: String, theServer: String, base64Creds: String, theEndpoint: String, completion: @escaping (_ result: (Int,String)) -> Void) {
+    func apiAction(method: String, theServer: String, theEndpoint: String, completion: @escaping (_ result: (Int,String)) -> Void) {
         logFunctionCall()
         
         if theEndpoint.prefix(4) != "skip" {
@@ -31,7 +31,7 @@ class XmlDelegate: NSObject, URLSessionDelegate {
             URLCache.shared.removeAllCachedResponses()
             var existingDestUrl = ""
             
-            existingDestUrl = ApiRequest.endpointUrl(onServer: theServer, path: "JSSResource/\(theEndpoint)").urlFix
+            existingDestUrl = ApiRequest.endpointUrl(onServer: theServer, path: "JSSResource/\(theEndpoint)")
 //            existingDestUrl = existingDestUrl.replacingOccurrences(of: "//JSSResource", with: "/JSSResource")
                     
             if LogLevel.debug { WriteToLog.shared.message("[Xml.apiAction] Looking up: \(existingDestUrl)") }
@@ -56,12 +56,6 @@ class XmlDelegate: NSObject, URLSessionDelegate {
                 print("[apiCall] \(#function.description) headers: \(headers)")
                 print("[apiCall] \(#function.description) endpoint: \(destEncodedURL?.absoluteString ?? "")")
                 print("")
-                
-                // sticky session
-                if JamfProServer.sessionCookie.count > 0 && JamfProServer.stickySession {
-//                    print("xml sticky session for \(theServer)")
-                    URLSession.shared.configuration.httpCookieStorage!.setCookies(JamfProServer.sessionCookie, for: URL(string: theServer), mainDocumentURL: URL(string: theServer))
-                }
                 
                 let destSession = Foundation.URLSession(configuration: destConf, delegate: self, delegateQueue: OperationQueue.main)
                 

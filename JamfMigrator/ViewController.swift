@@ -829,8 +829,6 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
     var destServerArray     = [String]()
     
     // credentials
-    var sourceCreds = ""
-    var destCreds   = ""
     var accountDict = [String:String]()
     
     // settings variables
@@ -839,8 +837,6 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
     var dest_jp_server: String      = ""
     var dest_user: String           = ""
     var dest_pass: String           = ""
-    var sourceBase64Creds: String   = ""
-    var destBase64Creds: String     = ""
     
     var sourceURL = ""
     var iconDictArray = [String:[[String:String]]]()
@@ -1383,40 +1379,8 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
         nodesMigrated       = -1
         currentEPs.removeAll()
         
-        // server is reachable - start
-        JamfPro.shared.checkURL2(whichServer: "source", serverURL: JamfProServer.source)  {
-            (result: Bool) in
-//            print("checkURL2 returned result: \(result)")
-            if !result {
-                if Setting.fullGUI {
-                    self.alert_dialog(header: "Attention:", message: "Unable to contact the source server:\n\(JamfProServer.source)")
-                    self.goButtonEnabled(button_status: true)
-                    return
-                } else {
-                    WriteToLog.shared.message("Unable to contact the source server:\n\(JamfProServer.source)")
-                    NSApplication.shared.terminate(self)
-                }
-            }
-            
-            JamfProServer.url["source"] = JamfProServer.source
-//            print("JamfProServer.url: \(JamfProServer.url)")
-            
-            JamfPro.shared.checkURL2(whichServer: "dest", serverURL: JamfProServer.destination)  { [self]
-                (result: Bool) in
-    //            print("checkURL2 returned result: \(result)")
-                if !result {
-                    if Setting.fullGUI {
-                        self.alert_dialog(header: "Attention:", message: "Unable to contact the destination server:\n\(JamfProServer.destination)")
-                        self.goButtonEnabled(button_status: true)
-                        return
-                    } else {
-                        WriteToLog.shared.message("Unable to contact the destination server:\n\(JamfProServer.destination)")
-                        NSApplication.shared.terminate(self)
-                    }
-                }
-                // server is reachable - end
-                
-                JamfProServer.url["dest"] = JamfProServer.destination
+        JamfProServer.url["source"] = JamfProServer.source
+        JamfProServer.url["dest"] = JamfProServer.destination
                 
                 if Setting.fullGUI || Setting.migrate {
                     if JamfProServer.toSite {
@@ -1427,28 +1391,12 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
                     }
                 }
                 
-                // don't set if we're importing files or removing data
-                if JamfProServer.importFiles == 0 && !WipeData.state.on {
-                    self.sourceCreds = "\(JamfProServer.sourceUser):\(JamfProServer.sourcePwd)"
-                } else {
-                    self.sourceCreds = ":"
-                }
-                self.sourceBase64Creds = self.sourceCreds.data(using: .utf8)?.base64EncodedString() ?? ""
-                JamfProServer.base64Creds["source"] = self.sourceCreds.data(using: .utf8)?.base64EncodedString() ?? ""
-                
-                self.destCreds = "\(JamfProServer.destUser):\(JamfProServer.destPwd)"
-//                self.destCreds = "\(self.dest_user):\(self.dest_pass)"
-                self.destBase64Creds = self.destCreds.data(using: .utf8)?.base64EncodedString() ?? ""
-                JamfProServer.base64Creds["dest"] = self.destCreds.data(using: .utf8)?.base64EncodedString() ?? ""
-                // set credentials - end
-                
                 // check authentication - start
                 
                 let clientType = (JamfProServer.sourceUseApiClient == 1) ? "API client/secret":"username/password"
                 WriteToLog.shared.message("[go] Using \(clientType) to generate token for source: \(JamfProServer.source.fqdnFromUrl).")
                 
-                let localsource = (JamfProServer.importFiles == 1) ? true:false
-                JamfPro.shared.getToken(whichServer: "source", serverUrl: JamfProServer.source, base64creds: JamfProServer.base64Creds["source"] ?? "", localSource: localsource) { [self]
+                JamfPro.shared.getToken(whichServer: "source", serverUrl: JamfProServer.source) { [self]
                     (authResult: (Int,String)) in
                     let (authStatusCode, _) = authResult
                     if !pref.httpSuccess.contains(authStatusCode) && !WipeData.state.on {
@@ -1476,7 +1424,7 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
                         
                         let clientType = (JamfProServer.destUseApiClient == 1) ? "API client/secret":"username/password"
                         WriteToLog.shared.message("[go] Using \(clientType) to generate token for destination: \(JamfProServer.destination.fqdnFromUrl).")
-                        JamfPro.shared.getToken(whichServer: "dest", serverUrl: JamfProServer.destination, base64creds: JamfProServer.base64Creds["dest"] ?? "", localSource: localsource) { [self]
+                        JamfPro.shared.getToken(whichServer: "dest", serverUrl: JamfProServer.destination) { [self]
                             (authResult: (Int,String)) in
                             let (authStatusCode, _) = authResult
                             if !pref.httpSuccess.contains(authStatusCode) {
@@ -1519,8 +1467,6 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
                 }   // JamfPro.shared.getToken(whichServer: "source" - end
 
         // check authentication - end
-            }   // checkURL2 (destination server) - end
-        }
     }   // @IBAction func Go - end
     
     @IBAction func quit_action(sender: AnyObject) {
@@ -1554,10 +1500,10 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
         DispatchQueue.main.async { [self] in
             if !export.backupMode {
                 fileImport = (JamfProServer.importFiles == 1) ? true:false
-                createDestUrlBase = "\(JamfProServer.destination)/JSSResource".urlFix
+                createDestUrlBase = "\(JamfProServer.destination)/JSSResource"
             } else {
                 fileImport = false
-                createDestUrlBase = "\(dest_jp_server)/JSSResource".urlFix
+                createDestUrlBase = "\(dest_jp_server)/JSSResource"
             }
                 
             if Setting.fullGUI {
@@ -1928,13 +1874,9 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
                     // reverse migration order for removal and set create / delete header for summary table
                     ToMigrate.objects.reverse()
                     // set server and credentials used for wipe
-                    self.sourceBase64Creds = self.destBase64Creds
-                    JamfProServer.base64Creds["source"] = self.destBase64Creds
                     JamfProServer.source  = self.dest_jp_server
                     
                     JamfProServer.authCreds["source"]   = JamfProServer.authCreds["dest"]
-//                    JamfProServer.authExpires["source"] = JamfProServer.authExpires["dest"]
-                    JamfProServer.authType["source"]    = JamfProServer.authType["dest"]
                         
                     summaryHeader.createDelete = "Delete"
                 } else {   // if WipeData.state.on - end
@@ -2247,7 +2189,7 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
         
         
         if !WipeData.state.on {
-            Json.shared.getRecord(whichServer: "source", base64Creds: JamfProServer.base64Creds["source"] ?? "", theEndpoint: endpointToLookup, endpointBase: selectedEndpoint, endpointId: objToMigrateID)  { [self]
+            Json.shared.getRecord(whichServer: "source", theEndpoint: endpointToLookup, endpointBase: selectedEndpoint, endpointId: objToMigrateID)  { [self]
                 (objectRecord: Any) in
                 
                 switch selectedEndpoint {
@@ -4414,7 +4356,7 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
                     
         let endpointToLookup = fileImport ? "skip":"\(rawEndpoint)/\(idPath)\(String(describing: primaryObjId!))"
         
-        Json.shared.getRecord(whichServer: "source", base64Creds: JamfProServer.base64Creds["source"] ?? "", theEndpoint: endpointToLookup, endpointBase: selectedEndpoint, endpointId: objToMigrateId)  { [self]
+        Json.shared.getRecord(whichServer: "source", theEndpoint: endpointToLookup, endpointBase: selectedEndpoint, endpointId: objToMigrateId)  { [self]
             (objectRecord: Any) in
             
             var json = [String: AnyObject]()
@@ -4555,7 +4497,7 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
                                 let local_id   = (theObject as! [String:Any])["id"]
                                 
                                 // todo - update to use jpapi packages?
-                                PackagesDelegate.shared.getFilename(whichServer: "source", theServer: JamfProServer.source, base64Creds: JamfProServer.base64Creds["source"] ?? "", theEndpoint: "packages", theEndpointID: local_id as! Int, skip: WipeData.state.on, currentTry: 1) {
+                                PackagesDelegate.shared.getFilename(whichServer: "source", theServer: JamfProServer.source, theEndpoint: "packages", theEndpointID: local_id as! Int, skip: WipeData.state.on, currentTry: 1) {
                                     (result: (Int,String)) in
                                     let (_,packageFilename) = result
                                     if packageFilename != "" {
@@ -5110,8 +5052,6 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
             } else {
                 createDestUrl = ApiRequest.endpointUrl(whichServer: "dest", path: "JSSResource/fileuploads/\(iconNode)/id/\(tagValue(xmlString: responseData, xmlTag: "id"))")
             }
-            createDestUrl = createDestUrl.urlFix
-            
             // Get or skip icon from Jamf Pro
             if LogLevel.debug { WriteToLog.shared.message("[ViewController.icons] before icon download.") }
 
@@ -5237,7 +5177,7 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
                                     if LogLevel.debug { WriteToLog.shared.message("[ViewController.icons] getting downloaded icon id from destination server, policy id: \(String(describing: Iconfiles.policyDict["\(ssIconId.fixOptional)"]!["policyId"]!))") }
                                     var policyIconDict = Iconfiles.policyDict
 
-                                    Json.shared.getRecord(whichServer: "dest", base64Creds: JamfProServer.base64Creds["dest"] ?? "", theEndpoint: "\(endpointType)/id/\(thePolicyID)/subset/SelfService")  {
+                                    Json.shared.getRecord(whichServer: "dest", theEndpoint: "\(endpointType)/id/\(thePolicyID)/subset/SelfService")  {
                                         (objectRecord: Any) in
                                         let result = objectRecord as? [String: AnyObject] ?? [:]
 //                                        print("[icons] result of Json().getRecord: \(result)")
@@ -6886,15 +6826,6 @@ extension String {
                 functionName = String(self[..<index])
             }
             return functionName
-        }
-    }
-    var urlFix: String {
-        get {
-            var fixedUrl = self.replacingOccurrences(of: "//api", with: "/api")
-            fixedUrl     = self.replacingOccurrences(of: "//JSSResource", with: "/JSSResource")
-            let fixedUrlArray = fixedUrl.split(separator: "/?failover")
-            fixedUrl     = (fixedUrlArray.count > 0) ? String(fixedUrlArray[0]) : fixedUrl
-            return fixedUrl
         }
     }
 //    var urlToFqdn: String {

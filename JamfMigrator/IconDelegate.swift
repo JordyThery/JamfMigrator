@@ -70,8 +70,6 @@ class IconDelegate: NSObject, URLSessionDelegate {
             } else {
                 createDestUrl = ApiRequest.endpointUrl(whichServer: "dest", path: "JSSResource/fileuploads/\(iconNode)/id/\(tagValue(xmlString: responseData, xmlTag: "id"))")
             }
-            createDestUrl = createDestUrl.urlFix
-            
             // Get or skip icon from Jamf Pro
             if LogLevel.debug { WriteToLog.shared.message("[ViewController.icons] before icon download.") }
 
@@ -197,7 +195,7 @@ class IconDelegate: NSObject, URLSessionDelegate {
                                     if LogLevel.debug { WriteToLog.shared.message("[ViewController.icons] getting downloaded icon id from destination server, policy id: \(String(describing: Iconfiles.policyDict["\(ssIconId.fixOptional)"]!["policyId"]!))") }
                                     var policyIconDict = Iconfiles.policyDict
 
-                                    Json.shared.getRecord(whichServer: "dest", base64Creds: JamfProServer.base64Creds["dest"] ?? "", theEndpoint: "\(endpointType)/id/\(thePolicyID)/subset/SelfService")  {
+                                    Json.shared.getRecord(whichServer: "dest", theEndpoint: "\(endpointType)/id/\(thePolicyID)/subset/SelfService")  {
                                         (objectRecord: Any) in
                                         let result = objectRecord as? [String: AnyObject] ?? [:]
 //                                        print("[icons] result of Json().getRecord: \(result)")

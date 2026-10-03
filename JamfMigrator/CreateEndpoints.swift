@@ -213,8 +213,6 @@ class CreateEndpoints: NSObject, URLSessionDelegate {
 
 
         if LogLevel.debug { WriteToLog.shared.message("[CreateEndpoints] Original Dest. URL: \(createDestUrl)") }
-        createDestUrl = createDestUrl.urlFix
-        
         SendQueue.shared.addOperation { [self] in
             
             // save trimmed XML - start
@@ -294,12 +292,6 @@ class CreateEndpoints: NSObject, URLSessionDelegate {
                 print("[apiCall] \(#function.description) headers: \(headers)")
                 print("[apiCall] \(#function.description) endpoint: \(encodedURL?.absoluteString ?? "")")
                 print("")
-                
-                // sticky session
-                let cookieUrl = createDestUrlBase.replacingOccurrences(of: "JSSResource", with: "")
-                if JamfProServer.sessionCookie.count > 0 && JamfProServer.stickySession {
-                    URLSession.shared.configuration.httpCookieStorage!.setCookies(JamfProServer.sessionCookie, for: URL(string: cookieUrl), mainDocumentURL: URL(string: cookieUrl))
-                }
                 
                 request.httpBody = encodedXML!
                 

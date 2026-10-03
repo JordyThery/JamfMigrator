@@ -12,7 +12,7 @@ class Json: NSObject, URLSessionDelegate {
     
     static let shared = Json()
     
-    func getRecord(whichServer: String, base64Creds: String, theEndpoint: String, endpointBase: String = "0", endpointId: String = "0", completion: @escaping (_ objectRecord: Any) -> Void) {
+    func getRecord(whichServer: String, theEndpoint: String, endpointBase: String = "0", endpointId: String = "0", completion: @escaping (_ objectRecord: Any) -> Void) {
         logFunctionCall()
         
         if theEndpoint == "skip" {
@@ -29,7 +29,7 @@ class Json: NSObject, URLSessionDelegate {
 //        print("[getRecord] objectEndpoint: \(objectEndpoint)")
         switch endpointBase {
         case "api-roles", "api-integrations":
-            existingDestUrl = ApiRequest.endpointUrl(onServer: existingDestUrl, path: "api/v1/\(objectEndpoint)").urlFix
+            existingDestUrl = ApiRequest.endpointUrl(onServer: existingDestUrl, path: "api/v1/\(objectEndpoint)")
         case "patch-software-title-configurations":
             let theRecord = (whichServer == "source") ? PatchTitleConfigurations.source.filter({ $0.id == endpointId }):PatchTitleConfigurations.destination.filter({ $0.id == endpointId })
             if theRecord.count == 1 {
@@ -47,9 +47,6 @@ class Json: NSObject, URLSessionDelegate {
                 existingDestUrl = ApiRequest.endpointUrl(onServer: existingDestUrl, path: "JSSResource/\(objectEndpoint)")
             }
         }
-
-        existingDestUrl = existingDestUrl.urlFix
-        
         if LogLevel.debug { WriteToLog.shared.message("[Json.getRecord] Looking up: \(existingDestUrl)") }
         
         let destEncodedURL = URL(string: existingDestUrl)

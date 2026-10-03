@@ -193,8 +193,6 @@ class RemoveObjects: NSObject, URLSessionDelegate {
         workingUrl       = ApiRequest.endpointUrl(onServer: workingUrl, path: endpointPath)
         
         if LogLevel.debug { WriteToLog.shared.message("[RemoveObjects.process] Original Dest. URL: \(workingUrl)") }
-        workingUrl = workingUrl.urlFix
-        
         SendQueue.shared.addOperation { [self] in
             
             if LogLevel.debug { WriteToLog.shared.message("[RemoveObjects.process] Action: DELETE     URL: \(workingUrl)     Object \(endpointCurrent) of \(endpointCount)") }
@@ -218,12 +216,6 @@ class RemoveObjects: NSObject, URLSessionDelegate {
             print("[apiCall] \(#function.description) endpoint: \(encodedURL?.absoluteString ?? "")")
             print("")
             
-            // sticky session
-            let cookieUrl = createDestUrlBase.replacingOccurrences(of: "JSSResource", with: "")
-            if JamfProServer.sessionCookie.count > 0 && JamfProServer.stickySession {
-                URLSession.shared.configuration.httpCookieStorage!.setCookies(JamfProServer.sessionCookie, for: URL(string: cookieUrl), mainDocumentURL: URL(string: cookieUrl))
-            }
-                            
             let semaphore = DispatchSemaphore(value: 0)
             let session = Foundation.URLSession(configuration: configuration, delegate: self, delegateQueue: OperationQueue.main)
             let task = session.dataTask(with: request as URLRequest, completionHandler: { [self]

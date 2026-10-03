@@ -228,8 +228,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 case "-silent":
                     Setting.fullGUI = false
-                case "-sticky":
-                    JamfProServer.stickySession = true
                 case "-NSDocumentRevisionsDebugMode":
                     index += 1
                     break

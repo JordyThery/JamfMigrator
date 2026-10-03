@@ -1110,16 +1110,6 @@ Moving an object will not change any of the names. Moving an object to a site on
                                     <action selector="colorScheme_action:" target="Ojm-Op-AKi" id="hGr-2m-gN2"/>
                                 </connections>
                             </popUpButton>
-                            <button verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="kSv-WF-lic">
-                                <rect key="frame" x="36" y="220" width="168" height="19"/>
-                                <buttonCell key="cell" type="check" title="Use Sticky Sessions" bezelStyle="regularSquare" imagePosition="left" inset="2" id="k0q-qf-jbZ">
-                                    <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
-                                    <font key="font" metaFont="system" size="16"/>
-                                </buttonCell>
-                                <connections>
-                                    <action selector="stickySession_action:" target="Ojm-Op-AKi" id="z4r-fz-ApN"/>
-                                </connections>
-                            </button>
                             <textField focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="tfZ-9j-G6D">
                                 <rect key="frame" x="34" y="88" width="162" height="19"/>
                                 <textFieldCell key="cell" lineBreakMode="clipping" title="Servers to remember:" id="ULg-f3-0Eq">
@@ -1165,8 +1155,6 @@ Moving an object will not change any of the names. Moving an object to a site on
                             </button>
                         </subviews>
                         <constraints>
-                            <constraint firstItem="Zj6-mi-35l" firstAttribute="leading" secondItem="kSv-WF-lic" secondAttribute="leading" id="0TA-Cb-g8g"/>
-                            <constraint firstItem="kSv-WF-lic" firstAttribute="top" secondItem="Zj6-mi-35l" secondAttribute="bottom" constant="16" id="16Z-x6-qTQ"/>
                             <constraint firstItem="y1Q-0c-cgq" firstAttribute="trailing" secondItem="Zj6-mi-35l" secondAttribute="trailing" id="4wP-rG-d7V"/>
                             <constraint firstItem="afe-0d-eps" firstAttribute="centerX" secondItem="GJ0-5l-PEg" secondAttribute="centerX" id="59O-pc-yxR"/>
                             <constraint firstItem="Zj6-mi-35l" firstAttribute="top" secondItem="y1Q-0c-cgq" secondAttribute="bottom" constant="3" id="60t-Ue-Iik"/>
@@ -1187,7 +1175,7 @@ Moving an object will not change any of the names. Moving an object to a site on
                             <constraint firstItem="7nu-gl-e0B" firstAttribute="leading" secondItem="gi8-H0-WPJ" secondAttribute="leading" id="lCR-MU-4Hc"/>
                             <constraint firstItem="gi8-H0-WPJ" firstAttribute="baseline" secondItem="GJ0-5l-PEg" secondAttribute="baseline" id="laN-7Z-d2P"/>
                             <constraint firstItem="mty-65-1H0" firstAttribute="leading" secondItem="y1Q-0c-cgq" secondAttribute="trailing" constant="3" id="n0j-v7-2dv"/>
-                            <constraint firstItem="7nu-gl-e0B" firstAttribute="top" secondItem="kSv-WF-lic" secondAttribute="bottom" constant="12" id="q0R-In-mMf"/>
+                            <constraint firstItem="7nu-gl-e0B" firstAttribute="top" secondItem="Zj6-mi-35l" secondAttribute="bottom" constant="47" id="q0R-In-mMf"/>
                             <constraint firstItem="y1Q-0c-cgq" firstAttribute="top" secondItem="Rdg-70-UCl" secondAttribute="top" constant="24" id="t32-lQ-rKF"/>
                             <constraint firstItem="iTN-Ij-5Sn" firstAttribute="leading" secondItem="gi8-H0-WPJ" secondAttribute="leading" id="vKi-ap-edQ"/>
                             <constraint firstItem="Cxh-uB-wNS" firstAttribute="leading" secondItem="tfZ-9j-G6D" secondAttribute="trailing" constant="6" id="vrp-rp-vv7"/>
@@ -1201,7 +1189,6 @@ Moving an object will not change any of the names. Moving an object to a site on
                         <outlet property="logFilesCountPref_textfield" destination="GJ0-5l-PEg" id="DiQ-A8-CZq"/>
                         <outlet property="maskServerNames_button" destination="iTN-Ij-5Sn" id="WyD-Xm-w0X"/>
                         <outlet property="sourceDestListSize_button" destination="Cxh-uB-wNS" id="Ju7-TF-lPb"/>
-                        <outlet property="stickySession_button" destination="kSv-WF-lic" id="939-ML-Rru"/>
                     </connections>
                 </viewController>
                 <customObject id="Lin-gh-6s5" userLabel="First Responder" customClass="NSResponder" sceneMemberID="firstResponder"/>

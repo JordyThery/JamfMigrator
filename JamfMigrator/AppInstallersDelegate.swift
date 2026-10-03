@@ -47,7 +47,7 @@ class AppInstallersDelegate: NSObject {
 
                 WriteToLog.shared.message("[getDependencies] fetching computer group records from \(whichServer) server")
                 self.updateViewController("fetching computer group records from \(whichServer) server")
-                Json.shared.getRecord(whichServer: whichServer, base64Creds: "", theEndpoint: "computergroups") { (objectRecord: Any) in
+                Json.shared.getRecord(whichServer: whichServer, theEndpoint: "computergroups") { (objectRecord: Any) in
                     var computerGroups = [NameId]()
                     if let objectJson = objectRecord as? [String: Any], let groupsArray = objectJson["computer_groups"] as? [[String: Any]] {
                         for theGroup in groupsArray {

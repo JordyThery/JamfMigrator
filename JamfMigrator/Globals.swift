@@ -177,14 +177,9 @@ final class JamfProServer {
     static var environmentId   = ["source":"", "dest":""]      // platform API gateway environment
     static var authCreds       = ["source":"", "dest":""]
     static var accessToken     = ["source":"", "dest":""]
-    static var authExpires     = ["source":20.0, "dest":20.0]
-    static var authType        = ["source":"Bearer", "dest":"Bearer"]
-    static var base64Creds     = ["source":"", "dest":""]               // used if we want to auth with a different account
     static var validToken      = ["source":false, "dest":false]
     static var tokenCreated    = [String:Date?]()
     static var pkgsNotFound    = 0
-    static var sessionCookie   = [HTTPCookie]()
-    static var stickySession   = false
     static let siteObjects     = ["computers", "smartcomputergroups", "staticcomputergroups", "restrictedsoftware", "osxconfigurationprofiles", "macapplications", "patch-software-title-configurations", "advancedcomputersearches", "policies", "ebooks", "mobiledevices", "smartmobiledevicegroups", "staticmobiledevicegroups", "advancedmobiledevicesearches", "mobiledeviceapplications", "mobiledeviceconfigurationprofiles", "computergroups", "mobiledevicegroups"]
 }
 
