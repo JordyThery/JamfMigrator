@@ -114,12 +114,10 @@ class Jpapi: NSObject, URLSessionDelegate {
             path = "api/v2/\(endpoint)"
         }
 
-        var urlString = "\(serverUrl)/\(path)"
-        urlString     = urlString.replacingOccurrences(of: "//api", with: "/api")
-        urlString     = urlString.replacingOccurrences(of: "//JSSResource", with: "/JSSResource")
         if id != "" && id != "0" {
-            urlString = (urlString.contains("/api/")) ? urlString + "/\(id)":urlString + "/id/\(id)"
+            path = (path.contains("api/")) ? path + "/\(id)":path + "/id/\(id)"
         }
+        let urlString = ApiRequest.endpointUrl(onServer: serverUrl, path: path)
         
         let url            = URL(string: "\(urlString)")
         let configuration  = URLSessionConfiguration.default
@@ -159,7 +157,7 @@ class Jpapi: NSObject, URLSessionDelegate {
         
         if LogLevel.debug { WriteToLog.shared.message("[Jpapi.action] attempting \(method) on \(urlString)") }
         
-        configuration.httpAdditionalHeaders = ["Authorization" : "Bearer \(JamfProServer.accessToken[whichServer] ?? "")", "Content-Type" : contentType, "Accept" : accept, "User-Agent" : AppInfo.userAgentHeader]
+        configuration.httpAdditionalHeaders = ApiRequest.headers(whichServer: whichServer, contentType: contentType, accept: accept, tokenOnly: true)
         
         var headers = [String: String]()
         for (header, value) in configuration.httpAdditionalHeaders ?? [:] {
@@ -593,10 +591,8 @@ class Jpapi: NSObject, URLSessionDelegate {
             endpointParent = "\(theEndpoint)"
         }
         
-        var endpoint = (JamfProServer.url[whichServer] ?? "") + "/api/\(endpointVersion)/\(theEndpoint)"
-        
-        endpoint = endpoint.replacingOccurrences(of: "//api", with: "/api")
-        
+        let endpoint = ApiRequest.endpointUrl(onServer: JamfProServer.url[whichServer] ?? "", path: "api/\(endpointVersion)/\(theEndpoint)")
+
         guard let endpointUrl = URL(string: endpoint) else {
             completion([])
             return
@@ -607,7 +603,7 @@ class Jpapi: NSObject, URLSessionDelegate {
         let configuration  = URLSessionConfiguration.ephemeral
         var request        = URLRequest(url: endpointUrl)
         request.httpMethod = "GET"
-        configuration.httpAdditionalHeaders = ["Authorization" : "Bearer \(JamfProServer.accessToken[whichServer] ?? "")", "Content-Type" : "application/json", "Accept" : "application/json", "User-Agent" : AppInfo.userAgentHeader]
+        configuration.httpAdditionalHeaders = ApiRequest.headers(whichServer: whichServer, contentType: "application/json", accept: "application/json", tokenOnly: true)
         
         var headers = [String: String]()
         for (header, value) in configuration.httpAdditionalHeaders ?? [:] {
@@ -721,13 +717,13 @@ class Jpapi: NSObject, URLSessionDelegate {
         // adjust for nested endpoints
         let pagedEndpoint = (theEndpoint == "app-installers") ? "app-installers/deployments" : theEndpoint
 
-        guard let url = URL(string: JamfProServer.url[whichServer] ?? "") else {
+        guard let url = URL(string: ApiRequest.endpointUrl(onServer: JamfProServer.url[whichServer] ?? "", path: "api/\(endpointVersion)/\(pagedEndpoint)")) else {
             completion([] as Any)
             WriteToLog.shared.message("[Jpapi.pagedGet] can not convert \(JamfProServer.url[whichServer] ?? "") to URL")
             return
         }
-        
-        var endpointUrl = url.appendingPathComponent("/api/\(endpointVersion)/\(pagedEndpoint)")
+
+        var endpointUrl = url
         if theEndpoint != "sites" {
             let pageParameters = [URLQueryItem(name: "page", value: "\(whichPage)"), URLQueryItem(name: "page-size", value: "\(pageSize)")]
             endpointUrl = endpointUrl.appending(queryItems: pageParameters)
@@ -739,7 +735,7 @@ class Jpapi: NSObject, URLSessionDelegate {
         let configuration  = URLSessionConfiguration.ephemeral
         var request        = URLRequest(url: endpointUrl)
         request.httpMethod = "GET"
-        configuration.httpAdditionalHeaders = ["Authorization" : "Bearer \(JamfProServer.accessToken[whichServer] ?? "")", "Content-Type" : "application/json", "Accept" : "application/json", "User-Agent" : AppInfo.userAgentHeader]
+        configuration.httpAdditionalHeaders = ApiRequest.headers(whichServer: whichServer, contentType: "application/json", accept: "application/json", tokenOnly: true)
         
         var headers = [String: String]()
         for (header, value) in configuration.httpAdditionalHeaders ?? [:] {
