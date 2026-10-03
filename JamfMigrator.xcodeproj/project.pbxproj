@@ -17,6 +17,10 @@
 		08ABF35F3071BAE900606B36 /* SecretStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF35E3071BAE900606B36 /* SecretStore.swift */; };
 		08ABF3613071BAF800606B36 /* TenantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3603071BAF800606B36 /* TenantStore.swift */; };
 		08ABF39F3071C0A600606B36 /* ObjectType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF39E3071C0A600606B36 /* ObjectType.swift */; };
+		08ABF3A43071C10F00606B36 /* ClassicXML.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3A33071C10F00606B36 /* ClassicXML.swift */; };
+		08ABF3A63071C11C00606B36 /* Transformer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3A53071C11C00606B36 /* Transformer.swift */; };
+		08ABF3A83071C14500606B36 /* ClassicTransformer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3A73071C14500606B36 /* ClassicTransformer.swift */; };
+		08ABF3AA3071C16700606B36 /* ProTransformer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3A93071C16700606B36 /* ProTransformer.swift */; };
 		9BC01C601DFB0C07007E634E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC01C5F1DFB0C07007E634E /* AppDelegate.swift */; };
 		9BC01C621DFB0C07007E634E /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC01C611DFB0C07007E634E /* ViewController.swift */; };
 		9BC01C641DFB0C07007E634E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9BC01C631DFB0C07007E634E /* Assets.xcassets */; };
@@ -88,6 +92,10 @@
 		08ABF35E3071BAE900606B36 /* SecretStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretStore.swift; sourceTree = "<group>"; };
 		08ABF3603071BAF800606B36 /* TenantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TenantStore.swift; sourceTree = "<group>"; };
 		08ABF39E3071C0A600606B36 /* ObjectType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObjectType.swift; sourceTree = "<group>"; };
+		08ABF3A33071C10F00606B36 /* ClassicXML.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassicXML.swift; sourceTree = "<group>"; };
+		08ABF3A53071C11C00606B36 /* Transformer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transformer.swift; sourceTree = "<group>"; };
+		08ABF3A73071C14500606B36 /* ClassicTransformer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassicTransformer.swift; sourceTree = "<group>"; };
+		08ABF3A93071C16700606B36 /* ProTransformer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProTransformer.swift; sourceTree = "<group>"; };
 		9BC01C5C1DFB0C07007E634E /* JamfMigrator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = JamfMigrator.app; path = "Jamf Migrator.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9BC01C5F1DFB0C07007E634E /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		9BC01C611DFB0C07007E634E /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
@@ -208,6 +216,17 @@
 			path = Objects;
 			sourceTree = "<group>";
 		};
+		08ABF3A23071C10F00606B36 /* Transform */ = {
+			isa = PBXGroup;
+			children = (
+				08ABF3A33071C10F00606B36 /* ClassicXML.swift */,
+				08ABF3A53071C11C00606B36 /* Transformer.swift */,
+				08ABF3A73071C14500606B36 /* ClassicTransformer.swift */,
+				08ABF3A93071C16700606B36 /* ProTransformer.swift */,
+			);
+			path = Transform;
+			sourceTree = "<group>";
+		};
 		9BC01C531DFB0C07007E634E = {
 			isa = PBXGroup;
 			children = (
@@ -285,6 +304,7 @@
 				08ABF34E3071BA8300606B36 /* Platform */,
 				08ABF35B3071BADD00606B36 /* Tenants */,
 				08ABF39D3071C0A600606B36 /* Objects */,
+				08ABF3A23071C10F00606B36 /* Transform */,
 			);
 			path = JamfMigrator;
 			sourceTree = "<group>";
@@ -504,6 +524,7 @@
 				08ABF3563071BAC100606B36 /* PlatformClient.swift in Sources */,
 				9BC01C621DFB0C07007E634E /* ViewController.swift in Sources */,
 				CEF467D82EB8444B00160D32 /* SummaryView.swift in Sources */,
+				08ABF3A63071C11C00606B36 /* Transformer.swift in Sources */,
 				CEE65A2F2CB953C5002AB294 /* Headless.swift in Sources */,
 				CEDB6A132CE05E7A00171FB0 /* PatchDelegate.swift in Sources */,
 				CEAA10022F00000200171FB0 /* AppInstallersDelegate.swift in Sources */,
@@ -524,6 +545,7 @@
 				B53ECDF82391F8FB005EE6E5 /* Globals.swift in Sources */,
 				CE310A692D10BB49007C2C6F /* ExportItem.swift in Sources */,
 				08ABF35F3071BAE900606B36 /* SecretStore.swift in Sources */,
+				08ABF3A83071C14500606B36 /* ClassicTransformer.swift in Sources */,
 				CE310A752D10BC3A007C2C6F /* IconDelegate.swift in Sources */,
 				B53ECDFC2394474B005EE6E5 /* Json.swift in Sources */,
 				B54509412904D96500094739 /* Awake.swift in Sources */,
@@ -552,7 +574,9 @@
 				CEDB6A152CE0D71E00171FB0 /* PatchManagementApi.swift in Sources */,
 				B5C993C0230E211100558040 /* Sites.swift in Sources */,
 				CEE65A312CB95527002AB294 /* Utilities.swift in Sources */,
+				08ABF3AA3071C16700606B36 /* ProTransformer.swift in Sources */,
 				CE7C6BDD2D695FBA000357BA /* LoggerExtension.swift in Sources */,
+				08ABF3A43071C10F00606B36 /* ClassicXML.swift in Sources */,
 				B5A9A025221F4B7B00AF7B6E /* WriteToLog.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
