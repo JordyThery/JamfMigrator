@@ -21,6 +21,13 @@
 		08ABF3A63071C11C00606B36 /* Transformer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3A53071C11C00606B36 /* Transformer.swift */; };
 		08ABF3A83071C14500606B36 /* ClassicTransformer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3A73071C14500606B36 /* ClassicTransformer.swift */; };
 		08ABF3AA3071C16700606B36 /* ProTransformer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3A93071C16700606B36 /* ProTransformer.swift */; };
+		08ABF3AF3071C1D600606B36 /* RunJournal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3AE3071C1D600606B36 /* RunJournal.swift */; };
+		08ABF3B13071C1E700606B36 /* ObjectLister.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3B03071C1E700606B36 /* ObjectLister.swift */; };
+		08ABF3B33071C1FD00606B36 /* ExportWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3B23071C1FD00606B36 /* ExportWriter.swift */; };
+		08ABF3B53071C22600606B36 /* RunReport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3B43071C22600606B36 /* RunReport.swift */; };
+		08ABF3B73071C23400606B36 /* IconMigrator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3B63071C23400606B36 /* IconMigrator.swift */; };
+		08ABF3B93071C25300606B36 /* MigrationEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3B83071C25300606B36 /* MigrationEngine.swift */; };
+		08ABF3BB3071C26600606B36 /* DeleteEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3BA3071C26600606B36 /* DeleteEngine.swift */; };
 		9BC01C601DFB0C07007E634E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC01C5F1DFB0C07007E634E /* AppDelegate.swift */; };
 		9BC01C621DFB0C07007E634E /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC01C611DFB0C07007E634E /* ViewController.swift */; };
 		9BC01C641DFB0C07007E634E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9BC01C631DFB0C07007E634E /* Assets.xcassets */; };
@@ -96,6 +103,13 @@
 		08ABF3A53071C11C00606B36 /* Transformer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transformer.swift; sourceTree = "<group>"; };
 		08ABF3A73071C14500606B36 /* ClassicTransformer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClassicTransformer.swift; sourceTree = "<group>"; };
 		08ABF3A93071C16700606B36 /* ProTransformer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProTransformer.swift; sourceTree = "<group>"; };
+		08ABF3AE3071C1D600606B36 /* RunJournal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunJournal.swift; sourceTree = "<group>"; };
+		08ABF3B03071C1E700606B36 /* ObjectLister.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObjectLister.swift; sourceTree = "<group>"; };
+		08ABF3B23071C1FD00606B36 /* ExportWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportWriter.swift; sourceTree = "<group>"; };
+		08ABF3B43071C22600606B36 /* RunReport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunReport.swift; sourceTree = "<group>"; };
+		08ABF3B63071C23400606B36 /* IconMigrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconMigrator.swift; sourceTree = "<group>"; };
+		08ABF3B83071C25300606B36 /* MigrationEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MigrationEngine.swift; sourceTree = "<group>"; };
+		08ABF3BA3071C26600606B36 /* DeleteEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeleteEngine.swift; sourceTree = "<group>"; };
 		9BC01C5C1DFB0C07007E634E /* JamfMigrator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = JamfMigrator.app; path = "Jamf Migrator.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9BC01C5F1DFB0C07007E634E /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		9BC01C611DFB0C07007E634E /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
@@ -227,6 +241,20 @@
 			path = Transform;
 			sourceTree = "<group>";
 		};
+		08ABF3AD3071C1D600606B36 /* Engine */ = {
+			isa = PBXGroup;
+			children = (
+				08ABF3AE3071C1D600606B36 /* RunJournal.swift */,
+				08ABF3B03071C1E700606B36 /* ObjectLister.swift */,
+				08ABF3B23071C1FD00606B36 /* ExportWriter.swift */,
+				08ABF3B43071C22600606B36 /* RunReport.swift */,
+				08ABF3B63071C23400606B36 /* IconMigrator.swift */,
+				08ABF3B83071C25300606B36 /* MigrationEngine.swift */,
+				08ABF3BA3071C26600606B36 /* DeleteEngine.swift */,
+			);
+			path = Engine;
+			sourceTree = "<group>";
+		};
 		9BC01C531DFB0C07007E634E = {
 			isa = PBXGroup;
 			children = (
@@ -305,6 +333,7 @@
 				08ABF35B3071BADD00606B36 /* Tenants */,
 				08ABF39D3071C0A600606B36 /* Objects */,
 				08ABF3A23071C10F00606B36 /* Transform */,
+				08ABF3AD3071C1D600606B36 /* Engine */,
 			);
 			path = JamfMigrator;
 			sourceTree = "<group>";
@@ -538,6 +567,7 @@
 				B556A79E2773A100003CBEE9 /* Alert.swift in Sources */,
 				CE1935B22D852A830065862C /* LastUser.swift in Sources */,
 				B54154FF2BD8597700084439 /* Package.swift in Sources */,
+				08ABF3B13071C1E700606B36 /* ObjectLister.swift in Sources */,
 				08ABF3613071BAF800606B36 /* TenantStore.swift in Sources */,
 				B5927AFC20CC394F0059C25B /* VersionCheck.swift in Sources */,
 				B5E1912D21AAD9F300A1A9CA /* PreferencesViewController.swift in Sources */,
@@ -550,6 +580,7 @@
 				B53ECDFC2394474B005EE6E5 /* Json.swift in Sources */,
 				B54509412904D96500094739 /* Awake.swift in Sources */,
 				CE310A612D10BACD007C2C6F /* Cleanup.swift in Sources */,
+				08ABF3BB3071C26600606B36 /* DeleteEngine.swift in Sources */,
 				9BC01C601DFB0C07007E634E /* AppDelegate.swift in Sources */,
 				CE03BFC52E101010000EADA9 /* Queues.swift in Sources */,
 				08ABF3503071BA8300606B36 /* Region.swift in Sources */,
@@ -557,9 +588,14 @@
 				08ABF35A3071BAD600606B36 /* PermissionProbe.swift in Sources */,
 				B56CA91828E88DE200236A8A /* SourceDestVC.swift in Sources */,
 				B5B4FAFC1FF0B21C0007BD34 /* SummaryViewController.swift in Sources */,
+				08ABF3B53071C22600606B36 /* RunReport.swift in Sources */,
 				B5FD9DAE27434B8A0044C321 /* Jpapi.swift in Sources */,
+				08ABF3B93071C25300606B36 /* MigrationEngine.swift in Sources */,
+				08ABF3AF3071C1D600606B36 /* RunJournal.swift in Sources */,
 				B5E1912921AAA8EC00A1A9CA /* PrefsWindowController.swift in Sources */,
+				08ABF3B33071C1FD00606B36 /* ExportWriter.swift in Sources */,
 				CEE65A352CC37062002AB294 /* SecurityScopedBookmarks.swift in Sources */,
+				08ABF3B73071C23400606B36 /* IconMigrator.swift in Sources */,
 				B56CBA8A277B939100F26E8C /* SaveDelegate.swift in Sources */,
 				CE310A652D10BAEC007C2C6F /* EndpointXml.swift in Sources */,
 				CE75A6B92E4EE02D008B4C08 /* XmlTagParser.swift in Sources */,
