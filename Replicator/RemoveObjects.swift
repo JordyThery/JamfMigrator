@@ -144,10 +144,6 @@ class RemoveObjects: NSObject, URLSessionDelegate {
 
         var workingUrl = JamfProServer.url["dest"] ?? createDestUrlBase.replacingOccurrences(of: "/JSSResource", with: "")
         
-        Task {@MainActor in
-            TelemetryDeckConfig.parameters[endpointType] = "remove"
-        }
-        
         let localEndPointType: String = {
             switch endpointType {
             case "smartcomputergroups", "staticcomputergroups":

@@ -8,7 +8,6 @@
 
 import Foundation
 import os.log
-import TelemetryDeck
 
 class Cleanup: NSObject {
     
@@ -152,10 +151,6 @@ class Cleanup: NSObject {
                     WriteToLog.shared.message("Error updating site for patch management id \(endpointID). Problem determining displayName of object.")
                 }
             }
-        }
-        
-        Task {@MainActor in
-            TelemetryDeckConfig.parameters[endpoint] = "replicate"
         }
         
         CreateEndpoints.shared.jpapi(endpointType: theEndpoint, endPointJSON: JSONData, endpointCurrent: endpointCurrent, endpointCount: endpointCount, action: action, sourceEpId: endpointID, destEpId: destEpId, ssIconName: "", ssIconId: "", ssIconUri: "", retry: false) {
@@ -739,10 +734,6 @@ class Cleanup: NSObject {
 
                     // update XML to be posted with original/existing UUID of the configuration profile
                     PostXML = PostXML.replacingOccurrences(of: sourceUUID, with: destUUID)
-                }
-                
-                Task {@MainActor in
-                    TelemetryDeckConfig.parameters[endpoint] = "replicate"
                 }
                 
                 CreateEndpoints.shared.queue(endpointType: theEndpoint, endpointName: destEpName, endPointXML: PostXML, endpointCurrent: Int(endpointCurrent), endpointCount: endpointCount, action: action, sourceEpId: Int(endpointID)!, destEpId: "\(destEpId)", ssIconName: iconName, ssIconId: iconId, ssIconUri: iconUri, retry: false) {

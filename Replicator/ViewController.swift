@@ -10,7 +10,6 @@ import AppKit
 import Cocoa
 import Foundation
 import SwiftUI
-import TelemetryDeck
 
 final class Summary: NSObject {
     // counters for CreateEndpoints
@@ -1229,11 +1228,6 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
         Counter.shared.crud.removeAll()
         Counter.shared.summary.removeAll()
         currentEPDict.removeAll()
-        
-        TelemetryDeckConfig.parameters["ReplicatorSessionType"]       = (Setting.fullGUI) ? "interactive" : "commandLine"
-        TelemetryDeckConfig.parameters["ReplicatorSessionSource"]     = (JamfProServer.importFiles == 0) ? "server" : "folder"
-        TelemetryDeckConfig.parameters["ReplicatorSessionOperation"]  = (WipeData.state.on) ? "remove" : "replicate"
-        TelemetryDeckConfig.parameters["ReplicatorSessionThreads"]    = "\(maxConcurrentThreads)"
         
         if Setting.fullGUI {
             if WipeData.state.on && export.saveOnly {
@@ -4830,13 +4824,7 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
                 }
 //                print("[\(#function)] \(#line) - finished")
                 goButtonEnabled(button_status: true)
-            
-            // post finished action
-            print("[runComplete] - sending signal - params: \(TelemetryDeckConfig.parameters)")
-            Task {@MainActor in
-                TelemetryDeckSignal.shared.send("runComplete", parameters: TelemetryDeckConfig.parameters)
-            }
-                
+
                 if Setting.fullGUI {
                     DispatchQueue.main.async { [self] in
                         spinner_progressIndicator.stopAnimation(self)
@@ -6130,8 +6118,7 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
     override func viewDidLoad() {
         logFunctionCall()
         super.viewDidLoad()
-        TelemetryDeckConfig.optOut = userDefaults.bool(forKey: "optOut")
-                
+
         srcSrvTableView.delegate = self
         srcSrvTableView.tableColumns.forEach { (column) in
             column.headerCell.attributedStringValue = NSAttributedString(string: column.title, attributes: [NSAttributedString.Key.font: NSFont.boldSystemFont(ofSize: 14)])
@@ -6420,8 +6407,7 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
         WriteToLog.shared.message("-------------------------------------------------------")
         WriteToLog.shared.message("    Replicator: v\(AppInfo.version) Build: \(AppInfo.build)")
         WriteToLog.shared.message("-------------------------------------------------------")
-        WriteToLog.shared.message("TelemetryDeck: \(userDefaults.bool(forKey: "optOut") ? "disabled" : "enabled")")
-        
+
         if !Setting.fullGUI {
             WriteToLog.shared.message("Running silently")
             Go(sender: "silent")

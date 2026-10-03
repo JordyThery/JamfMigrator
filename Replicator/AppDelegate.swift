@@ -9,7 +9,6 @@
 import AppKit
 import ApplicationServices
 import Cocoa
-import TelemetryDeck
 
 @NSApplicationMain
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -69,9 +68,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         logFunctionCall()
-        
-        let config = TelemetryDeck.Config(appID: TelemetryDeckConfig.appId)
-        TelemetryDeck.initialize(config: config)
         
         if Setting.fullGUI {
             let hideVersionAlert = userDefaults.bool(forKey: "hideVersionAlert")

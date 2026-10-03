@@ -75,12 +75,6 @@ class PreferencesViewController: NSViewController, NSTextFieldDelegate {
         LogLevel.debug = (sender.state == .on)
     }
     
-    @IBOutlet weak var optOut_button: NSButton!
-    @IBAction func optOut_action(_ sender: NSButton) {
-        UserDefaults.standard.set(sender.state == .on, forKey: "optOut")
-        TelemetryDeckConfig.optOut = (sender.state == .on)
-    }
-    
     // computer prefs
     @IBOutlet weak var migrateAsManaged_button: NSButton!
     @IBOutlet weak var prefMgmtAcct_label: NSTextField!
@@ -632,7 +626,6 @@ class PreferencesViewController: NSViewController, NSTextFieldDelegate {
             colorScheme_button.selectItem(withTitle: currentTitle ?? "default")
             
             debugMode_button.state = UserDefaults.standard.bool(forKey: "debugMode") ? .on : .off
-            optOut_button.state = UserDefaults.standard.bool(forKey: "optOut") ? .on : .off
         }
         
         _ = readSettings()

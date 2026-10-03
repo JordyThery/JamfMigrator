@@ -1153,16 +1153,6 @@ Moving an object will not change any of the names. Moving an object to a site on
                                     <action selector="maskServerNames_action:" target="Ojm-Op-AKi" id="4lO-gg-v9H"/>
                                 </connections>
                             </button>
-                            <button verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="E1d-YM-1g2">
-                                <rect key="frame" x="36" y="20" width="164" height="19"/>
-                                <buttonCell key="cell" type="check" title="Opt out of analytics" bezelStyle="regularSquare" imagePosition="left" inset="2" id="Xbo-Mh-RJP">
-                                    <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
-                                    <font key="font" metaFont="system" size="16"/>
-                                </buttonCell>
-                                <connections>
-                                    <action selector="optOut_action:" target="Ojm-Op-AKi" id="O2f-oq-Rex"/>
-                                </connections>
-                            </button>
                             <button verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="UJb-wj-dI4">
                                 <rect key="frame" x="36" y="54" width="118" height="19"/>
                                 <buttonCell key="cell" type="check" title="Debug Mode" bezelStyle="regularSquare" imagePosition="left" controlSize="large" inset="2" id="e6E-q2-fuA">
@@ -1186,7 +1176,6 @@ Moving an object will not change any of the names. Moving an object to a site on
                             <constraint firstItem="UJb-wj-dI4" firstAttribute="top" secondItem="tfZ-9j-G6D" secondAttribute="bottom" constant="15" id="HuW-Zy-pkn"/>
                             <constraint firstItem="UJb-wj-dI4" firstAttribute="leading" secondItem="iTN-Ij-5Sn" secondAttribute="leading" id="J0A-m7-uKn"/>
                             <constraint firstItem="7nu-gl-e0B" firstAttribute="leading" secondItem="y1Q-0c-cgq" secondAttribute="leading" id="JUP-hp-vfW"/>
-                            <constraint firstItem="E1d-YM-1g2" firstAttribute="top" secondItem="UJb-wj-dI4" secondAttribute="bottom" constant="15" id="Kx6-8a-wCe"/>
                             <constraint firstItem="afe-0d-eps" firstAttribute="centerY" secondItem="7nu-gl-e0B" secondAttribute="centerY" id="LBY-Sk-UTb"/>
                             <constraint firstItem="mty-65-1H0" firstAttribute="centerY" secondItem="y1Q-0c-cgq" secondAttribute="centerY" id="OoC-lc-nhc"/>
                             <constraint firstItem="y1Q-0c-cgq" firstAttribute="leading" secondItem="Zj6-mi-35l" secondAttribute="leading" id="URy-EB-R5w"/>
@@ -1194,7 +1183,6 @@ Moving an object will not change any of the names. Moving an object to a site on
                             <constraint firstItem="iTN-Ij-5Sn" firstAttribute="top" secondItem="GJ0-5l-PEg" secondAttribute="bottom" constant="9" id="XwF-bX-Y9N"/>
                             <constraint firstItem="afe-0d-eps" firstAttribute="leading" secondItem="7nu-gl-e0B" secondAttribute="trailing" constant="6" id="arm-Dy-tnQ"/>
                             <constraint firstItem="GJ0-5l-PEg" firstAttribute="leading" secondItem="gi8-H0-WPJ" secondAttribute="trailing" constant="7" id="f8Y-MI-FYW"/>
-                            <constraint firstItem="E1d-YM-1g2" firstAttribute="leading" secondItem="iTN-Ij-5Sn" secondAttribute="leading" id="iCG-cl-Ktd"/>
                             <constraint firstItem="tfZ-9j-G6D" firstAttribute="top" secondItem="iTN-Ij-5Sn" secondAttribute="bottom" constant="17" id="kdy-7m-eXe"/>
                             <constraint firstItem="7nu-gl-e0B" firstAttribute="leading" secondItem="gi8-H0-WPJ" secondAttribute="leading" id="lCR-MU-4Hc"/>
                             <constraint firstItem="gi8-H0-WPJ" firstAttribute="baseline" secondItem="GJ0-5l-PEg" secondAttribute="baseline" id="laN-7Z-d2P"/>
@@ -1212,7 +1200,6 @@ Moving an object will not change any of the names. Moving an object to a site on
                         <outlet property="debugMode_button" destination="UJb-wj-dI4" id="GZg-Q8-CZs"/>
                         <outlet property="logFilesCountPref_textfield" destination="GJ0-5l-PEg" id="DiQ-A8-CZq"/>
                         <outlet property="maskServerNames_button" destination="iTN-Ij-5Sn" id="WyD-Xm-w0X"/>
-                        <outlet property="optOut_button" destination="E1d-YM-1g2" id="nr8-nw-Ozv"/>
                         <outlet property="sourceDestListSize_button" destination="Cxh-uB-wNS" id="Ju7-TF-lPb"/>
                         <outlet property="stickySession_button" destination="kSv-WF-lic" id="939-ML-Rru"/>
                     </connections>
