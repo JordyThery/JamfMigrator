@@ -464,7 +464,7 @@ class PreferencesViewController: NSViewController, NSTextFieldDelegate {
     @IBAction func showExportFolder(_ sender: Any) {
         
         var isDir: ObjCBool = true
-        var exportFilePath:String? = userDefaults.string(forKey: "saveLocation") ?? (NSHomeDirectory() + "/Downloads/Replicator/")
+        var exportFilePath:String? = userDefaults.string(forKey: "saveLocation") ?? (NSHomeDirectory() + "/Downloads/Jamf Migrator/")
 
         exportFilePath = exportFilePath?.pathToString
         
@@ -770,7 +770,7 @@ class PreferencesViewController: NSViewController, NSTextFieldDelegate {
             saveRawXmlScope_button.state     = boolToState(TF: saveRawXmlScope)
             saveTrimmedXmlScope_button.state = boolToState(TF: saveTrimmedXmlScope)
             
-            export.saveLocation = userDefaults.string(forKey: "saveLocation") ?? (NSHomeDirectory() + "/Downloads/Replicator/")
+            export.saveLocation = userDefaults.string(forKey: "saveLocation") ?? (NSHomeDirectory() + "/Downloads/Jamf Migrator/")
             if !(FileManager().fileExists(atPath: export.saveLocation, isDirectory: &isDir)) {
                 userDefaults.set("\(export.saveLocation)", forKey: "saveLocation")
                 userDefaults.synchronize()

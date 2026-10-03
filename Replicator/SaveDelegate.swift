@@ -26,7 +26,7 @@ class SaveDelegate: NSObject, URLSessionDelegate {
 //        let saveURL = userDefaults.url(forKey: "saveLocation") ?? nil
         baseFolder = userDefaults.string(forKey: "saveLocation") ?? ""
         if baseFolder == "" {
-            baseFolder = (NSHomeDirectory() + "/Downloads/Replicator/")
+            baseFolder = (NSHomeDirectory() + "/Downloads/Jamf Migrator/")
         } else {
             baseFolder = baseFolder.replacingOccurrences(of: "file://", with: "")
             baseFolder = baseFolder.replacingOccurrences(of: "%20", with: " ")

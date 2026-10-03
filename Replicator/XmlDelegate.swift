@@ -106,7 +106,7 @@ class XmlDelegate: NSObject, URLSessionDelegate {
         // Create folder to store xml files if needed - start
         baseXmlFolder = userDefaults.string(forKey: "saveLocation") ?? ""
         if baseXmlFolder == "" {
-            baseXmlFolder = (NSHomeDirectory() + "/Downloads/Replicator/")
+            baseXmlFolder = (NSHomeDirectory() + "/Downloads/Jamf Migrator/")
         } else {
             baseXmlFolder = baseXmlFolder.pathToString
         }

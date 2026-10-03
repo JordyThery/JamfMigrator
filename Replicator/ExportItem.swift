@@ -23,7 +23,7 @@ class ExportItem: NSObject {
         logFunctionCall()
         var baseFolder = userDefaults.string(forKey: "saveLocation") ?? ""
         if baseFolder == "" {
-            baseFolder = (NSHomeDirectory() + "/Downloads/Replicator/")
+            baseFolder = (NSHomeDirectory() + "/Downloads/Jamf Migrator/")
         } else {
             baseFolder = baseFolder.pathToString
         }

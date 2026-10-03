@@ -65,7 +65,7 @@ class Alert: NSObject {
             }
             
             if clicked.rawValue == 1000 && updateAvail {
-                if let url = URL(string: "https://github.com/jamf/Replicator/releases") {
+                if let url = URL(string: "https://github.com/JordyThery/JamfMigrator/releases") {
                     NSWorkspace.shared.open(url)
                 }
             }

@@ -249,7 +249,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         
         export.saveLocation = userDefaults.string(forKey: "saveLocation") ?? ""
         if export.saveLocation == "" || !(FileManager().fileExists(atPath: export.saveLocation)) {
-            export.saveLocation = (NSHomeDirectory() + "/Downloads/Replicator/")
+            export.saveLocation = (NSHomeDirectory() + "/Downloads/Jamf Migrator/")
             userDefaults.set("\(export.saveLocation)", forKey: "saveLocation")
         } else {
             export.saveLocation = export.saveLocation.pathToString
@@ -267,7 +267,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         else {
-            WriteToLog.shared.message("[AppDelegate] Replicator is running silently")
+            WriteToLog.shared.message("[AppDelegate] Jamf Migrator is running silently")
             
             SourceDestVC().initVars()
         }
@@ -314,7 +314,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let clicked:NSApplication.ModalResponse = dialog.runModal()
 
         if clicked.rawValue == 1000 && updateAvail {
-            if let url = URL(string: "https://github.com/jamf/Replicator/releases") {
+            if let url = URL(string: "https://github.com/JordyThery/JamfMigrator/releases") {
                     NSWorkspace.shared.open(url)
             }
         }

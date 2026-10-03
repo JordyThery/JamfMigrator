@@ -317,7 +317,7 @@
 				TargetAttributes = {
 					9BC01C5B1DFB0C07007E634E = {
 						CreatedOnToolsVersion = 8.1;
-						DevelopmentTeam = PS2F6S478M;
+						DevelopmentTeam = K3LQ9NPBMG;
 						LastSwiftMigration = 1120;
 						ProvisioningStyle = Automatic;
 						SystemCapabilities = {
@@ -588,25 +588,26 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Replicator/Replicator.entitlements;
-				CODE_SIGN_IDENTITY = "Mac Developer";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = PS2F6S478M;
+				DEVELOPMENT_TEAM = K3LQ9NPBMG;
 				ENABLE_HARDENED_RUNTIME = YES;
 				EXCLUDED_RECURSIVE_SEARCH_PATH_SUBDIRECTORIES = "*.nib *.lproj *.framework *.gch *.xcode* *.xcassets (*) .DS_Store CVS .svn .git .hg *.pbproj *.pbxproj Notes";
 				EXCLUDED_SOURCE_FILE_NAMES = Notes;
 				INFOPLIST_FILE = Replicator/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Replicator;
+				INFOPLIST_KEY_CFBundleDisplayName = "Jamf Migrator";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.5;
-				MARKETING_VERSION = 8.6.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.jamf.jamf-migrator";
-				PRODUCT_NAME = Replicator;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = be.jordythery.jamfmigrator;
+				PRODUCT_NAME = "Jamf Migrator";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
 				SWIFT_VERSION = 5.0;
 			};
@@ -617,25 +618,26 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Replicator/Replicator.entitlements;
-				CODE_SIGN_IDENTITY = "Mac Developer";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = PS2F6S478M;
+				DEVELOPMENT_TEAM = K3LQ9NPBMG;
 				ENABLE_HARDENED_RUNTIME = YES;
 				EXCLUDED_RECURSIVE_SEARCH_PATH_SUBDIRECTORIES = "*.nib *.lproj *.framework *.gch *.xcode* *.xcassets (*) .DS_Store CVS .svn .git .hg *.pbproj *.pbxproj Notes";
 				EXCLUDED_SOURCE_FILE_NAMES = Notes;
 				INFOPLIST_FILE = Replicator/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Replicator;
+				INFOPLIST_KEY_CFBundleDisplayName = "Jamf Migrator";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.5;
-				MARKETING_VERSION = 8.6.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.jamf.jamf-migrator";
-				PRODUCT_NAME = Replicator;
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = be.jordythery.jamfmigrator;
+				PRODUCT_NAME = "Jamf Migrator";
 				SWIFT_SWIFT3_OBJC_INFERENCE = Default;
 				SWIFT_VERSION = 5.0;
 			};

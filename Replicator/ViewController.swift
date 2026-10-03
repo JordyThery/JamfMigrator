@@ -2442,8 +2442,8 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
                 }
                 
                 if !FileManager.default.isWritableFile(atPath: export.saveLocation) {
-                    WriteToLog.shared.message("[ViewController.readNodes] Unable to write to \(export.saveLocation), setting export location to \(NSHomeDirectory())/Downloads/Replicator/")
-                    export.saveLocation = (NSHomeDirectory() + "/Downloads/Replicator/")
+                    WriteToLog.shared.message("[ViewController.readNodes] Unable to write to \(export.saveLocation), setting export location to \(NSHomeDirectory())/Downloads/Jamf Migrator/")
+                    export.saveLocation = (NSHomeDirectory() + "/Downloads/Jamf Migrator/")
                     userDefaults.set("\(export.saveLocation)", forKey: "saveLocation")
                 } else {
                     if LogLevel.debug { WriteToLog.shared.message("[ViewController.readNodes] \(export.saveLocation) is writable") }
@@ -6013,7 +6013,7 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
         let infoList = windowListInfo as NSArray? as? [[String: AnyObject]]
         for item in infoList! {
             if let _ = item["kCGWindowOwnerName"], let _ = item["kCGWindowName"] {
-                if "\(item["kCGWindowOwnerName"]!)" == "Replicator" && "\(item["kCGWindowName"]!)" == windowName {
+                if "\(item["kCGWindowOwnerName"]!)" == "Jamf Migrator" && "\(item["kCGWindowName"]!)" == windowName {
                     return true
                 }
             }

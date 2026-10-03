@@ -14,8 +14,8 @@ let kSecValueDataString            = NSString(format: kSecValueData)
 let kSecClassGenericPasswordString = NSString(format: kSecClassGenericPassword)
 let keychainQ                      = DispatchQueue(label: "com.jamf.creds", qos: DispatchQoS.background)
 
-let sharedPrefix                   = "JPMA"
-let accessGroup                    = "PS2F6S478M.jamfie.SharedJPMA"
+let sharedPrefix                   = "JamfMigrator"
+let accessGroup                    = "K3LQ9NPBMG.be.jordythery.jamfmigrator"
 var credentialsWhichServer         = ""
 
 class Credentials {

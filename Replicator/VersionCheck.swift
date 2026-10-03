@@ -17,7 +17,7 @@ class VersionCheck: NSObject, URLSessionDelegate {
         
         var updateAvailable = false
         
-        let versionUrl = URL(string: "https://api.github.com/repos/jamf/Replicator/releases/latest")
+        let versionUrl = URL(string: "https://api.github.com/repos/JordyThery/JamfMigrator/releases/latest")
 
         let configuration = URLSessionConfiguration.ephemeral
         var request = URLRequest(url: versionUrl!)

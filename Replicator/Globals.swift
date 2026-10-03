@@ -217,7 +217,7 @@ struct wipeData {
 
 public let helpText = """
 
-Usage: /path/to/Replicator.app/Contents/MacOS/Replicator -parameter1 value(s) -parameter2 values(s)....
+Usage: "/path/to/Jamf Migrator.app/Contents/MacOS/Jamf Migrator" -parameter1 value(s) -parameter2 values(s)....
 
 Note: Not all parameters have values.
 
@@ -252,7 +252,7 @@ Parameters:
 
     -sourceUser: username used with the source server for authentication.
 
-    -sticky: No value needed.  If used Replicator will migrate data to the same jamf cloud destination server node, provided the load balancer provides
+    -sticky: No value needed.  If used Jamf Migrator will migrate data to the same jamf cloud destination server node, provided the load balancer provides
                   the needed information.  By default sticky sessions are not used.
 
     ## API client options ##
@@ -275,22 +275,22 @@ Parameters:
 
 Examples:
     Create an export of all objects:
-    /path/to/Replicator.app/Contents/MacOS/Replicator -export -source your.jamfpro.server -objects allobjects
+    "/path/to/Jamf Migrator.app/Contents/MacOS/Jamf Migrator" -export -source your.jamfpro.server -objects allobjects
 
     Migrate computer configuration profiles from one server to another in debug mode:
-    /path/to/Replicator.app/Contents/MacOS/Replicator -migrate -source dev.jamfpro.server -destination prod.jamfpro.server -objects osxconfigurationprofiles -debug
+    "/path/to/Jamf Migrator.app/Contents/MacOS/Jamf Migrator" -migrate -source dev.jamfpro.server -destination prod.jamfpro.server -objects osxconfigurationprofiles -debug
 
     Migrate smart/static groups, and computer configuration profiles from one server to the same node on another server:
-    /path/to/Replicator.app/Contents/MacOS/Replicator -migrate -source dev.jamfpro.server -destination prod.jamfpro.server -objects samrtcomputergroups,staticcomputergroups,osxconfigurationprofles -sticky
+    "/path/to/Jamf Migrator.app/Contents/MacOS/Jamf Migrator" -migrate -source dev.jamfpro.server -destination prod.jamfpro.server -objects samrtcomputergroups,staticcomputergroups,osxconfigurationprofles -sticky
 
     Migrate all policies, scripts, and packages from a folder to a server, without (policy) scope:
-    /path/to/Replicator.app/Contents/MacOS/Replicator -migrate -source "/Users/admin/Downloads/Replicator/raw" -destination prod.jamfpro.server -objects policies,scripts,packages -scope false
+    "/path/to/Jamf Migrator.app/Contents/MacOS/Jamf Migrator" -migrate -source "/Users/admin/Downloads/Jamf Migrator/raw" -destination prod.jamfpro.server -objects policies,scripts,packages -scope false
 
     Migrate all objects from a folder to a server:
-    /path/to/Replicator.app/Contents/MacOS/Replicator -migrate -source "/Users/admin/Downloads/Replicator/raw" -destination prod.jamfpro.server -objects allobjects
+    "/path/to/Jamf Migrator.app/Contents/MacOS/Jamf Migrator" -migrate -source "/Users/admin/Downloads/Jamf Migrator/raw" -destination prod.jamfpro.server -objects allobjects
 
     Migrate buildings using an API client for the source server and username/password for the destination server:
-    /path/to/Replicator.app/Contents/MacOS/Replicator -migrate -source dev.jamfpro.server -destination prod.jamfpro.server -sourceClientId 5ab18a12-ed10-4jm8-9a21-267fe765ed0b -sourceClientSecret HOojIrWyZ7HuhpnY87M90DsEWYwCEDYifVxBnW8s76NSRnpYRQdQLTqRa3nDCnD3 -objects buildings
+    "/path/to/Jamf Migrator.app/Contents/MacOS/Jamf Migrator" -migrate -source dev.jamfpro.server -destination prod.jamfpro.server -sourceClientId 5ab18a12-ed10-4jm8-9a21-267fe765ed0b -sourceClientSecret HOojIrWyZ7HuhpnY87M90DsEWYwCEDYifVxBnW8s76NSRnpYRQdQLTqRa3nDCnD3 -objects buildings
 """
 
 public func destinationObjectExists(_ objectName: String, objectType: String) -> Bool {
