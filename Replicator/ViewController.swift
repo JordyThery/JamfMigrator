@@ -1301,7 +1301,7 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
 
         if LogLevel.debug { WriteToLog.shared.message("Start Migrating/Removal") }
         // check for file that allow deleting data from destination server - start
-        if (fm.fileExists(atPath: NSHomeDirectory() + "/Library/Application Support/Replicator/DELETE", isDirectory: &isDir)) && !export.backupMode {
+        if (fm.fileExists(atPath: AppInfo.appSupportPath + "/DELETE", isDirectory: &isDir)) && !export.backupMode {
             if LogLevel.debug { WriteToLog.shared.message("Removing data from destination server - \(JamfProServer.destination)") }
             WipeData.state.on = true
             
@@ -5804,9 +5804,9 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
     func rmDELETE() {
         logFunctionCall()
         var isDir: ObjCBool = false
-        if (fm.fileExists(atPath: NSHomeDirectory() + "/Library/Application Support/Replicator/DELETE", isDirectory: &isDir)) {
+        if (fm.fileExists(atPath: AppInfo.appSupportPath + "/DELETE", isDirectory: &isDir)) {
             do {
-                try fm.removeItem(atPath: NSHomeDirectory() + "/Library/Application Support/Replicator/DELETE")
+                try fm.removeItem(atPath: AppInfo.appSupportPath + "/DELETE")
                 WipeData.state.on = false
             }
             catch let error as NSError {
@@ -6085,13 +6085,13 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
         var isDir: ObjCBool = true
         
         // Create Application Support folder for the app if missing - start
-        let app_support_path = NSHomeDirectory() + "/Library/Application Support/Replicator"
+        let app_support_path = AppInfo.appSupportPath
         if !(fm.fileExists(atPath: app_support_path, isDirectory: &isDir)) {
 //            let manager = FileManager.default
             do {
                 try fm.createDirectory(atPath: app_support_path, withIntermediateDirectories: true, attributes: nil)
             } catch {
-                if LogLevel.debug { WriteToLog.shared.message("Problem creating '/Library/Application Support/Replicator' folder:  \(error)") }
+                if LogLevel.debug { WriteToLog.shared.message("Problem creating the Application Support folder:  \(error)") }
             }
         }
         // Create Application Support folder for the app if missing - end
@@ -6515,10 +6515,10 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
         JamfProServer.validToken["source"] = false
         JamfProServer.validToken["dest"]   = false
         
-        if (fm.fileExists(atPath: NSHomeDirectory() + "/Library/Application Support/Replicator/DELETE", isDirectory: &isDir)) {
+        if (fm.fileExists(atPath: AppInfo.appSupportPath + "/DELETE", isDirectory: &isDir)) {
             if LogLevel.debug { WriteToLog.shared.message("Disabling delete mode") }
             do {
-                try fm.removeItem(atPath: NSHomeDirectory() + "/Library/Application Support/Replicator/DELETE")
+                try fm.removeItem(atPath: AppInfo.appSupportPath + "/DELETE")
                 DataArray.source.removeAll()
                 srcSrvTableView.stringValue = ""
                 srcSrvTableView.reloadData()
@@ -6548,7 +6548,7 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
             }
         } else {
             if LogLevel.debug { WriteToLog.shared.message("Enabling delete mode to removing data from destination server - \(JamfProServer.destination)") }
-            fm.createFile(atPath: NSHomeDirectory() + "/Library/Application Support/Replicator/DELETE", contents: nil)
+            fm.createFile(atPath: AppInfo.appSupportPath + "/DELETE", contents: nil)
             
             NotificationCenter.default.post(name: .deleteMode_sdvc, object: self)
 
@@ -6580,7 +6580,7 @@ class ViewController: NSViewController, URLSessionDelegate, NSTabViewDelegate, N
                 
                 theModeQ.async { [self] in
                     while true {
-                        if !(fm.fileExists(atPath: NSHomeDirectory() + "/Library/Application Support/Replicator/DELETE", isDirectory: &isDir)) {
+                        if !(fm.fileExists(atPath: AppInfo.appSupportPath + "/DELETE", isDirectory: &isDir)) {
                             DispatchQueue.main.async { [self] in
                                 NotificationCenter.default.post(name: .deleteMode_sdvc, object: self)
                                 if AppInfo.dryRun {

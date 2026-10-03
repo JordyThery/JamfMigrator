@@ -95,7 +95,16 @@ struct AppInfo {
     static let build           = dict["CFBundleVersion"] as? String ?? "0"
     static let name            = dict["CFBundleExecutable"] as? String ?? "unknown"
     static var bookmarks       = [URL: Data]()
-    static let appSupportPath   = NSHomeDirectory() + "/Library/Application Support/Replicator"
+    // One-time migration from the old Replicator folder happens on first access
+    static let appSupportPath: String = {
+        let newPath = NSHomeDirectory() + "/Library/Application Support/JamfMigrator"
+        let oldPath = NSHomeDirectory() + "/Library/Application Support/Replicator"
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: newPath) && fm.fileExists(atPath: oldPath) {
+            try? fm.moveItem(atPath: oldPath, toPath: newPath)
+        }
+        return newPath
+    }()
     static let bookmarksPathOld   = NSHomeDirectory() + "/Library/Application Support/jamf-migrator/bookmarks"
     static let bookmarksPath   = AppInfo.appSupportPath + "/bookmarks"
     static var settings        = [String:Any]()
@@ -123,7 +132,16 @@ struct export {
 }
 
 struct History {
-    static var logPath   = (NSHomeDirectory() + "/Library/Logs/Replicator/")
+    // One-time migration from the old Replicator folder happens on first access
+    static var logPath: String = {
+        let newPath = NSHomeDirectory() + "/Library/Logs/JamfMigrator/"
+        let oldPath = NSHomeDirectory() + "/Library/Logs/Replicator/"
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: newPath) && fm.fileExists(atPath: oldPath) {
+            try? fm.moveItem(atPath: String(oldPath.dropLast()), toPath: String(newPath.dropLast()))
+        }
+        return newPath
+    }()
     static var logFile   = ""
     static var startTime = Date()
 }

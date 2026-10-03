@@ -208,7 +208,7 @@ class SourceDestVC: NSViewController, URLSessionDelegate, NSTableViewDelegate, N
     
     @objc func deleteMode_sdvc(_ sender: Any) {
         logFunctionCall()
-        if (fm.fileExists(atPath: NSHomeDirectory() + "/Library/Application Support/Replicator/DELETE", isDirectory: &isDir))  {
+        if (fm.fileExists(atPath: AppInfo.appSupportPath + "/DELETE", isDirectory: &isDir))  {
             DispatchQueue.main.async { [self] in
                 // disable source server, username and password fields (to finish)
                 if source_jp_server_field.isEnabled {

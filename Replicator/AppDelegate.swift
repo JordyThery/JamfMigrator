@@ -83,8 +83,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     exit(0)
                 }
             }
-            // create log directory if missing - endlogFile = TimeDelegate().getCurrent().replacingOccurrences(of: ":", with: "") + "_replicator.log"
-            History.logFile = TimeDelegate().getCurrent().replacingOccurrences(of: ":", with: "") + "_replicator.log"
+            // create log directory if missing - end
+            History.logFile = TimeDelegate().getCurrent().replacingOccurrences(of: ":", with: "") + "_jamfmigrator.log"
             
             //            isDir = false
             if !(fm.fileExists(atPath: History.logPath + History.logFile/*, isDirectory: &isDir*/)) {
