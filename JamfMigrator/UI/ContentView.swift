@@ -27,9 +27,14 @@ struct ContentView: View {
         } content: {
             ObjectListView()
                 .navigationSplitViewColumnWidth(min: 320, ideal: 420)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .tourAnchor(.plan)
         } detail: {
             InspectorView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .tourAnchor(.inspector)
         }
+        .guidedTour(appState: appState)
         .safeAreaInset(edge: .top, spacing: 0) {
             if appState.mode == .delete {
                 DeleteModeBanner()

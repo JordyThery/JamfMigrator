@@ -91,7 +91,7 @@ actor PlatformClient {
         self.sleep = sleep
     }
 
-    /// A direct Jamf Pro connection, for MSP tenants without Platform API access.
+    /// A direct Jamf Pro connection, for tenants without Platform API access.
     init(serverURL: URL,
          tokenProvider: TokenProvider,
          session: URLSession = URLSession(configuration: .ephemeral),

@@ -98,7 +98,7 @@ private struct TenantEditor: View {
                 Text("Platform API gateway").tag(true)
                 Text("Jamf Pro server").tag(false)
             }
-            .help("MSP tenants without Platform API access connect to their Jamf Pro server directly.")
+            .help("Tenants without Platform API access connect to their Jamf Pro server directly.")
 
             if usesGatewayBinding.wrappedValue {
                 Picker("Region", selection: binding(\.region)) {
@@ -141,7 +141,7 @@ private struct TenantEditor: View {
             }
 
             Toggle("Protected — this tenant can never be wiped", isOn: binding(\.isProtected))
-                .help("On by default for the golden master. A protected tenant can't be wiped at all.")
+                .help("A protected tenant can't be wiped at all. Recommended for the source tenant.")
         }
         .formStyle(.grouped)
         .onAppear { reload() }

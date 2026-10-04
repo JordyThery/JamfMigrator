@@ -31,6 +31,7 @@ struct SidebarView: View {
                     PreflightSummary(preflight: preflight)
                 }
             }
+            .tourAnchor(.tenants)
 
             Section {
                 HStack {
@@ -48,11 +49,13 @@ struct SidebarView: View {
             } header: {
                 Text("Object types")
             }
+            .tourAnchor(.objectTypes)
 
             ForEach(steps, id: \.self) { step in
                 Section("Step \(step)") {
                     ForEach(types(in: step)) { type in
                         TypeRow(type: type)
+                            .tourAnchor(.objectTypes)
                     }
                 }
             }

@@ -46,6 +46,7 @@
 		08ABF3E3307220AB00606B36 /* CloneWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3E2307220AB00606B36 /* CloneWizard.swift */; };
 		08ABF3E5307220C600606B36 /* WipeWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3E4307220C600606B36 /* WipeWizard.swift */; };
 		08ABF3EE3072392700606B36 /* Support.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3ED3072392700606B36 /* Support.swift */; };
+		08ABF3F03072586200606B36 /* GuidedTour.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3EF3072586200606B36 /* GuidedTour.swift */; };
 		9BC01C641DFB0C07007E634E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9BC01C631DFB0C07007E634E /* Assets.xcassets */; };
 		B53796CA2273FFBA0006C1E4 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B53796C92273FFBA0006C1E4 /* WebKit.framework */; };
 /* End PBXBuildFile section */
@@ -91,6 +92,7 @@
 		08ABF3E2307220AB00606B36 /* CloneWizard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloneWizard.swift; sourceTree = "<group>"; };
 		08ABF3E4307220C600606B36 /* WipeWizard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WipeWizard.swift; sourceTree = "<group>"; };
 		08ABF3ED3072392700606B36 /* Support.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Support.swift; sourceTree = "<group>"; };
+		08ABF3EF3072586200606B36 /* GuidedTour.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GuidedTour.swift; sourceTree = "<group>"; };
 		9BC01C5C1DFB0C07007E634E /* JamfMigrator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = JamfMigrator.app; path = "Jamf Migrator.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9BC01C631DFB0C07007E634E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9BC01C681DFB0C07007E634E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -204,6 +206,7 @@
 				08ABF3DA3071C62800606B36 /* SettingsView.swift */,
 				08ABF3E2307220AB00606B36 /* CloneWizard.swift */,
 				08ABF3E4307220C600606B36 /* WipeWizard.swift */,
+				08ABF3EF3072586200606B36 /* GuidedTour.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -426,6 +429,7 @@
 				08ABF35A3071BAD600606B36 /* PermissionProbe.swift in Sources */,
 				08ABF3B53071C22600606B36 /* RunReport.swift in Sources */,
 				08ABF3EE3072392700606B36 /* Support.swift in Sources */,
+				08ABF3F03072586200606B36 /* GuidedTour.swift in Sources */,
 				08ABF3B93071C25300606B36 /* MigrationEngine.swift in Sources */,
 				08ABF3AF3071C1D600606B36 /* RunJournal.swift in Sources */,
 				08ABF3B33071C1FD00606B36 /* ExportWriter.swift in Sources */,

@@ -70,6 +70,27 @@ final class AppState {
     var report: RunReport?
     var lastError: String?
 
+    // MARK: Guided tour
+
+    /// The current tour step, nil when the tour is off. Starts automatically
+    /// on first launch and can be replayed from Help › Guided Tour.
+    var tourIndex: Int?
+
+    func startTour() {
+        tourIndex = 0
+    }
+
+    func endTour() {
+        tourIndex = nil
+        UserDefaults.standard.set(true, forKey: "hasSeenGuidedTour")
+    }
+
+    func startTourOnFirstLaunch() {
+        if !UserDefaults.standard.bool(forKey: "hasSeenGuidedTour") {
+            startTour()
+        }
+    }
+
     // MARK: Clone / Wipe wizard state
 
     /// ADE and distribution-point mappings for the current tenant pair.
