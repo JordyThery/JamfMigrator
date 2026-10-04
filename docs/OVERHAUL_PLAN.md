@@ -352,3 +352,35 @@ The write tests ran on the demo tenant. All test objects were named `JM-TEST …
 - **Rate limits:** no numbers are published, so throttle writes and back off on CDN firewall 403s.
 - **VPP mapping:** whether `app-managed` Blueprint components can be mapped to the destination's VPP automatically.
 - **Unsupported content:** which Classic payloads trigger the `file://` CDN firewall block, and which configuration-profile payload types Blueprints accept.
+
+## Phase 8 validation results (2026-10-04)
+
+The full live clone sandbox → demo ran end to end: pre-wipe backup (145
+objects), wipe (127 + a final 388 deleted, zero leftovers), clone with a
+deliberate mid-run interrupt proving resume, and a closing full verify that
+was clean for 46/50 types — the rest blocked by design (patch EAs, FileVault
+profiles, duplicate source names, jamf users with colliding emails). Fixes
+the live run forced are in the two Phase 8 commits; the recurring theme:
+**Pro detail payloads carry ids only, never the `*Name` fields** — every
+reference must resolve through the source id→name lookups.
+
+- **The platform-namespace 403s were never a permissions problem.** The
+  gateway answers an unknown route with `403 BAD_PERMISSIONS` instead of 404.
+  The real paths follow `/{namespace}/v{n}/{resource}`:
+  `blueprints/v1/blueprints` and `compliance-benchmarks/v1/benchmarks`.
+  More shapes verified live: the benchmarks list nests under `"benchmarks"`,
+  a benchmark create response names its id `benchmarkId`, `syncState` exists
+  only on list entries, and `deploymentState` is an object.
+- **Blueprints and Benchmarks cloned live**: the Blueprint with its scope
+  remapped to the destination's group UUID and DEPLOYED state mirrored; the
+  Benchmark compared Unchanged on re-run. One Jamf-side bug to report: the
+  demo (beta) tenant silently deletes newly created benchmarks ~3 minutes
+  after creation (reproduced 3×; the same payload survives on the sandbox).
+- **Direct connections validated live**: scripts cloned lab9 → lab9probeta
+  over user/password auth (33 created in 16 s), verify clean, 33/33 deleted.
+- **GUI smoke test passed**: selective migration through the app (Uncheck
+  all → Scripts → Preview 33 creates → confirm sheet → Run, 33 created,
+  0 failed), gateway-only types gray out with the tooltip when a direct
+  tenant is selected, preview resets on tenant change.
+- Both tenants end in their intended states: sandbox untouched (golden
+  master, incl. one Blueprint and one Benchmark), demo empty.
