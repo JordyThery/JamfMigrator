@@ -67,30 +67,41 @@ final class TenantStore {
     func client(for tenant: Tenant) -> PlatformClient {
         let secrets = secrets
         let account = tenant.id.uuidString
+        let clientId = tenant.clientId
 
-        if !tenant.usesGateway, let serverURL = URL(string: tenant.serverURL ?? "") {
+        @Sendable func storedSecret() throws -> String {
+            guard let secret = secrets.secret(for: account), !secret.isEmpty else {
+                throw GatewayError.tokenFailure(
+                    status: 0,
+                    detail: "No client secret or password is stored for this tenant. Enter it in Settings › Tenants.")
+            }
+            return secret
+        }
+
+        if !tenant.usesGateway {
+            // tenant.usesGateway alone decides the connection kind; a server
+            // URL that fails to parse surfaces as an error at token time
+            // rather than silently falling back to the gateway
+            let serverURLString = tenant.serverURL ?? ""
+            let serverURL = URL(string: serverURLString)
             let username = (tenant.username ?? "").trimmingCharacters(in: .whitespaces)
-            let tokenURL = serverURL.appendingPathComponent(username.isEmpty ? "api/oauth/token" : "api/v1/auth/token")
-            let clientId = tenant.clientId
             let provider = TokenProvider(credentials: {
-                guard let secret = secrets.secret(for: account), !secret.isEmpty else {
-                    throw GatewayError.tokenFailure(status: 0, detail: "no client secret stored for this tenant")
+                guard let serverURL else {
+                    throw GatewayError.invalidURL(serverURLString)
                 }
+                let tokenURL = serverURL.appendingPathComponent(username.isEmpty ? "api/oauth/token" : "api/v1/auth/token")
                 let method: TokenProvider.Credentials.Method = username.isEmpty
-                    ? .oauthClient(clientId: clientId, clientSecret: secret)
-                    : .userPassword(username: username, password: secret)
+                    ? .oauthClient(clientId: clientId, clientSecret: try storedSecret())
+                    : .userPassword(username: username, password: try storedSecret())
                 return TokenProvider.Credentials(tokenURL: tokenURL, method: method)
             })
-            return PlatformClient(serverURL: serverURL, tokenProvider: provider)
+            return PlatformClient(serverURL: serverURL ?? URL(fileURLWithPath: "/dev/null"),
+                                  tokenProvider: provider)
         }
 
         let tokenURL = tenant.region.tokenURL
-        let clientId = tenant.clientId
         let provider = TokenProvider(credentials: {
-            guard let secret = secrets.secret(for: account), !secret.isEmpty else {
-                throw GatewayError.tokenFailure(status: 0, detail: "no client secret stored for this tenant")
-            }
-            return TokenProvider.Credentials(tokenURL: tokenURL, clientId: clientId, clientSecret: secret)
+            TokenProvider.Credentials(tokenURL: tokenURL, clientId: clientId, clientSecret: try storedSecret())
         })
         return PlatformClient(region: tenant.region,
                               environmentId: tenant.environmentId,
@@ -104,7 +115,11 @@ final class TenantStore {
         do {
             tenants = try JSONDecoder().decode([Tenant].self, from: data)
         } catch {
-            WriteToLog.shared.message("[TenantStore] could not read \(fileURL.path): \(error.localizedDescription)")
+            // move the unreadable file aside so a later save can't overwrite it
+            let aside = fileURL.appendingPathExtension("unreadable")
+            try? FileManager.default.removeItem(at: aside)
+            try? FileManager.default.moveItem(at: fileURL, to: aside)
+            WriteToLog.shared.message("[TenantStore] could not read \(fileURL.path): \(error.localizedDescription); moved it to \(aside.lastPathComponent)")
         }
     }
 

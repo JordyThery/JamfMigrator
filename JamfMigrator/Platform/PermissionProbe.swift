@@ -4,8 +4,8 @@
 //
 //  Checks which endpoints a tenant's API integration can reach. The gateway
 //  returns 403 BAD_PERMISSIONS both for a missing permission and for an
-//  outdated endpoint version, so the registry (Phase 2) must pin the newest
-//  version before a 403 can be read as "permission missing".
+//  outdated endpoint version, so the registry must pin the newest endpoint
+//  version before a 403 can be read as a missing permission.
 //
 
 import Foundation

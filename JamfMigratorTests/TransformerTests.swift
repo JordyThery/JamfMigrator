@@ -146,7 +146,7 @@ struct ClassicTransformerTests {
                                                uri: "https://src.jamfcloud.com/iconservlet?id=66"))
         #expect(!out.contains("self_service_icon"))
         #expect(!out.contains("limit_to_users"))
-        #expect(out.contains("<password>jamfchangeme</password>"))
+        #expect(out.contains("<password>\(placeholderSecret)</password>"))
     }
 
     @Test func appsResetVPP() throws {

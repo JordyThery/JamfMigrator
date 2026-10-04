@@ -19,9 +19,9 @@ struct ObjectListView: View {
             if appState.plan == nil {
                 ContentUnavailableView("No preview yet",
                                        systemImage: "eye",
-                                       description: Text("Pick the tenants, then click Preview to see what would change."))
+                                       description: Text("Select the tenants, then click Preview to see what would change."))
             } else if appState.selectedTypeKey == nil {
-                ContentUnavailableView("Pick an object type",
+                ContentUnavailableView("No object type selected",
                                        systemImage: "sidebar.left",
                                        description: Text("Select a type in the sidebar."))
             } else {
@@ -74,7 +74,7 @@ private struct ObjectRow: View {
                 .toggleStyle(.checkbox)
                 .labelsHidden()
                 .disabled(!entry.change.isRunnable)
-                .help("Untick to leave this object out of the run.")
+                .help("Uncheck to leave this object out of the run.")
             Text(entry.name.isEmpty ? "(unnamed)" : entry.name)
                 .lineLimit(1)
             if !entry.warnings.isEmpty {

@@ -69,7 +69,7 @@ struct TenantStoreTests {
             _ = try await client.send(.get, "pro/v1/sites")
         } throws: { error in
             guard case .tokenFailure(_, let detail) = error as? GatewayError else { return false }
-            return detail?.contains("no client secret") == true
+            return detail?.contains("No client secret") == true
         }
     }
 }

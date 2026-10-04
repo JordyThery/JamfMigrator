@@ -91,6 +91,10 @@ final class XMLDictionary: NSObject, XMLParserDelegate {
         textStack[textStack.count - 1] += string
     }
 
+    func parser(_ parser: XMLParser, foundCDATA CDATABlock: Data) {
+        textStack[textStack.count - 1] += String(decoding: CDATABlock, as: UTF8.self)
+    }
+
     func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?,
                 qualifiedName: String?) {
         let children = stack.removeLast()

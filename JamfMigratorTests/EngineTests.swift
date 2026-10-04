@@ -190,13 +190,14 @@ struct DeleteEngineTests {
         let report = await engine.delete(typeKeys: ["policies", "smartcomputergroups"])
 
         // policies (step 8) delete before groups (step 6); the built-in group
-        // is never touched; the held group succeeds on the retry pass
+        // is reported as kept, never touched; the held group succeeds on retry
         let deletes = gateway.requests.value.filter { $0.method == "DELETE" }.map(\.path)
         #expect(deletes == ["/proclassic/policies/id/31",
                             "/pro/v3/computer-groups/smart-groups/12",
                             "/pro/v3/computer-groups/smart-groups/12"])
-        #expect(report.entries.allSatisfy { $0.status == .deleted })
-        #expect(report.entries.count == 2)
+        #expect(report.entries.filter { $0.status == .deleted }.count == 2)
+        #expect(report.entries.contains { $0.status == .blocked(reason: "Built-in object") })
+        #expect(report.entries.count == 3)
     }
 
     @Test func classicMisleading400IsVerifiedWithAGet() async throws {

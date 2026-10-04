@@ -2,8 +2,8 @@
 //  JamfMigratorApp.swift
 //  JamfMigrator
 //
-//  The SwiftUI app entry. The legacy storyboard UI is no longer launched and
-//  is deleted in Phase 7.
+//  The SwiftUI app entry: the main window, the Settings scene, and the
+//  menu commands.
 //
 
 import SwiftUI
@@ -47,7 +47,9 @@ struct JamfMigratorApp: App {
                 Button("Preview") { appState.preview() }
                     .keyboardShortcut("p", modifiers: [.command, .shift])
                     .disabled(!appState.canPreview)
-                Button("Run") { appState.run() }
+                // routes through ContentView so the same confirmation dialog
+                // appears as for the toolbar button
+                Button("Run") { appState.runRequested = true }
                     .keyboardShortcut("r", modifiers: .command)
                     .disabled(!appState.canRun)
             }

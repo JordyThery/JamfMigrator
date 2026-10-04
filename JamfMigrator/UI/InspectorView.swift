@@ -32,7 +32,7 @@ struct InspectorView: View {
                     }
 
                     if !entry.warnings.isEmpty {
-                        GroupBox("Check after the run") {
+                        GroupBox("Review after the run") {
                             VStack(alignment: .leading, spacing: 4) {
                                 ForEach(entry.warnings, id: \.self) { warning in
                                     Label(warning, systemImage: "exclamationmark.triangle")
@@ -62,11 +62,8 @@ struct InspectorView: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                    } else if case .update = entry.change {
-                        Text("No field-level differences could be shown.")
-                            .foregroundStyle(.secondary)
-                    } else if case .replace = entry.change {
-                        Text("No field-level differences could be shown.")
+                    } else if isUpdateOrReplace(entry.change) {
+                        Text("No field-level diff is available for this object.")
                             .foregroundStyle(.secondary)
                     }
 
@@ -79,6 +76,13 @@ struct InspectorView: View {
             ContentUnavailableView("No object selected",
                                    systemImage: "doc.text.magnifyingglass",
                                    description: Text("Select an object to see its details and diff."))
+        }
+    }
+
+    private func isUpdateOrReplace(_ change: PlannedChange) -> Bool {
+        switch change {
+        case .update, .replace: true
+        default: false
         }
     }
 

@@ -47,21 +47,21 @@ struct ContentView: View {
                     Label("Delete", systemImage: "trash").tag(RunMode.delete)
                 }
                 .pickerStyle(.segmented)
-                .help("Delete mode stays on for the session (⌘D) and always starts off at launch.")
+                .help("Delete mode stays on for the session (⌘D). The app always launches in Copy mode.")
 
                 if appState.mode == .copy {
                     Button("Clone tenant", systemImage: "wand.and.stars") {
                         showCloneWizard = true
                     }
                     .disabled(appState.sourceTenant == nil || appState.destTenant == nil || appState.isRunning)
-                    .help("The guided flow: connect, map ADE and distribution points, preview, run, verify.")
+                    .help("Opens the guided clone flow: connect, map, preview, run, and verify.")
                 } else {
-                    Button("Wipe tenant", systemImage: "trash.slash") {
+                    Button("Wipe tenant", systemImage: "xmark.bin") {
                         showWipeWizard = true
                     }
                     .tint(.red)
                     .disabled(appState.destTenant == nil || appState.isRunning)
-                    .help("Empties the tenant completely, behind its gates: preview, backup and a typed confirmation.")
+                    .help("Deletes every selected object type from the tenant, behind gates: a preview, a backup, and typing the tenant’s name.")
                 }
 
                 Button("Preview", systemImage: "eye") {
@@ -78,11 +78,19 @@ struct ContentView: View {
                 .disabled(!appState.canRun)
             }
         }
+        .onChange(of: appState.runRequested) { _, requested in
+            if requested {
+                appState.runRequested = false
+                showRunConfirmation = true
+            }
+        }
         .confirmationDialog(runConfirmationTitle, isPresented: $showRunConfirmation) {
             Button(appState.mode == .delete ? "Delete \(appState.effectiveCounts.delete) objects" : "Copy \(appState.effectiveChangeCount) changes",
                    role: appState.mode == .delete ? .destructive : nil) {
                 appState.run()
-                showRunSheet = true
+                if appState.lastError == nil {
+                    showRunSheet = true
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -97,7 +105,7 @@ struct ContentView: View {
         .sheet(isPresented: $showWipeWizard) {
             WipeWizard()
         }
-        .alert("Something went wrong", isPresented: .init(
+        .alert("Can’t complete this action", isPresented: .init(
             get: { appState.lastError != nil },
             set: { if !$0 { appState.lastError = nil } })) {
             Button("OK", role: .cancel) {}
@@ -120,12 +128,13 @@ struct ContentView: View {
             return "\(effective.delete) objects will be deleted from \(appState.destTenant?.name ?? "the destination"); \(planCounts.keep) built-ins are kept. This cannot be undone."
         }
         var message = "\(effective.create) to create, \(effective.update) to update, \(planCounts.unchanged) unchanged, \(planCounts.blocked) blocked."
-        let unchecked = appState.plan!.changeCount - appState.effectiveChangeCount
+        let planChangeCount = planCounts.create + planCounts.update + planCounts.replace + planCounts.delete
+        let unchecked = planChangeCount - appState.effectiveChangeCount
         if unchecked > 0 {
             message += " \(unchecked) unchecked objects are left out."
         }
         if effective.replace > 0 {
-            message += " \(effective.replace) Compliance Benchmarks will be DELETED and recreated (no update endpoint)."
+            message += " \(effective.replace) Compliance Benchmarks will be deleted and recreated — they can’t be updated in place."
         }
         return message
     }

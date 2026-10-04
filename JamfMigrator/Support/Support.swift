@@ -2,16 +2,13 @@
 //  Support.swift
 //  JamfMigrator
 //
-//  The small shared pieces the app rests on: app metadata, paths, and the
-//  file logger. This replaces the legacy Globals.swift and WriteToLog.swift.
+//  App metadata, filesystem paths, and the file logger.
 //
 
 import Foundation
 
 enum AppInfo {
-    static let name = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "JamfMigrator"
     static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
-    static let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
     static let userAgentHeader = "JamfMigrator/\(version)"
 
     /// Application Support/JamfMigrator (inside the sandbox container).
@@ -29,8 +26,7 @@ enum AppInfo {
     }()
 }
 
-/// Appends timestamped lines to the app's log file. The API is kept from the
-/// legacy logger so call sites read the same.
+/// Appends timestamped lines to the app's log file.
 final class WriteToLog: @unchecked Sendable {
 
     static let shared = WriteToLog()
@@ -39,6 +35,7 @@ final class WriteToLog: @unchecked Sendable {
     private let logURL = URL(fileURLWithPath: AppInfo.logPath + "/jamfmigrator.log")
     private lazy var timestampFormatter: DateFormatter = {
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
         return formatter
     }()

@@ -100,10 +100,10 @@ private struct ConnectStep: View {
             if appState.isPlanning {
                 ProgressView("Checking both tenants…")
             } else if let preflight = appState.preflight {
-                Label("Source: Jamf Pro \(preflight.source.version ?? preflight.source.error ?? "unreachable")",
+                Label(tenantLabel("Source", preflight.source),
                       systemImage: preflight.source.reachable ? "checkmark.circle.fill" : "xmark.circle.fill")
                     .foregroundStyle(preflight.source.reachable ? .green : .red)
-                Label("Destination: Jamf Pro \(preflight.destination.version ?? preflight.destination.error ?? "unreachable")",
+                Label(tenantLabel("Destination", preflight.destination),
                       systemImage: preflight.destination.reachable ? "checkmark.circle.fill" : "xmark.circle.fill")
                     .foregroundStyle(preflight.destination.reachable ? .green : .red)
                 if preflight.deniedTypes.isEmpty {
@@ -127,11 +127,11 @@ private struct ConnectStep: View {
             HStack {
                 Spacer()
                 if appState.preflight == nil || appState.isPlanning {
-                    Button("Check tenants") { runPreflight() }
+                    Button("Test connections") { runPreflight() }
                         .buttonStyle(.borderedProminent)
                         .disabled(appState.isPlanning || appState.destTenant == nil || appState.sourceTenant == nil)
                 } else {
-                    Button("Check again") { runPreflight() }
+                    Button("Test again") { runPreflight() }
                     Button("Continue") { next() }
                         .buttonStyle(.borderedProminent)
                         .disabled(!(appState.preflight?.isReady ?? false))
@@ -140,6 +140,12 @@ private struct ConnectStep: View {
         }
         .padding()
         .onAppear { if appState.preflight == nil { runPreflight() } }
+    }
+
+    private func tenantLabel(_ name: String, _ check: PreflightReport.TenantCheck) -> String {
+        check.reachable
+            ? "\(name): Jamf Pro \(check.version ?? "?")"
+            : "\(name) unreachable: \(check.error ?? "no response")"
     }
 
     private func runPreflight() {
@@ -164,7 +170,7 @@ private struct PrepareStep: View {
     var body: some View {
         @Bindable var appState = appState
         Form {
-            Section("Done by hand — the API can't copy these") {
+            Section("Manual steps — the API can't copy these") {
                 ForEach(PreflightReport.manualChecklist, id: \.self) { item in
                     Label(item, systemImage: "checklist")
                         .font(.callout)
@@ -251,6 +257,9 @@ private struct PreviewStep: View {
                 Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 6) {
                     GridRow { Text("Create").fontWeight(.semibold); Text("\(counts.create)") }
                     GridRow { Text("Update").fontWeight(.semibold); Text("\(counts.update)") }
+                    if counts.replace > 0 {
+                        GridRow { Text("Replace").fontWeight(.semibold); Text("\(counts.replace)") }
+                    }
                     GridRow { Text("Unchanged").fontWeight(.semibold); Text("\(counts.unchanged)") }
                     GridRow { Text("Blocked").fontWeight(.semibold); Text("\(counts.blocked)") }
                 }
@@ -302,10 +311,10 @@ private struct RunStep: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else if let report = appState.report {
-                let failures = report.failures
+                let failures = report.retryableFailures
                 Label(failures.isEmpty
                       ? "Run finished: \(report.entries.count) objects processed."
-                      : "Run finished with \(failures.count) objects not migrated. Running again resumes and retries them.",
+                      : "Run finished with \(failures.count) objects not migrated. Resume run retries them.",
                       systemImage: failures.isEmpty ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                     .foregroundStyle(failures.isEmpty ? .green : .orange)
             } else if appState.plan?.changeCount == 0 {
@@ -321,8 +330,8 @@ private struct RunStep: View {
                 if appState.isRunning {
                     Button("Stop", role: .destructive) { appState.cancel() }
                 } else if started || appState.plan?.changeCount == 0 {
-                    if appState.report?.failures.isEmpty == false {
-                        Button("Run again (resume)") { appState.run() }
+                    if appState.report?.retryableFailures.isEmpty == false {
+                        Button("Resume run") { appState.run() }
                     }
                     Button("Continue to Verify") { next() }
                         .buttonStyle(.borderedProminent)
@@ -401,6 +410,7 @@ private struct VerifyStep: View {
 
     private func exportReport(_ report: VerifyReport) {
         let panel = NSSavePanel()
+        panel.allowedContentTypes = [.plainText]
         panel.nameFieldStringValue = "clone-verify-\(appState.destTenant?.name ?? "report").txt"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         var lines = ["Clone verification — \(Date().formatted())", ""]
@@ -409,6 +419,10 @@ private struct VerifyStep: View {
             lines.append(contentsOf: result.discrepancies.map { "  DIFFERS \($0)" })
             lines.append(contentsOf: result.blocked.map { "  BLOCKED \($0)" })
         }
-        try? lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+        do {
+            try lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            appState.lastError = "The report could not be saved: \(error.localizedDescription)"
+        }
     }
 }

@@ -49,6 +49,10 @@ struct WipeWizard: View {
         }
         .frame(minWidth: 620, minHeight: 500)
         .onAppear {
+            // a report from an earlier run must not skip the gates
+            if !appState.isRunning {
+                appState.report = nil
+            }
             if appState.plan == nil && !appState.isPlanning {
                 appState.preview()
             }
@@ -70,7 +74,7 @@ struct WipeWizard: View {
                     let counts = plan.counts
                     Label("\(counts.delete) objects will be deleted; \(counts.keep) built-ins are kept.",
                           systemImage: "checkmark.circle.fill")
-                    Text("Close the wizard to review the full list in the main window; untick anything to keep it.")
+                    Text("Close the wizard to review the full list in the main window; uncheck anything to keep it.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 } else {
@@ -158,7 +162,7 @@ struct WipeWizard: View {
                     Button("Stop", role: .destructive) { appState.cancel() }
                 }
             } else if let report = appState.report {
-                let leftovers = report.failures
+                let leftovers = report.retryableFailures
                 Label(leftovers.isEmpty
                       ? "Wipe finished: \(report.entries.count) objects deleted."
                       : "Wipe finished, but \(leftovers.count) objects could not be deleted.",
@@ -174,7 +178,7 @@ struct WipeWizard: View {
                             }
                         }
                     }
-                    Button("Run again (retries the leftovers)") {
+                    Button("Resume run") {
                         appState.run()
                     }
                 }

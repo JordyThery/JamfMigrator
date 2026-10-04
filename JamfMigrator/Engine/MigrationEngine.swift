@@ -65,7 +65,7 @@ actor MigrationEngine {
                                       excluded: excluding[type.key] ?? [], report: &report)
             } catch {
                 WriteToLog.shared.message("[MigrationEngine] \(type.key) failed: \(error.localizedDescription)")
-                report.add(type: type, ref: ObjectRef(id: "-", name: "(whole step)"),
+                report.add(type: type, ref: ObjectRef(id: "-", name: "(all objects)"),
                            status: .failed(reason: error.localizedDescription))
             }
         }
@@ -87,22 +87,27 @@ actor MigrationEngine {
 
         var completed = 0
         var seenNames = Set<String>()
-        for ref in sourceRefs where !excluded.contains(ref.id) {
+        let includedRefs = sourceRefs.filter { !excluded.contains($0.id) }
+        for ref in includedRefs {
             guard !isCancelled else { return }
             completed += 1
 
             // name matching can't tell same-named source objects apart; only
             // the first one migrates
             if !seenNames.insert(ref.name).inserted {
-                let status = ObjectStatus.blocked(reason: "Another source object has the same name; rename it to migrate both")
+                let status = ObjectStatus.blocked(reason: "Duplicate name on the source; rename one of the two objects to migrate both")
                 await journal.record(type: type.key, objectId: ref.id, status: status)
                 report.add(type: type, ref: ref, status: status)
+                progress?(ProgressEvent(type: type.key, objectName: ref.name,
+                                        completed: completed, total: includedRefs.count, status: status))
                 continue
             }
 
             // resume: skip objects an interrupted run already finished
             if let previous = await journal.status(type: type.key, objectId: ref.id), previous.isDone {
                 report.add(type: type, ref: ref, status: previous)
+                progress?(ProgressEvent(type: type.key, objectName: ref.name,
+                                        completed: completed, total: includedRefs.count, status: previous))
                 continue
             }
 
@@ -113,7 +118,7 @@ actor MigrationEngine {
             }
             report.add(type: type, ref: ref, status: status, warnings: warnings)
             progress?(ProgressEvent(type: type.key, objectName: ref.name,
-                                    completed: completed, total: sourceRefs.count, status: status))
+                                    completed: completed, total: includedRefs.count, status: status))
         }
     }
 
@@ -167,10 +172,16 @@ actor MigrationEngine {
                 export?.writeTrimmed(type: type, ref: ref, payload: object.body, isXML: type.api.isClassic)
                 var warnings = object.warnings
 
-                // benchmarks have no update endpoint: delete, then recreate
+                // benchmarks have no update endpoint: delete, then recreate.
+                // the DELETE can report a misleading status after doing the
+                // work (see DeleteEngine); a follow-up GET decides
                 var action = context.action
                 if type.key == "compliancebenchmarks", case .update(let destId) = action {
-                    _ = try await dest.send(.delete, type.api.detailPath(id: destId))
+                    do {
+                        _ = try await dest.send(.delete, type.api.detailPath(id: destId))
+                    } catch let error as GatewayError where error.status != nil {
+                        guard await objectIsGone(type, id: destId) else { throw error }
+                    }
                     action = .create
                 }
 
@@ -241,11 +252,14 @@ actor MigrationEngine {
         switch type.key {
         case "computerprestages", "mobiledeviceprestages":
             // further changes need the profileUuid, which lags the write
-            _ = try? await Poll.until("the PreStage profileUuid", timeout: .seconds(30), interval: .seconds(2)) { [dest] () -> String? in
+            let uuid = try? await Poll.until("the PreStage profileUuid", timeout: .seconds(30), interval: .seconds(2)) { [dest] () -> String? in
                 let detail = try await ObjectLister.detail(type, id: destId, on: dest)
                 guard case .json(let json) = detail,
                       let uuid = json["profileUuid"] as? String, !uuid.isEmpty else { return nil }
                 return uuid
+            }
+            if uuid == nil {
+                warnings.append("The PreStage's profile UUID did not appear in time; check the PreStage on the destination.")
             }
 
         case "blueprints":
@@ -260,8 +274,13 @@ actor MigrationEngine {
             guard state.localizedCaseInsensitiveContains("DEPLOYED") || state.localizedCaseInsensitiveContains("SUCCEEDED") else {
                 return
             }
-            _ = try await dest.send(.post, "\(type.api.listPath)/\(destId)/deploy",
-                                    body: Data("{}".utf8), contentType: "application/json")
+            do {
+                _ = try await dest.send(.post, "\(type.api.listPath)/\(destId)/deploy",
+                                        body: Data("{}".utf8), contentType: "application/json")
+            } catch {
+                warnings.append("The blueprint was created but could not be deployed: \(error.localizedDescription)")
+                return
+            }
             let deployed = try? await Poll.until("the Blueprint deployment", timeout: .seconds(60), interval: .seconds(3)) { [dest] in
                 let detail = try await ObjectLister.detail(type, id: destId, on: dest)
                 guard case .json(let json) = detail else { return nil as Bool? }
@@ -270,7 +289,7 @@ actor MigrationEngine {
                     ? true : nil
             }
             if deployed != true {
-                warnings.append("The Blueprint was created but its deployment did not confirm in time; check it on the destination.")
+                warnings.append("The blueprint was created but its deployment did not confirm in time; check it on the destination.")
             }
 
         case "compliancebenchmarks":
@@ -294,6 +313,20 @@ actor MigrationEngine {
 
         default:
             break
+        }
+    }
+
+    /// Whether a GET of the object now fails with "not found" (benchmarks
+    /// answer 403 for a deleted id).
+    private func objectIsGone(_ type: ObjectType, id: String) async -> Bool {
+        do {
+            _ = try await dest.send(.get, type.api.detailPath(id: id),
+                                    accept: type.api.isClassic ? "application/xml" : "application/json")
+            return false
+        } catch let error as GatewayError {
+            return error.status == 404 || error.status == 403
+        } catch {
+            return false
         }
     }
 

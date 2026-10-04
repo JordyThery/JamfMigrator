@@ -3,7 +3,7 @@
 //  JamfMigrator
 //
 //  The run sheet: live progress per object while the engine works, then the
-//  results report. This replaces the legacy SummaryView and HTML summary.
+//  results report.
 //
 
 import SwiftUI
@@ -85,7 +85,7 @@ private struct ReportSummary: View {
                 }
             }
             if !report.failures.isEmpty {
-                Section("Not migrated") {
+                Section("Not completed") {
                     ForEach(report.failures, id: \.objectId) { entry in
                         VStack(alignment: .leading) {
                             HStack {
@@ -103,9 +103,9 @@ private struct ReportSummary: View {
                     }
                 }
             }
-            let warned = report.allWarnings
+            let warned = report.entriesWithWarnings
             if !warned.isEmpty {
-                Section("Check these") {
+                Section("Review after the run") {
                     ForEach(warned, id: \.objectId) { entry in
                         VStack(alignment: .leading) {
                             Text(entry.objectName)
@@ -146,7 +146,7 @@ private struct ReportSummary: View {
         if deleted > 0 { parts.append("\(deleted) deleted") }
         if blocked > 0 { parts.append("\(blocked) blocked") }
         if failed > 0 { parts.append("\(failed) failed") }
-        return parts.isEmpty ? "nothing to do" : parts.joined(separator: ", ")
+        return parts.isEmpty ? "Nothing to do" : parts.joined(separator: ", ")
     }
 }
 

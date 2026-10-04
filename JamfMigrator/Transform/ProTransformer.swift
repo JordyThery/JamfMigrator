@@ -3,8 +3,7 @@
 //  JamfMigrator
 //
 //  Per-type rewriting of Jamf Pro API JSON payloads before they are written
-//  to the destination. Ported from the legacy Cleanup.Json, extended to the
-//  types that moved from Classic to the Pro API.
+//  to the destination.
 //
 
 import Foundation
@@ -28,7 +27,7 @@ enum ProTransformer {
                 warnings.append("The \(secret) is not returned by the API and must be re-entered on the destination.")
             }
             if type.key == "onboarding" {
-                warnings.append("Onboarding items reference policies and profiles by id and may need re-picking on the destination.")
+                warnings.append("Onboarding items reference policies and profiles by id and may need to be reselected on the destination.")
             }
             do {
                 let body = try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys])
@@ -59,7 +58,13 @@ enum ProTransformer {
             }
 
         case "distributionpoints":
-            warnings.append("File-share passwords are not returned by the API; set them on the destination.")
+            // the API never returns these; field names per the v1 schema
+            // (not exercised live — the test tenants have no file shares)
+            if let readWrite = context.secrets["fsrw"] { out["readWritePassword"] = readWrite }
+            if let readOnly = context.secrets["fsro"] { out["readOnlyPassword"] = readOnly }
+            if context.secrets["fsrw"] == nil || context.secrets["fsro"] == nil {
+                warnings.append("File-share passwords are not returned by the API; set them in Settings › Secrets or on the destination.")
+            }
 
         case "jamfusers":
             out["password"] = nil
@@ -75,21 +80,32 @@ enum ProTransformer {
             for field in ["assignments", "computerIds", "mobileDeviceIds", "assignedIds"] {
                 out[field] = nil
             }
-            warnings.append("Static group members are inventory records and were not copied; the group is created empty.")
+            warnings.append("Static group members are inventory records and are not copied; the group is created empty.")
 
         case "advancedmobiledevicesearches":
             remapSite(&out, context: context, warnings: &warnings)
 
         case "patchsoftwaretitles":
-            // ported 1:1 from Cleanup.Json
-            if let categoryName = out["categoryName"] as? String,
-               let destCategoryId = context.destId("categories", named: categoryName) {
+            // detail payloads may carry ids only — resolve names through the
+            // source lookups before matching on the destination
+            var categoryName = out["categoryName"] as? String
+            if categoryName?.isEmpty != false {
+                categoryName = context.sourceName("categories", id: "\(out["categoryId"] ?? "")")
+            }
+            if let categoryName, let destCategoryId = context.destId("categories", named: categoryName) {
                 out["categoryId"] = destCategoryId
             } else {
                 out["categoryId"] = "-1"
+                if let categoryName {
+                    warnings.append("Category \"\(categoryName)\" does not exist on the destination; the object was created without one.")
+                }
             }
             out["categoryName"] = nil
-            out["siteId"] = (out["siteName"] as? String).flatMap { context.destId("sites", named: $0) } ?? "-1"
+            var siteName = out["siteName"] as? String
+            if siteName?.isEmpty != false {
+                siteName = context.sourceName("sites", id: "\(out["siteId"] ?? "")")
+            }
+            out["siteId"] = siteName.flatMap { context.destId("sites", named: $0) } ?? "-1"
             out["siteName"] = nil
             var updatedPackages = [[String: String]]()
             for package in out["packages"] as? [[String: Any]] ?? [] {
@@ -127,7 +143,8 @@ enum ProTransformer {
                 } else {
                     out["smartGroupId"] = nil
                     out["enabled"] = false
-                    warnings.append("Smart group \"\(smartGroupName)\" does not exist on the destination; the deployment was created without a scope and disabled.")
+                    let groupLabel = smartGroupName.isEmpty ? "with id \(smartGroupId)" : "\"\(smartGroupName)\""
+                    warnings.append("Smart group \(groupLabel) does not exist on the destination; the deployment was created without a scope and disabled.")
                 }
             } else {
                 // the server stores "no group" as -1; normalize absent to match
@@ -169,7 +186,7 @@ enum ProTransformer {
             return transformBenchmark(source: out, context: context, warnings: &warnings)
 
         default:
-            return .blocked(reason: "No Pro transform for \(type.key)")
+            return .blocked(reason: "\(type.displayName) are not supported by this version of the app")
         }
 
         do {
@@ -196,7 +213,7 @@ enum ProTransformer {
             if let mapped = context.mappings.adeInstances[adeId] {
                 out["deviceEnrollmentProgramInstanceId"] = mapped
             } else {
-                return .blocked(reason: "No ADE instance mapping; map one in the Clone wizard (or the destination has none)")
+                return .blocked(reason: "No ADE instance mapping is set; map one in the Clone wizard")
             }
         }
 
@@ -211,8 +228,8 @@ enum ProTransformer {
         // "-1"/0, a PUT echoes the destination's (verified live 2026-10-04)
         if var location = out["locationInformation"] as? [String: Any] {
             location["id"] = isUpdate ? (context.destPreStageIds["locationInformation"] ?? "-1") : "-1"
-            remapNamedId(&location, idKey: "buildingId", lookupType: "buildings", context: context, warnings: &warnings)
-            remapNamedId(&location, idKey: "departmentId", lookupType: "departments", context: context, warnings: &warnings)
+            remapNamedId(&location, idKey: "buildingId", lookupType: "buildings", label: "building", context: context, warnings: &warnings)
+            remapNamedId(&location, idKey: "departmentId", lookupType: "departments", label: "department", context: context, warnings: &warnings)
             location["versionLock"] = isUpdate ? (context.destVersionLocks["locationInformation"] ?? 0) : 0
             out["locationInformation"] = location
         }
@@ -237,7 +254,7 @@ enum ProTransformer {
                 out["enrollmentCustomizationId"] = destId
             } else {
                 out["enrollmentCustomizationId"] = "0"
-                warnings.append("The enrollment customization does not exist on the destination and was unset.")
+                warnings.append("The enrollment customization does not exist on the destination and was cleared.")
             }
         }
 
@@ -246,6 +263,8 @@ enum ProTransformer {
                      label: "configuration profile", context: context, warnings: &warnings)
         remapIdArray(&out, key: "customPackageIds", lookupType: "packages",
                      label: "package", context: context, warnings: &warnings)
+        let profileLabels = ["pssoConfigProfileId": "Platform SSO configuration profile",
+                             "rtsConfigProfileId": "return-to-service configuration profile"]
         for key in ["pssoConfigProfileId", "rtsConfigProfileId"] {
             let value = "\(out[key] ?? "")"
             guard !value.isEmpty, value != "0", value != "<null>" else { continue }
@@ -254,7 +273,7 @@ enum ProTransformer {
                 out[key] = destId
             } else {
                 out[key] = nil
-                warnings.append("The \(key) profile does not exist on the destination and was unset.")
+                warnings.append("The \(profileLabels[key] ?? key) does not exist on the destination and was cleared.")
             }
         }
 
@@ -325,7 +344,7 @@ enum ProTransformer {
 
         // configuration-profile components get fresh payload identifiers;
         // app-managed components reference the source tenant's VPP assets
-        out = reassignPayloadIdentifiers(in: out) { note in
+        out = reassignPayloadIdentifiers(in: out, forComparison: context.isForComparison) { note in
             if note == "app-managed" {
                 warnings.append("An app-managed component references VPP assets that belong to the source tenant; check it on the destination.")
             }
@@ -339,21 +358,23 @@ enum ProTransformer {
         }
     }
 
-    private static func reassignPayloadIdentifiers(in value: Any, note: (String) -> Void) -> Any {
+    private static func reassignPayloadIdentifiers(in value: Any, forComparison: Bool, note: (String) -> Void) -> Any {
         if var dict = value as? [String: Any] {
             if dict["payloadIdentifier"] is String {
-                dict["payloadIdentifier"] = UUID().uuidString
+                // every write needs fresh identifiers; a diff needs stable
+                // ones, or identical blueprints would never compare equal
+                dict["payloadIdentifier"] = forComparison ? "(payload-identifier)" : UUID().uuidString
             }
             if let type = dict["type"] as? String, type.contains("app-managed") {
                 note("app-managed")
             }
             for (key, nested) in dict {
-                dict[key] = reassignPayloadIdentifiers(in: nested, note: note)
+                dict[key] = reassignPayloadIdentifiers(in: nested, forComparison: forComparison, note: note)
             }
             return dict
         }
         if let array = value as? [Any] {
-            return array.map { reassignPayloadIdentifiers(in: $0, note: note) }
+            return array.map { reassignPayloadIdentifiers(in: $0, forComparison: forComparison, note: note) }
         }
         return value
     }
@@ -403,7 +424,7 @@ enum ProTransformer {
 
     /// Remaps an id field via the source name and destination id lookups.
     private static func remapNamedId(_ json: inout [String: Any], idKey: String, lookupType: String,
-                                     context: TransformContext, warnings: inout [String]) {
+                                     label: String, context: TransformContext, warnings: inout [String]) {
         let value = "\(json[idKey] ?? "")"
         guard !value.isEmpty, value != "-1", value != "0", value != "<null>" else { return }
         if let name = context.sourceName(lookupType, id: value),
@@ -411,7 +432,7 @@ enum ProTransformer {
             json[idKey] = destId
         } else {
             json[idKey] = "-1"
-            warnings.append("The \(lookupType) reference does not exist on the destination and was unset.")
+            warnings.append("The \(label) does not exist on the destination and was cleared.")
         }
     }
 
@@ -450,7 +471,7 @@ enum ProTransformer {
             json["categoryId"] = destId
             if json["categoryName"] != nil { json["categoryName"] = name }
         } else {
-            warnings.append("Category \"\(name)\" does not exist on the destination; the object was filed without one.")
+            warnings.append("Category \"\(name)\" does not exist on the destination; the object was created without one.")
             json["categoryId"] = "-1"
             json["categoryName"] = nil
         }
@@ -467,7 +488,7 @@ enum ProTransformer {
            let destSiteId = context.destId("sites", named: siteName) {
             json["siteId"] = destSiteId
         } else {
-            warnings.append("The object's site does not exist on the destination; it was filed under None.")
+            warnings.append("The site does not exist on the destination; the object was created without one.")
             json["siteId"] = "-1"
         }
     }

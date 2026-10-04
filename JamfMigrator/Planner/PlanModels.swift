@@ -49,7 +49,6 @@ struct ObjectPlan: Sendable, Equatable, Codable, Identifiable {
 
 struct MigrationPlan: Sendable, Codable {
     var mode: RunMode = .copy
-    var createdAt = Date()
     var entries: [ObjectPlan] = []
 
     func entries(for typeKey: String) -> [ObjectPlan] {

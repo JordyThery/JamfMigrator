@@ -4,7 +4,7 @@
 //
 //  Cross-tenant mappings that can't be resolved by name: ADE (device
 //  enrollment) instances and distribution points. Collected in the Clone
-//  wizard and consumed by the PreStage transforms in Phase 6.
+//  wizard and consumed by the PreStage transforms.
 //
 
 import Foundation

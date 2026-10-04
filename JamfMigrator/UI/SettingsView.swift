@@ -55,6 +55,7 @@ private struct TenantsSettings: View {
                     Button("Remove", systemImage: "minus") {
                         if let tenant = selectedTenant {
                             appState.tenantStore.remove(tenant)
+                            appState.forgetTenant(tenant.id)
                             selectedTenantID = nil
                         }
                     }
@@ -141,7 +142,7 @@ private struct TenantEditor: View {
             }
 
             Toggle("Protected — this tenant can never be wiped", isOn: binding(\.isProtected))
-                .help("A protected tenant can't be wiped at all. Recommended for the source tenant.")
+                .help("Recommended for the source tenant.")
         }
         .formStyle(.grouped)
         .onAppear { reload() }

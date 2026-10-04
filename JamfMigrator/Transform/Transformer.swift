@@ -3,12 +3,11 @@
 //  JamfMigrator
 //
 //  Turns a source object's payload into what gets written to the destination.
-//  The per-type rules are ported from the legacy Cleanup.swift.
 //
 
 import Foundation
 
-enum TransformAction: Sendable, Equatable {
+enum TransformAction: Sendable {
     case create
     /// Updating an existing destination object with this id.
     case update(destId: String)
@@ -21,15 +20,16 @@ struct TransformContext: Sendable {
     var destIdsByName: [String: [String: String]] = [:]
     /// Source object names by id, per registry key (to resolve id-only references).
     var sourceNamesById: [String: [String: String]] = [:]
-    /// Service-account secrets from Settings: "bind", "ldap", "fsrw", "fsro".
+    /// Service-account secrets from Settings, by key ("bind", "ldap", "fsrw",
+    /// "fsro", "recoverylock").
     var secrets: [String: String] = [:]
     /// Which registry keys are part of this run (networksegments blanks the
     /// SUS reference when software update servers aren't migrated).
     var includedTypes: Set<String> = []
     /// For profile updates: the destination profile's payload UUID to keep.
     var destProfileUUID: String? = nil
-    /// ADE and distribution-point mappings from the Clone wizard (Phase 6
-    /// PreStage transforms consume these).
+    /// ADE and distribution-point mappings from the Clone wizard; the
+    /// PreStage transforms consume these.
     var mappings = TenantMappings()
     /// For PreStage updates: the destination's versionLock values, which every
     /// PUT must echo. Keys: "root", "locationInformation",
@@ -38,6 +38,10 @@ struct TransformContext: Sendable {
     /// For PreStage updates: the destination's nested block ids, which a PUT
     /// must echo (a POST sends "-1").
     var destPreStageIds: [String: String] = [:]
+    /// Set by the planner when transforming both sides of a diff: fields that
+    /// are regenerated on every write (Blueprint payload identifiers) use a
+    /// stable placeholder instead, so identical objects compare as unchanged.
+    var isForComparison = false
 
     func destId(_ typeKey: String, named name: String) -> String? {
         destIdsByName[typeKey]?[name]
@@ -79,5 +83,5 @@ enum TransformOutcome: Sendable {
 }
 
 /// The placeholder written where the API won't return a secret and Settings
-/// holds no replacement. Matches the legacy default.
+/// holds no replacement.
 let placeholderSecret = "changeM3!"

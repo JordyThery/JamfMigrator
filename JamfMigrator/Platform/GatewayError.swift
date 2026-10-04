@@ -15,7 +15,8 @@ struct APIErrorDetail: Equatable, Sendable {
     let description: String?
 }
 
-/// Any failure while talking to the platform API gateway.
+/// Any failure while talking to a Jamf API — the platform gateway or a
+/// direct Jamf Pro server.
 enum GatewayError: Error, LocalizedError {
     /// A URL could not be built from the path or query.
     case invalidURL(String)
@@ -45,7 +46,10 @@ enum GatewayError: Error, LocalizedError {
         case .transport(let error):
             return "Network error: \(error.localizedDescription)"
         case .tokenFailure(let status, let detail):
-            return "Authentication failed (\(status))\(detail.map { ": \($0)" } ?? "")"
+            // status 0 marks a local configuration problem, not an HTTP failure
+            return status == 0
+                ? (detail ?? "Authentication failed")
+                : "Authentication failed (\(status))\(detail.map { ": \($0)" } ?? "")"
         case .response(let status, let errors, let traceId, let body):
             var message = "HTTP \(status)"
             if !errors.isEmpty {
@@ -86,7 +90,6 @@ enum GatewayError: Error, LocalizedError {
             let field: String?
             let description: String?
         }
-        let httpStatus: Int?
         let traceId: String?
         let errors: [Entry]?
     }
@@ -94,7 +97,6 @@ enum GatewayError: Error, LocalizedError {
     private struct BenchmarkShape: Decodable {
         let message: String?
         let error: String?
-        let statusCode: Int?
         let logref: String?
     }
 }

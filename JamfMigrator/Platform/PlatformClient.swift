@@ -43,7 +43,6 @@ actor PlatformClient {
     struct Response: Sendable {
         let status: Int
         let data: Data
-        let headers: [String: String]
 
         func decoded<T: Decodable>(_ type: T.Type = T.self) throws -> T {
             do {
@@ -132,6 +131,9 @@ actor PlatformClient {
             do {
                 (data, urlResponse) = try await session.data(for: attemptRequest, delegate: redirectBlocker)
             } catch {
+                if error is CancellationError || (error as? URLError)?.code == .cancelled {
+                    throw CancellationError()
+                }
                 throw GatewayError.transport(error)
             }
             guard let http = urlResponse as? HTTPURLResponse else {
@@ -140,13 +142,7 @@ actor PlatformClient {
 
             switch http.statusCode {
             case 200...299:
-                var headers = [String: String]()
-                for (name, value) in http.allHeaderFields {
-                    if let name = name as? String, let value = value as? String {
-                        headers[name] = value
-                    }
-                }
-                return Response(status: http.statusCode, data: data, headers: headers)
+                return Response(status: http.statusCode, data: data)
             case 401 where !didRetryAuth:
                 didRetryAuth = true
                 await tokenProvider.invalidate()
@@ -234,14 +230,14 @@ actor PlatformClient {
     }
 
     private func throttleWrite() async throws {
+        // claim the next write slot before suspending, so concurrent writers
+        // queue behind each other instead of waking together
         let now = ContinuousClock.now
-        if let lastWrite {
-            let elapsed = now - lastWrite
-            if elapsed < configuration.writeInterval {
-                try await sleep(configuration.writeInterval - elapsed)
-            }
+        let slot = max(lastWrite.map { $0 + configuration.writeInterval } ?? now, now)
+        lastWrite = slot
+        if slot > now {
+            try await sleep(slot - now)
         }
-        lastWrite = ContinuousClock.now
     }
 }
 

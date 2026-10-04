@@ -107,13 +107,10 @@ actor TokenProvider {
         switch credentials.method {
         case .oauthClient(let clientId, let clientSecret):
             request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-            var form = URLComponents()
-            form.queryItems = [
-                URLQueryItem(name: "grant_type", value: "client_credentials"),
-                URLQueryItem(name: "client_id", value: clientId),
-                URLQueryItem(name: "client_secret", value: clientSecret),
-            ]
-            request.httpBody = form.percentEncodedQuery?.data(using: .utf8)
+            // form-encode by hand: URLComponents leaves "+" unencoded, which
+            // the server would decode as a space inside a secret
+            request.httpBody = Data(
+                "grant_type=client_credentials&client_id=\(formEncoded(clientId))&client_secret=\(formEncoded(clientSecret))".utf8)
         case .userPassword(let username, let password):
             let basic = Data("\(username):\(password)".utf8).base64EncodedString()
             request.setValue("Basic \(basic)", forHTTPHeaderField: "Authorization")
@@ -130,8 +127,8 @@ actor TokenProvider {
             throw GatewayError.transport(URLError(.badServerResponse))
         }
         guard (200...299).contains(http.statusCode) else {
-            throw GatewayError.tokenFailure(status: http.statusCode,
-                                            detail: String(data: data, encoding: .utf8))
+            let detail = String(data: data, encoding: .utf8).map { String($0.prefix(300)) }
+            throw GatewayError.tokenFailure(status: http.statusCode, detail: detail)
         }
 
         // two response shapes: OAuth {access_token, expires_in} and the Jamf
@@ -160,5 +157,11 @@ actor TokenProvider {
         } catch {
             throw GatewayError.decoding(error)
         }
+    }
+
+    private static func formEncoded(_ value: String) -> String {
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~")
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
     }
 }

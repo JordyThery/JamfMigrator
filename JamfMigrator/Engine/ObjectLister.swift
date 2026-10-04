@@ -21,10 +21,6 @@ enum ObjectLister {
         switch type.listShape {
         case .proPaginated:
             return try await listProPaginated(type, on: client)
-        case .proArray:
-            let response = try await client.send(.get, type.api.listPath, accept: "application/json")
-            let array = try JSONSerialization.jsonObject(with: response.data) as? [[String: Any]] ?? []
-            return refs(from: array, nameKey: type.nameKey)
         case .classicArray(let container):
             let response = try await client.send(.get, type.api.listPath, accept: "application/json")
             let root = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]
@@ -65,8 +61,14 @@ enum ObjectLister {
         entries.compactMap { entry in
             guard let id = entry["id"] else { return nil }
             let name = entry[nameKey] as? String ?? ""
-            return ObjectRef(id: "\(id)", name: name)
+            return ObjectRef(id: "\(id)", name: canonicalName(name))
         }
+    }
+
+    /// Classic creates store a leading space as a non-breaking space (the API
+    /// strips a plain leading space), so names must match across that rewrite.
+    static func canonicalName(_ name: String) -> String {
+        name.hasPrefix("\u{00A0}") ? " " + name.dropFirst() : name
     }
 
     /// The object's full payload: JSON dict for Pro, XML string for Classic.

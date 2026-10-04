@@ -29,7 +29,7 @@ actor MigrationPlanner {
     private var plannedNames = [String: Set<String>]()
 
     /// The sentinel id used for references to objects this run will create.
-    static let plannedId = "(planned)"
+    private static let plannedId = "(planned)"
 
     init(source: PlatformClient,
          dest: PlatformClient,
@@ -52,7 +52,7 @@ actor MigrationPlanner {
             do {
                 try await planType(type, included: typeKeys, into: &plan)
             } catch {
-                plan.entries.append(ObjectPlan(typeKey: type.key, objectId: "-", name: "(whole step)",
+                plan.entries.append(ObjectPlan(typeKey: type.key, objectId: "-", name: "(all objects)",
                                                change: .blocked(reason: error.localizedDescription)))
             }
         }
@@ -62,7 +62,7 @@ actor MigrationPlanner {
     private func planType(_ type: ObjectType, included: Set<String>, into plan: inout MigrationPlan) async throws {
         if type.requiresGateway && !(source.supportsPlatformEndpoints && dest.supportsPlatformEndpoints) {
             plan.entries.append(ObjectPlan(typeKey: type.key, objectId: "-", name: "(all objects)",
-                                           change: .blocked(reason: "\(type.displayName) require the Jamf Platform API gateway; a tenant here connects directly to Jamf Pro")))
+                                           change: .blocked(reason: "\(type.displayName) require the Jamf Platform API gateway; one of the selected tenants connects directly to Jamf Pro")))
             return
         }
         for dependency in type.dependencies + ["sites"] {
@@ -80,7 +80,7 @@ actor MigrationPlanner {
         for ref in sourceRefs {
             if !seenNames.insert(ref.name).inserted {
                 plan.entries.append(ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
-                                               change: .blocked(reason: "Another source object has the same name; rename it to migrate both")))
+                                               change: .blocked(reason: "Duplicate name on the source; rename one of the two objects to migrate both")))
                 continue
             }
             let entry = await planObject(type, ref: ref, included: included)
@@ -101,6 +101,7 @@ actor MigrationPlanner {
             let existingDestId = destIdsByName[type.key]?[ref.name]
 
             var context = TransformContext()
+            context.isForComparison = true
             context.destIdsByName = lookupsIncludingPlanned()
             context.sourceNamesById = sourceNamesById
             context.secrets = secrets
@@ -137,6 +138,7 @@ actor MigrationPlanner {
                 // out, and identity mappings because the destination payload
                 // already holds destination ids
                 var destContext = TransformContext()
+                destContext.isForComparison = true
                 destContext.action = context.action
                 destContext.destIdsByName = destIdsByName
                 destContext.sourceNamesById = destNamesById

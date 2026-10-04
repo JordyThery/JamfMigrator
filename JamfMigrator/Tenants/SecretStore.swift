@@ -9,7 +9,7 @@ import Foundation
 import Security
 
 /// Stores one secret string per account. Backed by the Keychain in the app
-/// and by a dictionary in tests.
+/// and by a dictionary in tests (see InMemorySecretStore in the test target).
 protocol SecretStore: Sendable {
     func secret(for account: String) -> String?
     /// Passing nil deletes the entry.
@@ -63,16 +63,3 @@ struct KeychainSecretStore: SecretStore {
     }
 }
 
-/// Test double: keeps secrets in memory.
-final class InMemorySecretStore: SecretStore, @unchecked Sendable {
-    private let lock = NSLock()
-    private var secrets = [String: String]()
-
-    func secret(for account: String) -> String? {
-        lock.withLock { secrets[account] }
-    }
-
-    func setSecret(_ secret: String?, for account: String) {
-        lock.withLock { secrets[account] = secret }
-    }
-}

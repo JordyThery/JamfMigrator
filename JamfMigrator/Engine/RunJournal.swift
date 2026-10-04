@@ -37,13 +37,15 @@ enum RunMode: String, Codable, Sendable {
 }
 
 struct RunJournal: Codable, Sendable {
+    /// On-disk metadata only; useful when inspecting a journal by hand.
     var runId = UUID()
     var mode: RunMode = .copy
     var startedAt = Date()
     var sourceTenantId: UUID?
     var destTenantId: UUID?
-    /// Source id → destination id, per registry key. Also fed by name matches,
-    /// so Classic payloads referencing ids can be resolved later.
+    /// Source id → destination id, per registry key, captured from write
+    /// statuses. On-disk metadata for debugging and tests; the engine resolves
+    /// ids through its own lookups.
     var idMap: [String: [String: String]] = [:]
     /// Per-object outcome, per registry key, keyed by source id (copy) or
     /// destination id (delete).
@@ -74,7 +76,8 @@ actor JournalStore {
     /// requested mode and tenants; otherwise starts a fresh run.
     init(url: URL, mode: RunMode, sourceTenantId: UUID? = nil, destTenantId: UUID? = nil) {
         self.fileURL = url
-        if let data = try? Data(contentsOf: url),
+        if FileManager.default.fileExists(atPath: url.path),
+           let data = try? Data(contentsOf: url),
            let existing = try? JSONDecoder().decode(RunJournal.self, from: data),
            existing.mode == mode,
            existing.sourceTenantId == sourceTenantId,

@@ -51,14 +51,19 @@ actor TenantExporter {
                     guard !isCancelled else { break }
                     do {
                         let payload = try await ObjectLister.detail(type, id: ref.id, on: client)
+                        let wrote: Bool
                         switch payload {
                         case .xml(let xml):
-                            writer.writeRaw(type: type, ref: ref, payload: Data(xml.utf8), isXML: true)
+                            wrote = writer.writeRaw(type: type, ref: ref, payload: Data(xml.utf8), isXML: true)
                         case .json(let json):
                             let data = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
-                            writer.writeRaw(type: type, ref: ref, payload: data, isXML: false)
+                            wrote = writer.writeRaw(type: type, ref: ref, payload: data, isXML: false)
                         }
-                        written += 1
+                        if wrote {
+                            written += 1
+                        } else {
+                            result.errors.append("\(type.displayName) \"\(ref.name)\": the file could not be written")
+                        }
                     } catch {
                         result.errors.append("\(type.displayName) \"\(ref.name)\": \(error.localizedDescription)")
                     }

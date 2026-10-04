@@ -60,8 +60,6 @@ enum ObjectAPI: Hashable, Sendable {
 enum ListShape: Sendable {
     /// Pro: {"totalCount": n, "results": [...]} with page/page-size paging.
     case proPaginated
-    /// Pro: a bare JSON array (e.g. /pro/v1/sites).
-    case proArray
     /// Classic: {"<container>": [{id, name}, ...]}.
     case classicArray(container: String)
     /// Classic /accounts: {"accounts": {"users": [...], "groups": [...]}}.
@@ -74,7 +72,7 @@ enum ListShape: Sendable {
 struct ObjectType: Identifiable, Sendable {
     let key: String
     let displayName: String
-    /// Migration step (1...8 for now; 9+ arrive in Phase 6). Types run in
+    /// Migration step (1-13). Types run in
     /// registry order; deletes run in exact reverse registry order.
     let step: Int
     let api: ObjectAPI
@@ -103,7 +101,7 @@ struct ObjectType: Identifiable, Sendable {
 
 enum ObjectRegistry {
 
-    /// Steps 1-8, in migration order.
+    /// All migratable types, in migration order.
     static let types: [ObjectType] = [
         // step 1
         ObjectType(key: "sites", displayName: "Sites", step: 1,

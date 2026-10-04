@@ -27,11 +27,18 @@ struct RunReport: Codable, Sendable {
         entries.filter { $0.type == type }
     }
 
+    /// Everything that did not finish: failures and by-design blocks.
     var failures: [RunReportEntry] {
         entries.filter { !$0.status.isDone }
     }
 
-    var allWarnings: [RunReportEntry] {
+    /// Only the real failures — what a resumed run would retry. Blocked
+    /// entries are by design and must not keep a journal alive.
+    var retryableFailures: [RunReportEntry] {
+        entries.filter { if case .failed = $0.status { true } else { false } }
+    }
+
+    var entriesWithWarnings: [RunReportEntry] {
         entries.filter { !$0.warnings.isEmpty }
     }
 }

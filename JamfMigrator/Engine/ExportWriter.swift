@@ -12,15 +12,13 @@ struct ExportWriter: Sendable {
     /// The run's export root, e.g. …/exports/20261004-0930.
     let root: URL
 
-    init(root: URL) {
-        self.root = root
-    }
-
-    func writeRaw(type: ObjectType, ref: ObjectRef, payload: Data, isXML: Bool) {
+    @discardableResult
+    func writeRaw(type: ObjectType, ref: ObjectRef, payload: Data, isXML: Bool) -> Bool {
         write(payload, to: folder(type: type, kind: "raw"), ref: ref, isXML: isXML)
     }
 
-    func writeTrimmed(type: ObjectType, ref: ObjectRef, payload: Data, isXML: Bool) {
+    @discardableResult
+    func writeTrimmed(type: ObjectType, ref: ObjectRef, payload: Data, isXML: Bool) -> Bool {
         write(payload, to: folder(type: type, kind: "trimmed"), ref: ref, isXML: isXML)
     }
 
@@ -29,14 +27,16 @@ struct ExportWriter: Sendable {
             .appendingPathComponent(kind, isDirectory: true)
     }
 
-    private func write(_ payload: Data, to folder: URL, ref: ObjectRef, isXML: Bool) {
+    private func write(_ payload: Data, to folder: URL, ref: ObjectRef, isXML: Bool) -> Bool {
         do {
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             let safeName = ref.name.replacingOccurrences(of: "/", with: ":")
             let url = folder.appendingPathComponent("\(safeName)-\(ref.id).\(isXML ? "xml" : "json")")
             try payload.write(to: url, options: .atomic)
+            return true
         } catch {
             WriteToLog.shared.message("[ExportWriter] could not write \(ref.name): \(error.localizedDescription)")
+            return false
         }
     }
 }

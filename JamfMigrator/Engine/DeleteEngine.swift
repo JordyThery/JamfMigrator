@@ -41,6 +41,8 @@ actor DeleteEngine {
         for type in ObjectRegistry.deletionOrder where typeKeys.contains(type.key) {
             guard !isCancelled else { break }
             if type.requiresGateway && !client.supportsPlatformEndpoints {
+                report.add(type: type, ref: ObjectRef(id: "-", name: "(all objects)"),
+                           status: .blocked(reason: "\(type.displayName) require the Jamf Platform API gateway"))
                 continue
             }
             if case .singleton = type.listShape {
@@ -50,15 +52,13 @@ actor DeleteEngine {
             let excluded = excluding[type.key] ?? []
             do {
                 let refs = try await ObjectLister.list(type, on: client)
+                    .filter { !excluded.contains($0.id) }
                 var completed = 0
-                for ref in refs where !excluded.contains(ref.id) {
+                for ref in refs {
                     guard !isCancelled else { break }
                     completed += 1
                     if Self.protectedNames[type.key]?.contains(ref.name) == true {
-                        continue
-                    }
-                    if let previous = await journal.status(type: type.key, objectId: ref.id), previous == .deleted {
-                        report.add(type: type, ref: ref, status: .deleted)
+                        report.add(type: type, ref: ref, status: .blocked(reason: "Built-in object"))
                         continue
                     }
                     let status = await deleteObject(type, ref: ref)
@@ -72,20 +72,40 @@ actor DeleteEngine {
                                             completed: completed, total: refs.count, status: status))
                 }
             } catch {
-                report.add(type: type, ref: ObjectRef(id: "-", name: "(whole step)"),
+                report.add(type: type, ref: ObjectRef(id: "-", name: "(all objects)"),
                            status: .failed(reason: error.localizedDescription))
             }
         }
 
-        // whatever was held by a dependency gets one more pass now that the
-        // dependent steps have run
-        for (type, ref) in retryQueue {
-            guard !isCancelled else { break }
-            let status = await deleteObject(type, ref: ref)
-            await journal.record(type: type.key, objectId: ref.id, status: status)
-            report.add(type: type, ref: ref, status: status)
-            progress?(ProgressEvent(type: type.key, objectName: ref.name,
-                                    completed: 1, total: 1, status: status))
+        // objects held by a dependency get repeated passes until a full pass
+        // deletes nothing more
+        var queue = retryQueue
+        while !queue.isEmpty && !isCancelled {
+            var held = [(ObjectType, ObjectRef)]()
+            var completed = 0
+            for (type, ref) in queue {
+                guard !isCancelled else { break }
+                completed += 1
+                let status = await deleteObject(type, ref: ref)
+                if case .failed(let reason) = status, isDependencyFailure(reason) {
+                    held.append((type, ref))
+                    continue
+                }
+                await journal.record(type: type.key, objectId: ref.id, status: status)
+                report.add(type: type, ref: ref, status: status)
+                progress?(ProgressEvent(type: type.key, objectName: ref.name,
+                                        completed: completed, total: queue.count, status: status))
+            }
+            if held.count == queue.count {
+                // no progress: record what is still referenced and stop
+                for (type, ref) in held {
+                    let status = ObjectStatus.failed(reason: "Still referenced by another object after every retry")
+                    await journal.record(type: type.key, objectId: ref.id, status: status)
+                    report.add(type: type, ref: ref, status: status)
+                }
+                break
+            }
+            queue = held
         }
         return report
     }

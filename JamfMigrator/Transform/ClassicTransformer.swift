@@ -3,7 +3,7 @@
 //  JamfMigrator
 //
 //  Per-type rewriting of Classic XML payloads before they are written to the
-//  destination. Ported from the legacy Cleanup.Xml.
+//  destination.
 //
 
 import Foundation
@@ -67,7 +67,7 @@ enum ClassicTransformer {
             // passwords never transfer; group payloads have none, but strip defensively
             out = ClassicXML.replacing(pattern: "<password_sha256[^>]*>(.*?)</password_sha256>", in: out, with: "")
             // LDAP reference needs the destination server's id
-            let ldapName = ClassicXML.value(of: "name", in: ClassicXML.value(of: "ldap_server", in: out))
+            let ldapName = ClassicXML.text(of: "name", in: ClassicXML.value(of: "ldap_server", in: out))
             if !ldapName.isEmpty {
                 if let destLdapId = context.destId("ldapservers", named: ldapName) {
                     out = ClassicXML.replacing(pattern: "<ldap_server>(.|\\n|\\r)*?</ldap_server>", in: out,
@@ -115,15 +115,15 @@ enum ClassicTransformer {
             // self-service icon: captured here, copied by the engine after the write
             if out.contains("</self_service_icon>") {
                 let iconXml = ClassicXML.value(of: "self_service_icon", in: xml)
-                let iconName = ClassicXML.value(of: "filename", in: iconXml)
-                var iconUri = ClassicXML.value(of: "uri", in: iconXml)
+                let iconName = ClassicXML.text(of: "filename", in: iconXml)
+                var iconUri = ClassicXML.text(of: "uri", in: iconXml)
                 if type.key != "policies", let index = iconUri.firstIndex(of: "&") {
                     iconUri = String(iconUri.prefix(upTo: index))
                 }
                 let iconId = Self.iconId(fromUri: iconUri)
                 if !iconId.isEmpty && iconId != "0" {
-                    let displayName = ClassicXML.value(of: "self_service_display_name",
-                                                       in: ClassicXML.value(of: "self_service", in: xml))
+                    let displayName = ClassicXML.text(of: "self_service_display_name",
+                                                      in: ClassicXML.value(of: "self_service", in: xml))
                     icon = SelfServiceIcon(name: iconName, sourceId: iconId, uri: iconUri,
                                            displayName: displayName)
                 }
@@ -133,8 +133,8 @@ enum ClassicTransformer {
                 // on write, so capture it for the engine and strip the block
                 if icon == nil, out.contains("</icon>") {
                     let iconXml = ClassicXML.value(of: "icon", in: ClassicXML.value(of: "general", in: xml))
-                    let iconName = ClassicXML.value(of: "name", in: iconXml)
-                    var iconUri = ClassicXML.value(of: "uri", in: iconXml)
+                    let iconName = ClassicXML.text(of: "name", in: iconXml)
+                    var iconUri = ClassicXML.text(of: "uri", in: iconXml)
                     if let index = iconUri.firstIndex(of: "&") {
                         iconUri = String(iconUri.prefix(upTo: index))
                     }
@@ -146,10 +146,12 @@ enum ClassicTransformer {
                 out = ClassicXML.strippingTag("icon", from: out)
                 // the server derives internal_app itself; it never round-trips
                 out = ClassicXML.strippingTag("internal_app", from: out)
-                // VPP licences belong to each tenant's own token
-                out = ClassicXML.replacing(pattern: "<vpp>(.*?)</vpp>", in: out,
-                                           with: "<vpp><assign_vpp_device_based_licenses>false</assign_vpp_device_based_licenses><vpp_admin_account_id>-1</vpp_admin_account_id></vpp>")
-                warnings.append("VPP assignment was reset; licences belong to the destination tenant's own token.")
+                // VPP licenses belong to each tenant's own token
+                if out.contains("<vpp>") {
+                    out = ClassicXML.replacing(pattern: "<vpp>(.*?)</vpp>", in: out,
+                                               with: "<vpp><assign_vpp_device_based_licenses>false</assign_vpp_device_based_licenses><vpp_admin_account_id>-1</vpp_admin_account_id></vpp>")
+                    warnings.append("VPP assignment was reset; licenses belong to the destination tenant's own token.")
+                }
             }
             // names that start with a space lose it on create
             out = ClassicXML.replacing(pattern: "<name> ", in: out, with: "<name>&#xA0;")
@@ -159,8 +161,8 @@ enum ClassicTransformer {
             // the accounts payload only returns a hash
             if out.contains("password_sha256") {
                 out = ClassicXML.replacing(pattern: "<password_sha256[^>]*>(.*?)</password_sha256>", in: out,
-                                           with: "<password>jamfchangeme</password>")
-                warnings.append("A managed-account password was replaced with \"jamfchangeme\"; set the real one on the destination.")
+                                           with: "<password>\(placeholderSecret)</password>")
+                warnings.append("A managed-account password was replaced with a placeholder; set the real one on the destination.")
             }
             out = ClassicXML.replacing(pattern: "<management_password_sha256[^>]*>(.*?)</management_password_sha256>", in: out, with: "")
 
@@ -175,7 +177,7 @@ enum ClassicTransformer {
             createPathOverride = "proclassic/patchpolicies/softwaretitleconfig/id/\(destTitleId)"
 
         default:
-            return .blocked(reason: "No Classic transform for \(type.key)")
+            return .blocked(reason: "\(type.displayName) are not supported by this version of the app")
         }
 
         guard let body = out.data(using: .utf8) else {

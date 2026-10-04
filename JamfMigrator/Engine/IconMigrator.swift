@@ -33,8 +33,7 @@ actor IconMigrator {
         } else if let url = URL(string: icon.uri), icon.uri.hasPrefix("https://") {
             let (data, response) = try await URLSession.shared.data(from: url)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-                throw GatewayError.response(status: (response as? HTTPURLResponse)?.statusCode ?? 0,
-                                            errors: [], traceId: nil, body: data)
+                throw GatewayError.from(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: data)
             }
             imageData = data
         } else {
@@ -54,7 +53,7 @@ actor IconMigrator {
     }
 
     /// Points a freshly written Classic object at the destination icon.
-    func assign(iconId: String, displayName: String = "", to type: ObjectType, destObjectId: String, on client: PlatformClient) async throws {
+    func assign(iconId: String, displayName: String, to type: ObjectType, destObjectId: String, on client: PlatformClient) async throws {
         let xml: String
         switch type.key {
         case "policies":

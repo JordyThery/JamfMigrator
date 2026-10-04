@@ -77,7 +77,8 @@ enum Preflight {
         var destinationCounts = [String: Int]()
         if destCheck.reachable {
             for type in types where destPermissions[type.key] == .allowed {
-                destinationCounts[type.key] = (try? await ObjectLister.list(type, on: dest).count) ?? 0
+                // -1 marks a failed list; it must not read as "empty"
+                destinationCounts[type.key] = (try? await ObjectLister.list(type, on: dest).count) ?? -1
             }
         }
 

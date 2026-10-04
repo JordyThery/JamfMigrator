@@ -23,8 +23,7 @@ final class AppState {
     var mode: RunMode = .copy {
         didSet {
             if mode != oldValue {
-                plan = nil
-                report = nil
+                invalidateDerivedState()
             }
         }
     }
@@ -36,6 +35,7 @@ final class AppState {
         didSet {
             if let sourceTenantID {
                 UserDefaults.standard.set(sourceTenantID.uuidString, forKey: "sourceTenantID")
+                if oldValue != nil && oldValue != sourceTenantID { invalidateDerivedState() }
             }
         }
     }
@@ -43,6 +43,7 @@ final class AppState {
         didSet {
             if let destTenantID {
                 UserDefaults.standard.set(destTenantID.uuidString, forKey: "destTenantID")
+                if oldValue != nil && oldValue != destTenantID { invalidateDerivedState() }
             }
         }
     }
@@ -69,6 +70,26 @@ final class AppState {
     var runEvents: [ProgressEvent] = []
     var report: RunReport?
     var lastError: String?
+    /// Set by the Migration › Run menu command; ContentView turns it into the
+    /// same confirmation dialog the toolbar button shows.
+    var runRequested = false
+
+    /// Everything derived from the current mode and tenant pair. Called when
+    /// either changes, so a stale plan can never run against the wrong tenant.
+    private func invalidateDerivedState() {
+        if isPlanning {
+            runTask?.cancel()
+            isPlanning = false
+        }
+        plan = nil
+        preflight = nil
+        report = nil
+        verifyReport = nil
+        backupResult = nil
+        excludedObjectIds = [:]
+        selectedObjectID = nil
+        searchText = ""
+    }
 
     // MARK: Guided tour
 
@@ -86,9 +107,10 @@ final class AppState {
     }
 
     func startTourOnFirstLaunch() {
-        if !UserDefaults.standard.bool(forKey: "hasSeenGuidedTour") {
-            startTour()
-        }
+        // mark it seen right away, so a second window can't restart the tour
+        guard !UserDefaults.standard.bool(forKey: "hasSeenGuidedTour") else { return }
+        UserDefaults.standard.set(true, forKey: "hasSeenGuidedTour")
+        startTour()
     }
 
     // MARK: Clone / Wipe wizard state
@@ -130,8 +152,23 @@ final class AppState {
     var sourceTenant: Tenant? { sourceTenantID.flatMap(tenantStore.tenant(id:)) }
     var destTenant: Tenant? { destTenantID.flatMap(tenantStore.tenant(id:)) }
 
-    /// Delete mode acts on the destination tenant.
-    var targetTenant: Tenant? { destTenant }
+    /// Clears the selections and stored defaults of a removed tenant.
+    func forgetTenant(_ id: Tenant.ID) {
+        let defaults = UserDefaults.standard
+        if sourceTenantID == id {
+            sourceTenantID = nil
+            defaults.removeObject(forKey: "sourceTenantID")
+        }
+        if destTenantID == id {
+            destTenantID = nil
+            defaults.removeObject(forKey: "destTenantID")
+        }
+        for key in defaults.dictionaryRepresentation().keys
+        where key.hasPrefix("mappings-") && key.contains(id.uuidString) {
+            defaults.removeObject(forKey: key)
+        }
+        invalidateDerivedState()
+    }
 
     /// Whether the current tenant pair can reach the platform-only namespaces
     /// (Blueprints, Compliance Benchmarks). Delete mode only needs the
@@ -143,14 +180,18 @@ final class AppState {
     }
 
     var canPreview: Bool {
-        guard !isPlanning && !isRunning, destTenant != nil, !selectedTypeKeys.isEmpty else { return false }
+        guard !isPlanning && !isRunning, tourIndex == nil,
+              destTenant != nil, !selectedTypeKeys.isEmpty else { return false }
         if mode == .delete { return true }
         // copying a tenant onto itself is never meaningful
         return sourceTenant != nil && sourceTenantID != destTenantID
     }
 
     var canRun: Bool {
-        plan != nil && !isRunning && !isPlanning && effectiveChangeCount > 0
+        // the plan must match the current mode — a stale plan from before a
+        // mode switch must never drive a run
+        plan?.mode == mode && !isRunning && !isPlanning && tourIndex == nil
+            && effectiveChangeCount > 0
     }
 
     /// The plan's actionable changes minus the unchecked objects — what a run
@@ -182,6 +223,7 @@ final class AppState {
         ("ldap", "LDAP bind password"),
         ("fsrw", "File share read/write password"),
         ("fsro", "File share read-only password"),
+        ("recoverylock", "PreStage Recovery Lock password"),
     ]
 
     func serviceSecret(_ key: String) -> String {
@@ -205,6 +247,7 @@ final class AppState {
 
     func preview() {
         guard canPreview, let destTenant else { return }
+        runTask?.cancel()
         let dest = tenantStore.client(for: destTenant)
         isPlanning = true
         plan = nil
@@ -222,12 +265,15 @@ final class AppState {
             if mode == .delete {
                 let planner = MigrationPlanner(source: dest, dest: dest, secrets: secrets, mappings: mappings, progress: progress)
                 let plan = await planner.planDeletion(typeKeys: typeKeys)
+                guard !Task.isCancelled, self.mode == mode else { return }
                 self.plan = plan
             } else if let sourceTenant {
                 let source = tenantStore.client(for: sourceTenant)
-                self.preflight = await Preflight.run(source: source, dest: dest, typeKeys: typeKeys)
+                let preflight = await Preflight.run(source: source, dest: dest, typeKeys: typeKeys)
                 let planner = MigrationPlanner(source: source, dest: dest, secrets: secrets, mappings: mappings, progress: progress)
                 let plan = await planner.plan(typeKeys: typeKeys)
+                guard !Task.isCancelled, self.mode == mode else { return }
+                self.preflight = preflight
                 self.plan = plan
             }
             self.isPlanning = false
@@ -288,9 +334,11 @@ final class AppState {
         runTask?.cancel()
         let migration = activeMigration
         let delete = activeDelete
+        let exporter = activeExporter
         Task {
             await migration?.cancel()
             await delete?.cancel()
+            await exporter?.cancel()
         }
     }
 
@@ -299,11 +347,12 @@ final class AppState {
         self.isRunning = false
         self.activeMigration = nil
         self.activeDelete = nil
-        if report.failures.isEmpty {
+        if report.retryableFailures.isEmpty {
+            // done: remove the journal and discard the now-stale plan
             await journal.finish()
+            plan = nil
         }
-        // refresh the plan so the list reflects the new destination state
-        plan = nil
+        // on real failures the plan stays, so Resume run can retry
     }
 
     // MARK: Mappings
@@ -319,6 +368,9 @@ final class AppState {
            let data = UserDefaults.standard.data(forKey: key),
            let stored = try? JSONDecoder().decode(TenantMappings.self, from: data) {
             mappings = stored
+        } else if !mappings.isEmpty {
+            // nothing stored for this pair: don't carry the previous pair's ids
+            mappings = TenantMappings()
         }
         isLoadingMappings = true
         let source = tenantStore.client(for: sourceTenant)
