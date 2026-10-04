@@ -11,3 +11,7 @@ Bookmarks.*
 xcuserdata/
 -Xcc/
 build/
+
+# Local release artifacts
+Jamf Migrator.app/
+JamfMigrator-*.zip
