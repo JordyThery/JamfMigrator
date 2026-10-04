@@ -38,6 +38,15 @@ struct MappingTests {
             sourceDPs: [], destDPs: [])
         #expect(mappings.adeInstances.isEmpty)
     }
+
+    @Test func identityMappingsPassDestinationIdsThrough() {
+        // normalizing a destination payload must not re-map its ids
+        let mappings = TenantMappings(adeInstances: ["2": "5"], distributionPoints: ["-2": "-2"])
+        let identity = mappings.identity
+        #expect(identity.adeInstances["5"] == "5")
+        #expect(identity.adeInstances["2"] == "2")
+        #expect(identity.distributionPoints["-2"] == "-2")
+    }
 }
 
 struct TenantExporterTests {

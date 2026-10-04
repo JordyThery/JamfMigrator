@@ -122,10 +122,30 @@ enum ClassicTransformer {
                 }
                 let iconId = Self.iconId(fromUri: iconUri)
                 if !iconId.isEmpty && iconId != "0" {
-                    icon = SelfServiceIcon(name: iconName, sourceId: iconId)
+                    let displayName = ClassicXML.value(of: "self_service_display_name",
+                                                       in: ClassicXML.value(of: "self_service", in: xml))
+                    icon = SelfServiceIcon(name: iconName, sourceId: iconId, uri: iconUri,
+                                           displayName: displayName)
                 }
             }
             if type.key != "policies" {
+                // app icons live in general/icon; a foreign CDN URI is ignored
+                // on write, so capture it for the engine and strip the block
+                if icon == nil, out.contains("</icon>") {
+                    let iconXml = ClassicXML.value(of: "icon", in: ClassicXML.value(of: "general", in: xml))
+                    let iconName = ClassicXML.value(of: "name", in: iconXml)
+                    var iconUri = ClassicXML.value(of: "uri", in: iconXml)
+                    if let index = iconUri.firstIndex(of: "&") {
+                        iconUri = String(iconUri.prefix(upTo: index))
+                    }
+                    let iconId = Self.iconId(fromUri: iconUri)
+                    if !iconId.isEmpty && iconId != "0" {
+                        icon = SelfServiceIcon(name: iconName, sourceId: iconId, uri: iconUri)
+                    }
+                }
+                out = ClassicXML.strippingTag("icon", from: out)
+                // the server derives internal_app itself; it never round-trips
+                out = ClassicXML.strippingTag("internal_app", from: out)
                 // VPP licences belong to each tenant's own token
                 out = ClassicXML.replacing(pattern: "<vpp>(.*?)</vpp>", in: out,
                                            with: "<vpp><assign_vpp_device_based_licenses>false</assign_vpp_device_based_licenses><vpp_admin_account_id>-1</vpp_admin_account_id></vpp>")

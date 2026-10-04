@@ -114,7 +114,12 @@ enum ProTransformer {
             out["siteName"] = nil
 
             let smartGroupId = "\(out["smartGroupId"] ?? "")"
-            let smartGroupName = out["smartGroupName"] as? String ?? ""
+            // detail payloads carry only the id, not smartGroupName (verified
+            // live 2026-10-04) — resolve the name through the source lookup
+            var smartGroupName = out["smartGroupName"] as? String ?? ""
+            if smartGroupName.isEmpty {
+                smartGroupName = context.sourceName("smartcomputergroups", id: smartGroupId) ?? ""
+            }
             out["smartGroupName"] = nil
             if !smartGroupId.isEmpty && smartGroupId != "-1" && smartGroupId != "<null>" {
                 if let destGroupId = context.destId("smartcomputergroups", named: smartGroupName) {
@@ -124,12 +129,20 @@ enum ProTransformer {
                     out["enabled"] = false
                     warnings.append("Smart group \"\(smartGroupName)\" does not exist on the destination; the deployment was created without a scope and disabled.")
                 }
+            } else {
+                // the server stores "no group" as -1; normalize absent to match
+                out["smartGroupId"] = "-1"
             }
             if var selfService = out["selfServiceSettings"] as? [String: Any],
                let categories = selfService["categories"] as? [[String: Any]] {
                 var updated = [[String: Any]]()
                 for category in categories {
-                    let name = category["name"] as? String ?? ""
+                    // detail payloads carry the category id only — resolve
+                    // the name through the source lookup
+                    var name = category["name"] as? String ?? ""
+                    if name.isEmpty {
+                        name = context.sourceName("categories", id: "\(category["id"] ?? "")") ?? ""
+                    }
                     if let destCategoryId = context.destId("categories", named: name) {
                         updated.append(["id": destCategoryId, "featured": category["featured"] ?? false])
                     } else {
@@ -194,22 +207,23 @@ enum ProTransformer {
             out["enrollmentSiteId"] = scratch["siteId"]
         }
 
-        // nested blocks: strip ids, remap references, echo the destination's versionLocks
+        // nested blocks: the API REQUIRES id and versionLock — a POST sends
+        // "-1"/0, a PUT echoes the destination's (verified live 2026-10-04)
         if var location = out["locationInformation"] as? [String: Any] {
-            location["id"] = nil
+            location["id"] = isUpdate ? (context.destPreStageIds["locationInformation"] ?? "-1") : "-1"
             remapNamedId(&location, idKey: "buildingId", lookupType: "buildings", context: context, warnings: &warnings)
             remapNamedId(&location, idKey: "departmentId", lookupType: "departments", context: context, warnings: &warnings)
-            location["versionLock"] = isUpdate ? context.destVersionLocks["locationInformation"] : nil
+            location["versionLock"] = isUpdate ? (context.destVersionLocks["locationInformation"] ?? 0) : 0
             out["locationInformation"] = location
         }
         if var purchasing = out["purchasingInformation"] as? [String: Any] {
-            purchasing["id"] = nil
-            purchasing["versionLock"] = isUpdate ? context.destVersionLocks["purchasingInformation"] : nil
+            purchasing["id"] = isUpdate ? (context.destPreStageIds["purchasingInformation"] ?? "-1") : "-1"
+            purchasing["versionLock"] = isUpdate ? (context.destVersionLocks["purchasingInformation"] ?? 0) : 0
             out["purchasingInformation"] = purchasing
         }
         if var accounts = out["accountSettings"] as? [String: Any] {
-            accounts["id"] = nil
-            accounts["versionLock"] = isUpdate ? context.destVersionLocks["accountSettings"] : nil
+            accounts["id"] = isUpdate ? (context.destPreStageIds["accountSettings"] ?? "-1") : "-1"
+            accounts["versionLock"] = isUpdate ? (context.destVersionLocks["accountSettings"] ?? 0) : 0
             out["accountSettings"] = accounts
             warnings.append("The admin password is not returned by the API; set it on the destination PreStage.")
         }
@@ -250,6 +264,17 @@ enum ProTransformer {
                 out["customPackageDistributionPointId"] = mapped
             } else {
                 warnings.append("The custom package distribution point is not mapped; map it in the Clone wizard.")
+            }
+        }
+
+        // a manual Recovery Lock password is never returned by the API but is
+        // required when enabled — take it from Settings › Secrets or write a
+        // placeholder (verified live 2026-10-04: omitting it is a 400)
+        if out["enableRecoveryLock"] as? Bool == true,
+           "\(out["recoveryLockPasswordType"] ?? "")" == "MANUAL" {
+            out["recoveryLockPassword"] = context.secrets["recoverylock"] ?? placeholderSecret
+            if context.secrets["recoverylock"] == nil {
+                warnings.append("The Recovery Lock password is not returned by the API; a placeholder was written — change it on the destination.")
             }
         }
 

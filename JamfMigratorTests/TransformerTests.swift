@@ -22,6 +22,7 @@ private func context(action: TransformAction = .create) -> TransformContext {
         "sites": ["2": "HQ"],
         "packages": ["8": "Chrome-120.pkg"],
         "patchsoftwaretitles": ["5": "Google Chrome"],
+        "smartcomputergroups": ["17": "All Laptops"],
     ]
     context.includedTypes = Set(ObjectRegistry.types.map(\.key))
     return context
@@ -141,7 +142,8 @@ struct ClassicTransformerTests {
             return
         }
         let out = String(decoding: object.body, as: UTF8.self)
-        #expect(object.icon == SelfServiceIcon(name: "chrome.png", sourceId: "66"))
+        #expect(object.icon == SelfServiceIcon(name: "chrome.png", sourceId: "66",
+                                               uri: "https://src.jamfcloud.com/iconservlet?id=66"))
         #expect(!out.contains("self_service_icon"))
         #expect(!out.contains("limit_to_users"))
         #expect(out.contains("<password>jamfchangeme</password>"))
@@ -163,6 +165,45 @@ struct ClassicTransformerTests {
         }
         #expect(object.createPathOverride == "proclassic/patchpolicies/softwaretitleconfig/id/55")
         #expect(!String(decoding: object.body, as: UTF8.self).contains("software_title_configuration_id"))
+    }
+
+    @Test func policiesCaptureTheSelfServiceDisplayName() throws {
+        // an icon-only PUT resets the display name to the policy name
+        // (verified live 2026-10-04), so the engine echoes it with the icon
+        let xml = """
+        <policy><general><id>10</id><name>[Self Service] Flush DNS cache</name></general>\
+        <self_service><self_service_display_name>Flush DNS cache</self_service_display_name>\
+        <self_service_icon><id>66</id><filename>dns.png</filename>\
+        <uri>https://src.jamfcloud.com/iconservlet?id=66</uri></self_service_icon></self_service></policy>
+        """
+        let outcome = ClassicTransformer.transform(type: ObjectRegistry.type("policies")!, xml: xml, context: context())
+        guard case .write(let object) = outcome else {
+            Issue.record("expected .write")
+            return
+        }
+        #expect(object.icon?.displayName == "Flush DNS cache")
+    }
+
+    @Test func mobileAppsCaptureTheGeneralIconAndStripDerivedFields() throws {
+        // mobile device apps have no self_service_icon; the app icon lives in
+        // general/icon and internal_app is server-derived (verified live)
+        let xml = """
+        <mobile_device_application><general><id>5</id><name>Keynote</name>\
+        <internal_app>true</internal_app>\
+        <icon><id>0</id><name>1024x1024bb.png</name>\
+        <uri>https://use1.ics.services.jamfcloud.com/icon/hash_abc123&amp;v=1</uri></icon>\
+        </general></mobile_device_application>
+        """
+        let outcome = ClassicTransformer.transform(type: ObjectRegistry.type("mobiledeviceapplications")!, xml: xml, context: context())
+        guard case .write(let object) = outcome else {
+            Issue.record("expected .write")
+            return
+        }
+        let out = String(decoding: object.body, as: UTF8.self)
+        #expect(object.icon?.name == "1024x1024bb.png")
+        #expect(object.icon?.sourceId == "hash_abc123")
+        #expect(!out.contains("<icon>"))
+        #expect(!out.contains("internal_app"))
     }
 
     @Test func iconIdParsing() {
@@ -254,5 +295,27 @@ struct ProTransformerTests {
         let out = try jsonBody(ProTransformer.transform(type: ObjectRegistry.type("appinstallers")!, json: json, context: context()))
         #expect(out["smartGroupId"] as? String == "12")
         #expect(out["enabled"] as? Bool == true)
+    }
+
+    // detail payloads carry ids only — never smartGroupName or the Self
+    // Service category names (verified live 2026-10-04)
+    @Test func appInstallersResolveNamesFromIdsAlone() throws {
+        let json: [String: Any] = [
+            "id": "2", "name": "Slack", "enabled": true, "smartGroupId": "17",
+            "selfServiceSettings": ["categories": [["id": "3", "featured": true]]],
+        ]
+        let out = try jsonBody(ProTransformer.transform(type: ObjectRegistry.type("appinstallers")!, json: json, context: context()))
+        #expect(out["smartGroupId"] as? String == "12")
+        #expect(out["enabled"] as? Bool == true)
+        let selfService = out["selfServiceSettings"] as? [String: Any]
+        let categories = selfService?["categories"] as? [[String: Any]]
+        #expect(categories?.first?["id"] as? String == "77")
+    }
+
+    @Test func appInstallersNormalizeNoGroupToMinusOne() throws {
+        // the server stores "no group" as -1; an absent id must compare equal
+        let json: [String: Any] = ["id": "2", "name": "Slack", "enabled": false]
+        let out = try jsonBody(ProTransformer.transform(type: ObjectRegistry.type("appinstallers")!, json: json, context: context()))
+        #expect(out["smartGroupId"] as? String == "-1")
     }
 }

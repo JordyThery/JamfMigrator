@@ -25,8 +25,22 @@ actor IconMigrator {
         if let destIconId = copied[icon.sourceId] {
             return destIconId
         }
-        let image = try await source.send(.get, "pro/v1/icon/download/\(icon.sourceId)", accept: "*/*")
-        let upload = multipartBody(fileName: icon.name.isEmpty ? "icon.png" : icon.name, data: image.data)
+        // numeric ids download through the API; Jamf Cloud's hash URIs point
+        // at the public icon CDN and download directly
+        let imageData: Data
+        if icon.sourceId.allSatisfy(\.isNumber) {
+            imageData = try await source.send(.get, "pro/v1/icon/download/\(icon.sourceId)", accept: "*/*").data
+        } else if let url = URL(string: icon.uri), icon.uri.hasPrefix("https://") {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                throw GatewayError.response(status: (response as? HTTPURLResponse)?.statusCode ?? 0,
+                                            errors: [], traceId: nil, body: data)
+            }
+            imageData = data
+        } else {
+            throw GatewayError.invalidURL("no usable icon source for \(icon.name)")
+        }
+        let upload = multipartBody(fileName: icon.name.isEmpty ? "icon.png" : icon.name, data: imageData)
         let response = try await dest.send(.post, "pro/v1/icon",
                                            body: upload.body,
                                            contentType: upload.contentType)
@@ -40,15 +54,22 @@ actor IconMigrator {
     }
 
     /// Points a freshly written Classic object at the destination icon.
-    func assign(iconId: String, to type: ObjectType, destObjectId: String, on client: PlatformClient) async throws {
-        let rootTag: String
+    func assign(iconId: String, displayName: String = "", to type: ObjectType, destObjectId: String, on client: PlatformClient) async throws {
+        let xml: String
         switch type.key {
-        case "policies": rootTag = "policy"
-        case "macapplications": rootTag = "mac_application"
-        case "mobiledeviceapplications": rootTag = "mobile_device_application"
+        case "policies":
+            // an icon-only PUT resets the display name to the policy name
+            // (verified live 2026-10-04) — echo it in the same write
+            let display = displayName.isEmpty ? ""
+                : "<self_service_display_name>\(ClassicXML.escape(displayName))</self_service_display_name>"
+            xml = "<policy><self_service><self_service_icon><id>\(iconId)</id></self_service_icon>\(display)</self_service></policy>"
+        case "macapplications":
+            xml = "<mac_application><self_service><self_service_icon><id>\(iconId)</id></self_service_icon></self_service></mac_application>"
+        case "mobiledeviceapplications":
+            // the app icon lives in general/icon, not a self_service block
+            xml = "<mobile_device_application><general><icon><id>\(iconId)</id></icon></general></mobile_device_application>"
         default: return
         }
-        let xml = "<\(rootTag)><self_service><self_service_icon><id>\(iconId)</id></self_service_icon></self_service></\(rootTag)>"
         _ = try await client.send(.put, type.api.detailPath(id: destObjectId),
                                   body: Data(xml.utf8), contentType: "application/xml", accept: "application/xml")
     }

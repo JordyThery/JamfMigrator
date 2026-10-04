@@ -16,6 +16,7 @@ actor MigrationEngine {
     private let journal: JournalStore
     private let export: ExportWriter?
     private let secrets: [String: String]
+    private let mappings: TenantMappings
     private let progress: (@Sendable (ProgressEvent) -> Void)?
     private let icons: IconMigrator
 
@@ -30,12 +31,14 @@ actor MigrationEngine {
          journal: JournalStore,
          export: ExportWriter? = nil,
          secrets: [String: String] = [:],
+         mappings: TenantMappings = TenantMappings(),
          progress: (@Sendable (ProgressEvent) -> Void)? = nil) {
         self.source = source
         self.dest = dest
         self.journal = journal
         self.export = export
         self.secrets = secrets
+        self.mappings = mappings
         self.progress = progress
         self.icons = IconMigrator(source: source, dest: dest)
     }
@@ -83,9 +86,19 @@ actor MigrationEngine {
         try await loadLookups(for: type.key, destination: true, source: false)
 
         var completed = 0
+        var seenNames = Set<String>()
         for ref in sourceRefs where !excluded.contains(ref.id) {
             guard !isCancelled else { return }
             completed += 1
+
+            // name matching can't tell same-named source objects apart; only
+            // the first one migrates
+            if !seenNames.insert(ref.name).inserted {
+                let status = ObjectStatus.blocked(reason: "Another source object has the same name; rename it to migrate both")
+                await journal.record(type: type.key, objectId: ref.id, status: status)
+                report.add(type: type, ref: ref, status: status)
+                continue
+            }
 
             // resume: skip objects an interrupted run already finished
             if let previous = await journal.status(type: type.key, objectId: ref.id), previous.isDone {
@@ -113,6 +126,7 @@ actor MigrationEngine {
             context.sourceNamesById = sourceNamesById
             context.secrets = secrets
             context.includedTypes = included
+            context.mappings = mappings
 
             let existingDestId = destIdsByName[type.key]?[ref.name]
             if let existingDestId {
@@ -129,6 +143,7 @@ actor MigrationEngine {
                     let destDetail = try await ObjectLister.detail(type, id: existingDestId, on: dest)
                     if case .json(let destJson) = destDetail {
                         context.destVersionLocks = MigrationPlanner.versionLocks(in: destJson)
+                        context.destPreStageIds = MigrationPlanner.nestedIds(in: destJson)
                     }
                 }
             }
@@ -281,7 +296,8 @@ actor MigrationEngine {
     private func copyIcon(_ icon: SelfServiceIcon, type: ObjectType, destObjectId: String, warnings: inout [String]) async {
         do {
             let destIconId = try await icons.copy(icon)
-            try await icons.assign(iconId: destIconId, to: type, destObjectId: destObjectId, on: dest)
+            try await icons.assign(iconId: destIconId, displayName: icon.displayName,
+                                   to: type, destObjectId: destObjectId, on: dest)
         } catch {
             warnings.append("The self-service icon \"\(icon.name)\" could not be copied: \(error.localizedDescription)")
         }

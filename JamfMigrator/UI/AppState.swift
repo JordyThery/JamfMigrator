@@ -192,19 +192,20 @@ final class AppState {
         let mode = mode
         let typeKeys = selectedTypeKeys
         let secrets = serviceSecrets
+        let mappings = mappings
         runTask = Task { [weak self] in
             guard let self else { return }
             let progress: @Sendable (String) -> Void = { name in
                 Task { @MainActor [weak self] in self?.planningStatus = name }
             }
             if mode == .delete {
-                let planner = MigrationPlanner(source: dest, dest: dest, secrets: secrets, progress: progress)
+                let planner = MigrationPlanner(source: dest, dest: dest, secrets: secrets, mappings: mappings, progress: progress)
                 let plan = await planner.planDeletion(typeKeys: typeKeys)
                 self.plan = plan
             } else if let sourceTenant {
                 let source = tenantStore.client(for: sourceTenant)
                 self.preflight = await Preflight.run(source: source, dest: dest, typeKeys: typeKeys)
-                let planner = MigrationPlanner(source: source, dest: dest, secrets: secrets, progress: progress)
+                let planner = MigrationPlanner(source: source, dest: dest, secrets: secrets, mappings: mappings, progress: progress)
                 let plan = await planner.plan(typeKeys: typeKeys)
                 self.plan = plan
             }
@@ -231,6 +232,7 @@ final class AppState {
         let typeKeys = selectedTypeKeys
         let excluding = excludedObjectIds
         let secrets = serviceSecrets
+        let mappings = mappings
         let journal = JournalStore(url: journalURL(destTenant: destTenant),
                                    mode: mode,
                                    sourceTenantId: mode == .copy ? sourceTenantID : nil,
@@ -245,7 +247,7 @@ final class AppState {
             let source = tenantStore.client(for: sourceTenant)
             let export = exportWriterIfEnabled()
             let engine = MigrationEngine(source: source, dest: dest, journal: journal,
-                                         export: export, secrets: secrets, progress: progress)
+                                         export: export, secrets: secrets, mappings: mappings, progress: progress)
             activeMigration = engine
             runTask = Task { [weak self] in
                 let report = await engine.migrate(typeKeys: typeKeys, excluding: excluding)
@@ -359,10 +361,11 @@ final class AppState {
         let typeKeys = selectedTypeKeys
         let excluding = excludedObjectIds
         let secrets = serviceSecrets
+        let mappings = mappings
         Task { [weak self] in
             let report = await Verifier.verify(source: source, dest: dest,
                                                typeKeys: typeKeys, excluding: excluding,
-                                               secrets: secrets) { name in
+                                               secrets: secrets, mappings: mappings) { name in
                 Task { @MainActor [weak self] in self?.planningStatus = name }
             }
             guard let self else { return }

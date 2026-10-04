@@ -15,6 +15,7 @@ actor MigrationPlanner {
     private let source: PlatformClient
     private let dest: PlatformClient
     private let secrets: [String: String]
+    private let mappings: TenantMappings
     private let progress: (@Sendable (String) -> Void)?
 
     /// Real destination lookups per registry key.
@@ -33,10 +34,12 @@ actor MigrationPlanner {
     init(source: PlatformClient,
          dest: PlatformClient,
          secrets: [String: String] = [:],
+         mappings: TenantMappings = TenantMappings(),
          progress: (@Sendable (String) -> Void)? = nil) {
         self.source = source
         self.dest = dest
         self.secrets = secrets
+        self.mappings = mappings
         self.progress = progress
     }
 
@@ -73,7 +76,13 @@ actor MigrationPlanner {
         let sourceRefs = try await ObjectLister.list(type, on: source)
         sourceNamesById[type.key] = Dictionary(sourceRefs.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
 
+        var seenNames = Set<String>()
         for ref in sourceRefs {
+            if !seenNames.insert(ref.name).inserted {
+                plan.entries.append(ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
+                                               change: .blocked(reason: "Another source object has the same name; rename it to migrate both")))
+                continue
+            }
             let entry = await planObject(type, ref: ref, included: included)
             plan.entries.append(entry)
             if case .blocked = entry.change {} else {
@@ -96,6 +105,7 @@ actor MigrationPlanner {
             context.sourceNamesById = sourceNamesById
             context.secrets = secrets
             context.includedTypes = included
+            context.mappings = mappings
 
             var destPayload: ObjectPayload? = nil
             if let existingDestId {
@@ -108,6 +118,7 @@ actor MigrationPlanner {
                 if ["computerprestages", "mobiledeviceprestages"].contains(type.key),
                    case .json(let destJson)? = destPayload {
                     context.destVersionLocks = Self.versionLocks(in: destJson)
+                    context.destPreStageIds = Self.nestedIds(in: destJson)
                 }
             }
 
@@ -121,12 +132,19 @@ actor MigrationPlanner {
                     return ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
                                       change: .create, warnings: transformed.warnings)
                 }
-                // normalize the destination object the same way and compare
+                // normalize the destination object the same way and compare —
+                // same action, locks and nested ids so the echoed fields cancel
+                // out, and identity mappings because the destination payload
+                // already holds destination ids
                 var destContext = TransformContext()
+                destContext.action = context.action
                 destContext.destIdsByName = destIdsByName
                 destContext.sourceNamesById = destNamesById
                 destContext.secrets = secrets
                 destContext.includedTypes = included
+                destContext.mappings = mappings.identity
+                destContext.destVersionLocks = context.destVersionLocks
+                destContext.destPreStageIds = context.destPreStageIds
                 guard case .write(let normalizedDest) = transform(type, payload: destPayload, context: destContext) else {
                     return ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
                                       change: .update(destId: existingDestId), warnings: transformed.warnings)
@@ -226,6 +244,17 @@ actor MigrationPlanner {
         sourceNamesById[platformGroupsKey] = Dictionary(sourceGroups.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
     }
 
+    /// The nested block ids a PreStage PUT must echo.
+    static func nestedIds(in json: [String: Any]) -> [String: String] {
+        var ids = [String: String]()
+        for block in ["locationInformation", "purchasingInformation", "accountSettings"] {
+            if let nested = json[block] as? [String: Any], let id = nested["id"] {
+                ids[block] = "\(id)"
+            }
+        }
+        return ids
+    }
+
     /// The versionLock values a PreStage PUT must echo.
     static func versionLocks(in json: [String: Any]) -> [String: Int] {
         var locks = [String: Int]()
@@ -239,19 +268,27 @@ actor MigrationPlanner {
     }
 
     private func loadLookups(for typeKey: String) async throws {
-        guard let type = ObjectRegistry.type(typeKey), destIdsByName[typeKey] == nil else { return }
-        let refs = try await ObjectLister.list(type, on: dest)
-        var byName = [String: String]()
-        var duplicates = Set<String>()
-        for ref in refs {
-            if byName[ref.name] != nil {
-                duplicates.insert(ref.name)
-            } else {
-                byName[ref.name] = ref.id
+        guard let type = ObjectRegistry.type(typeKey) else { return }
+        if destIdsByName[typeKey] == nil {
+            let refs = try await ObjectLister.list(type, on: dest)
+            var byName = [String: String]()
+            var duplicates = Set<String>()
+            for ref in refs {
+                if byName[ref.name] != nil {
+                    duplicates.insert(ref.name)
+                } else {
+                    byName[ref.name] = ref.id
+                }
             }
+            destIdsByName[typeKey] = byName
+            destNamesById[typeKey] = Dictionary(refs.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+            destDuplicateNames[typeKey] = duplicates
         }
-        destIdsByName[typeKey] = byName
-        destNamesById[typeKey] = Dictionary(refs.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
-        destDuplicateNames[typeKey] = duplicates
+        // source id → name, so references in detail payloads (which carry
+        // ids only) resolve even when the dependency isn't being planned
+        if sourceNamesById[typeKey] == nil {
+            let refs = try await ObjectLister.list(type, on: source)
+            sourceNamesById[typeKey] = Dictionary(refs.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        }
     }
 }

@@ -20,6 +20,19 @@ struct TenantMappings: Codable, Equatable, Sendable {
     var distributionPoints: [String: String] = [:]
 
     var isEmpty: Bool { adeInstances.isEmpty && distributionPoints.isEmpty }
+
+    /// Identity mappings over every id this mapping knows about, for
+    /// normalizing a destination payload (its ids are already destination
+    /// ids and must pass through unchanged).
+    var identity: TenantMappings {
+        func identical(_ map: [String: String]) -> [String: String] {
+            var out: [String: String] = [:]
+            for (key, value) in map { out[key] = key; out[value] = value }
+            return out
+        }
+        return TenantMappings(adeInstances: identical(adeInstances),
+                              distributionPoints: identical(distributionPoints))
+    }
 }
 
 /// The registry key under which platform device-group lookups are stored in

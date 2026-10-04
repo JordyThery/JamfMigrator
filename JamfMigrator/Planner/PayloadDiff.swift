@@ -46,6 +46,10 @@ enum PayloadDiff {
         switch value {
         case nil, is NSNull:
             return nil
+        case let string as String where string.isEmpty:
+            // Jamf normalizes absent fields to "" (verified live: package
+            // manifest fields) — treat empty and missing as the same
+            return nil
         case let number as NSNumber:
             // normalizes true/1 representations across JSON and XML strings
             return CFGetTypeID(number) == CFBooleanGetTypeID() ? (number.boolValue ? "true" : "false") : "\(number)"

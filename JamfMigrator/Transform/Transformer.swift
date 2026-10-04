@@ -35,6 +35,9 @@ struct TransformContext: Sendable {
     /// PUT must echo. Keys: "root", "locationInformation",
     /// "purchasingInformation", "accountSettings".
     var destVersionLocks: [String: Int] = [:]
+    /// For PreStage updates: the destination's nested block ids, which a PUT
+    /// must echo (a POST sends "-1").
+    var destPreStageIds: [String: String] = [:]
 
     func destId(_ typeKey: String, named name: String) -> String? {
         destIdsByName[typeKey]?[name]
@@ -49,8 +52,14 @@ struct TransformContext: Sendable {
 /// the object is written.
 struct SelfServiceIcon: Sendable, Equatable {
     let name: String
-    /// The icon id on the source server, extracted from the icon URI.
+    /// The icon id extracted from the icon URI — numeric on older instances,
+    /// a CDN hash (hash_…) on Jamf Cloud.
     let sourceId: String
+    /// The full icon URI; CDN-hash icons download straight from it.
+    var uri: String = ""
+    /// A policy's Self Service display name — an icon-only PUT resets it to
+    /// the policy name (verified live 2026-10-04), so assign echoes it back.
+    var displayName: String = ""
 }
 
 struct TransformedObject: Sendable {

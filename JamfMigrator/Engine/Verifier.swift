@@ -40,8 +40,9 @@ enum Verifier {
                        typeKeys: Set<String>,
                        excluding: [String: Set<String>] = [:],
                        secrets: [String: String] = [:],
+                       mappings: TenantMappings = TenantMappings(),
                        progress: (@Sendable (String) -> Void)? = nil) async -> VerifyReport {
-        let planner = MigrationPlanner(source: source, dest: dest, secrets: secrets, progress: progress)
+        let planner = MigrationPlanner(source: source, dest: dest, secrets: secrets, mappings: mappings, progress: progress)
         let plan = await planner.plan(typeKeys: typeKeys)
 
         var report = VerifyReport()

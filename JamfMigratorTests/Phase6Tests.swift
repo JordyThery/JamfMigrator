@@ -71,10 +71,12 @@ struct PreStageTransformTests {
         #expect(out["enrollmentCustomizationId"] as? String == "61")
         #expect(out["prestageInstalledProfileIds"] as? [String] == ["51"])
         #expect(out["customPackageIds"] as? [String] == ["41"])
+        // the API requires nested id/versionLock even on create: -1 / 0
         let location = out["locationInformation"] as? [String: Any]
         #expect(location?["buildingId"] as? String == "21")
         #expect(location?["departmentId"] as? String == "31")
-        #expect(location?["versionLock"] == nil)
+        #expect(location?["id"] as? String == "-1")
+        #expect(location?["versionLock"] as? Int == 0)
     }
 
     @Test func updateEchoesTheDestinationVersionLocks() throws {
@@ -82,10 +84,12 @@ struct PreStageTransformTests {
         var context = phase6Context()
         context.action = .update(destId: "77")
         context.destVersionLocks = ["root": 12, "locationInformation": 4, "purchasingInformation": 5, "accountSettings": 6]
+        context.destPreStageIds = ["locationInformation": "9", "purchasingInformation": "9", "accountSettings": "9"]
         let out = try jsonBody(ProTransformer.transform(type: type, json: sourcePreStage, context: context))
 
         #expect(out["versionLock"] as? Int == 12)
         #expect((out["locationInformation"] as? [String: Any])?["versionLock"] as? Int == 4)
+        #expect((out["locationInformation"] as? [String: Any])?["id"] as? String == "9")
         #expect((out["purchasingInformation"] as? [String: Any])?["versionLock"] as? Int == 5)
         #expect((out["accountSettings"] as? [String: Any])?["versionLock"] as? Int == 6)
     }

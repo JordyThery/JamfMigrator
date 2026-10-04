@@ -44,6 +44,14 @@ struct PayloadDiffTests {
         let diff = PayloadDiff.diff(source: a, destination: b)
         #expect(diff == [DiffEntry(path: "list#count", source: "1", destination: "2")])
     }
+
+    @Test func emptyStringsCompareEqualToMissingFields() {
+        // Jamf normalizes absent fields to "" on the destination (verified
+        // live 2026-10-04: package manifest fields)
+        let a: [String: Any] = ["name": "X"]
+        let b: [String: Any] = ["name": "X", "manifest": "", "note": NSNull()]
+        #expect(PayloadDiff.diff(source: a, destination: b).isEmpty)
+    }
 }
 
 struct MigrationPlannerTests {
