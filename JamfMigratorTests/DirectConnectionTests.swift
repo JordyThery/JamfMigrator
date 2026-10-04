@@ -51,7 +51,7 @@ struct DirectConnectionTests {
         #expect(!client.supportsPlatformEndpoints)
 
         await #expect {
-            _ = try await client.send(.get, "blueprints/v1")
+            _ = try await client.send(.get, "blueprints/v1/blueprints")
         } throws: { error in
             guard case .invalidURL(let message) = error as? GatewayError else { return false }
             return message.contains("Platform API gateway")

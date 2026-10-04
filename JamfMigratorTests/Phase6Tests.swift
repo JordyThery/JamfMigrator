@@ -199,22 +199,28 @@ struct Phase6EngineTests {
     }
 
     @Test func benchmarksAreReplacedAndSyncIsPolled() async throws {
+        let posted = Locked(false)
         let gateway = FakeGateway { env, method, path, _ in
             switch (env, method, path) {
-            case ("src", "GET", "/compliance-benchmarks/v1"):
-                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 1, "results": [["id": "C1", "title": "CIS Level 1"]]]))
-            case ("src", "GET", "/compliance-benchmarks/v1/C1"):
+            case ("src", "GET", "/compliance-benchmarks/v1/benchmarks"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["benchmarks": [["id": "C1", "title": "CIS Level 1"]]]))
+            case ("src", "GET", "/compliance-benchmarks/v1/benchmarks/C1"):
                 return MockHTTP.Reply(status: 200, data: MockHTTP.json(
                     ["id": "C1", "title": "CIS Level 1", "baselineId": "cis-l1",
                      "rules": [["id": "r1", "enabled": true]]]))
-            case ("dst", "GET", "/compliance-benchmarks/v1"):
-                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 1, "results": [["id": "C9", "title": "CIS Level 1"]]]))
-            case ("dst", "DELETE", "/compliance-benchmarks/v1/C9"):
+            case ("dst", "GET", "/compliance-benchmarks/v1/benchmarks"):
+                // syncState only appears on list entries; after the recreate
+                // the list serves the new benchmark as SYNCED for the poll
+                if posted.value {
+                    return MockHTTP.Reply(status: 200, data: MockHTTP.json(["benchmarks": [["id": "C10", "title": "CIS Level 1", "syncState": "SYNCED"]]]))
+                }
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["benchmarks": [["id": "C9", "title": "CIS Level 1"]]]))
+            case ("dst", "DELETE", "/compliance-benchmarks/v1/benchmarks/C9"):
                 return MockHTTP.Reply(status: 204)
-            case ("dst", "POST", "/compliance-benchmarks/v1"):
-                return MockHTTP.Reply(status: 201, data: MockHTTP.json(["id": "C10", "title": "CIS Level 1", "syncState": "SYNCING"]))
-            case ("dst", "GET", "/compliance-benchmarks/v1/C10"):
-                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["id": "C10", "syncState": "SYNCED"]))
+            case ("dst", "POST", "/compliance-benchmarks/v1/benchmarks"):
+                posted.withLock { $0 = true }
+                // the create response names the id benchmarkId (verified live)
+                return MockHTTP.Reply(status: 201, data: MockHTTP.json(["benchmarkId": "C10", "title": "CIS Level 1", "syncState": "SYNCING"]))
             default:
                 return nil
             }
@@ -224,7 +230,7 @@ struct Phase6EngineTests {
 
         #expect(report.entries.first?.status == .updated(destId: "C10"))
         let writes = gateway.writes(to: "dst").map { "\($0.method) \($0.path)" }
-        #expect(writes == ["DELETE /compliance-benchmarks/v1/C9", "POST /compliance-benchmarks/v1"])
+        #expect(writes == ["DELETE /compliance-benchmarks/v1/benchmarks/C9", "POST /compliance-benchmarks/v1/benchmarks"])
     }
 
     /// A 409 duplicate title on create means a benchmark with that name
@@ -233,19 +239,19 @@ struct Phase6EngineTests {
         let listCalls = Locked(0)
         let gateway = FakeGateway { env, method, path, _ in
             switch (env, method, path) {
-            case ("src", "GET", "/compliance-benchmarks/v1"):
-                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 1, "results": [["id": "C1", "title": "CIS Level 1"]]]))
-            case ("src", "GET", "/compliance-benchmarks/v1/C1"):
+            case ("src", "GET", "/compliance-benchmarks/v1/benchmarks"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["benchmarks": [["id": "C1", "title": "CIS Level 1"]]]))
+            case ("src", "GET", "/compliance-benchmarks/v1/benchmarks/C1"):
                 return MockHTTP.Reply(status: 200, data: MockHTTP.json(["id": "C1", "title": "CIS Level 1", "baselineId": "cis-l1"]))
-            case ("dst", "GET", "/compliance-benchmarks/v1"):
+            case ("dst", "GET", "/compliance-benchmarks/v1/benchmarks"):
                 listCalls.withLock { $0 += 1 }
                 // first list: empty (no match, so the engine creates); the
                 // re-list after the 409 shows the benchmark that appeared
                 if listCalls.value == 1 {
-                    return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 0, "results": []]))
+                    return MockHTTP.Reply(status: 200, data: MockHTTP.json(["benchmarks": []]))
                 }
-                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 1, "results": [["id": "C9", "title": "CIS Level 1"]]]))
-            case ("dst", "POST", "/compliance-benchmarks/v1"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["benchmarks": [["id": "C9", "title": "CIS Level 1"]]]))
+            case ("dst", "POST", "/compliance-benchmarks/v1/benchmarks"):
                 return MockHTTP.Reply(status: 409, data: MockHTTP.json(["message": "title already exists", "error": "DuplicateFieldException", "statusCode": 409]))
             default:
                 return nil
@@ -259,17 +265,17 @@ struct Phase6EngineTests {
     @Test func deployedBlueprintsAreDeployedOnTheDestination() async throws {
         let gateway = FakeGateway { env, method, path, _ in
             switch (env, method, path) {
-            case ("src", "GET", "/blueprints/v1"):
+            case ("src", "GET", "/blueprints/v1/blueprints"):
                 return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 1, "results": [["id": "B1", "name": "Baseline"]]]))
-            case ("src", "GET", "/blueprints/v1/B1"):
+            case ("src", "GET", "/blueprints/v1/blueprints/B1"):
                 return MockHTTP.Reply(status: 200, data: MockHTTP.json(
-                    ["id": "B1", "name": "Baseline", "deploymentState": "DEPLOYED", "steps": []]))
-            case ("dst", "POST", "/blueprints/v1"):
+                    ["id": "B1", "name": "Baseline", "deploymentState": ["state": "DEPLOYED"], "steps": []]))
+            case ("dst", "POST", "/blueprints/v1/blueprints"):
                 return MockHTTP.Reply(status: 201, data: MockHTTP.json(["id": "B7"]))
-            case ("dst", "POST", "/blueprints/v1/B7/deploy"):
+            case ("dst", "POST", "/blueprints/v1/blueprints/B7/deploy"):
                 return MockHTTP.Reply(status: 202)
-            case ("dst", "GET", "/blueprints/v1/B7"):
-                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["id": "B7", "deploymentState": "DEPLOYED"]))
+            case ("dst", "GET", "/blueprints/v1/blueprints/B7"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["id": "B7", "deploymentState": ["state": "DEPLOYED"]]))
             default:
                 return nil
             }
@@ -279,17 +285,17 @@ struct Phase6EngineTests {
 
         #expect(report.entries.first?.status == .created(destId: "B7"))
         let writes = gateway.writes(to: "dst").map { "\($0.method) \($0.path)" }
-        #expect(writes == ["POST /blueprints/v1", "POST /blueprints/v1/B7/deploy"])
+        #expect(writes == ["POST /blueprints/v1/blueprints", "POST /blueprints/v1/blueprints/B7/deploy"])
     }
 
     @Test func blueprintDelete500IsVerifiedWithAGet() async throws {
         let gateway = FakeGateway { env, method, path, _ in
             switch (env, method, path) {
-            case ("dst", "GET", "/blueprints/v1"):
+            case ("dst", "GET", "/blueprints/v1/blueprints"):
                 return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 1, "results": [["id": "B1", "name": "Baseline"]]]))
-            case ("dst", "DELETE", "/blueprints/v1/B1"):
+            case ("dst", "DELETE", "/blueprints/v1/blueprints/B1"):
                 return MockHTTP.Reply(status: 500, data: Data("boom".utf8))
-            case ("dst", "GET", "/blueprints/v1/B1"):
+            case ("dst", "GET", "/blueprints/v1/blueprints/B1"):
                 return MockHTTP.Reply(status: 404)
             default:
                 return nil
@@ -318,14 +324,14 @@ struct Phase6PlannerTests {
     @Test func benchmarkDifferencesPlanAsReplace() async throws {
         let gateway = FakeGateway { env, method, path, _ in
             switch (env, method, path) {
-            case ("src", "GET", "/compliance-benchmarks/v1"):
-                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 1, "results": [["id": "C1", "title": "CIS Level 1"]]]))
-            case ("dst", "GET", "/compliance-benchmarks/v1"):
-                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 1, "results": [["id": "C9", "title": "CIS Level 1"]]]))
-            case ("src", "GET", "/compliance-benchmarks/v1/C1"):
+            case ("src", "GET", "/compliance-benchmarks/v1/benchmarks"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["benchmarks": [["id": "C1", "title": "CIS Level 1"]]]))
+            case ("dst", "GET", "/compliance-benchmarks/v1/benchmarks"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["benchmarks": [["id": "C9", "title": "CIS Level 1"]]]))
+            case ("src", "GET", "/compliance-benchmarks/v1/benchmarks/C1"):
                 return MockHTTP.Reply(status: 200, data: MockHTTP.json(
                     ["id": "C1", "title": "CIS Level 1", "baselineId": "cis-l1", "enforcementMode": "ENFORCE"]))
-            case ("dst", "GET", "/compliance-benchmarks/v1/C9"):
+            case ("dst", "GET", "/compliance-benchmarks/v1/benchmarks/C9"):
                 return MockHTTP.Reply(status: 200, data: MockHTTP.json(
                     ["id": "C9", "title": "CIS Level 1", "baselineId": "cis-l1", "enforcementMode": "MONITOR"]))
             default:

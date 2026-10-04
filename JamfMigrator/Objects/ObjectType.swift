@@ -249,15 +249,19 @@ enum ObjectRegistry {
                    nameKey: "displayName",
                    dependencies: ["sites", "mobiledeviceconfigurationprofiles", "enrollmentcustomizations"]),
 
-        // step 11 (platform namespace: gateway only)
+        // step 11 (platform namespace: gateway only; pattern is
+        // /{namespace}/v{n}/{resource} — the gateway answers a wrong path with
+        // 403 BAD_PERMISSIONS, not 404; verified live 2026-10-04)
         ObjectType(key: "blueprints", displayName: "Blueprints", step: 11,
-                   api: .platform(resource: "blueprints/v1"), listShape: .proPaginated,
+                   api: .platform(resource: "blueprints/v1/blueprints"), listShape: .proPaginated,
                    updateMethod: .patch,
                    requiresGateway: true),
 
-        // step 12 (platform namespace: gateway only; no update endpoint → Replace)
+        // step 12 (platform namespace: gateway only; no update endpoint → Replace;
+        // the list nests under "benchmarks", not "results")
         ObjectType(key: "compliancebenchmarks", displayName: "Compliance Benchmarks", step: 12,
-                   api: .platform(resource: "compliance-benchmarks/v1"), listShape: .proPaginated,
+                   api: .platform(resource: "compliance-benchmarks/v1/benchmarks"),
+                   listShape: .classicArray(container: "benchmarks"),
                    nameKey: "title",
                    requiresGateway: true),
 

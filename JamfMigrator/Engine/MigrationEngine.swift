@@ -227,7 +227,11 @@ actor MigrationEngine {
             return id
         }
         let json = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any]
-        guard let id = json?["id"] else { throw GatewayError.decoding(URLError(.cannotParseResponse)) }
+        // benchmark create responses name the id "benchmarkId" (verified live
+        // 2026-10-04); everything else uses "id"
+        guard let id = json?["id"] ?? json?["benchmarkId"] else {
+            throw GatewayError.decoding(URLError(.cannotParseResponse))
+        }
         return "\(id)"
     }
 
@@ -245,10 +249,15 @@ actor MigrationEngine {
             }
 
         case "blueprints":
-            // mirror the source's deploy state; a repeat deploy is harmless
-            guard case .json(let sourceJson) = sourcePayload,
-                  let state = sourceJson["deploymentState"] as? String,
-                  state.localizedCaseInsensitiveContains("DEPLOYED") || state.localizedCaseInsensitiveContains("SUCCEEDED") else {
+            // mirror the source's deploy state; a repeat deploy is harmless.
+            // deploymentState is an object: {"state": "DEPLOYED", "lastDeployment": …}
+            func deployState(_ json: [String: Any]) -> String {
+                if let dict = json["deploymentState"] as? [String: Any] { return "\(dict["state"] ?? "")" }
+                return "\(json["deploymentState"] ?? "")"
+            }
+            guard case .json(let sourceJson) = sourcePayload else { return }
+            let state = deployState(sourceJson)
+            guard state.localizedCaseInsensitiveContains("DEPLOYED") || state.localizedCaseInsensitiveContains("SUCCEEDED") else {
                 return
             }
             _ = try await dest.send(.post, "\(type.api.listPath)/\(destId)/deploy",
@@ -256,7 +265,7 @@ actor MigrationEngine {
             let deployed = try? await Poll.until("the Blueprint deployment", timeout: .seconds(60), interval: .seconds(3)) { [dest] in
                 let detail = try await ObjectLister.detail(type, id: destId, on: dest)
                 guard case .json(let json) = detail else { return nil as Bool? }
-                let state = "\(json["deploymentState"] ?? "")"
+                let state = deployState(json)
                 return state.localizedCaseInsensitiveContains("DEPLOYED") || state.localizedCaseInsensitiveContains("SUCCEEDED")
                     ? true : nil
             }
@@ -265,11 +274,15 @@ actor MigrationEngine {
             }
 
         case "compliancebenchmarks":
-            // the benchmark syncs in the background; report a sync that fails
+            // the benchmark syncs in the background; report a sync that fails.
+            // syncState only appears on list entries, not the detail
+            // (verified live 2026-10-04)
             let synced = try? await Poll.until("the benchmark sync", timeout: .seconds(60), interval: .seconds(3)) { [dest] in
-                let detail = try await ObjectLister.detail(type, id: destId, on: dest)
-                guard case .json(let json) = detail else { return nil as Bool? }
-                let state = "\(json["syncState"] ?? "")"
+                let response = try await dest.send(.get, type.api.listPath)
+                let root = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]
+                let entries = root["benchmarks"] as? [[String: Any]] ?? []
+                guard let entry = entries.first(where: { "\($0["id"] ?? "")" == destId }) else { return nil as Bool? }
+                let state = "\(entry["syncState"] ?? "")"
                 if state.localizedCaseInsensitiveContains("FAILED") { return false }
                 return state.localizedCaseInsensitiveContains("SYNCED") ? true : nil
             }
