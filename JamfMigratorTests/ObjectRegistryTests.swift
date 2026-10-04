@@ -30,9 +30,20 @@ struct ObjectRegistryTests {
 
     @Test(arguments: ObjectRegistry.types)
     func listAndDetailAreServedByTheGateway(type: ObjectType) throws {
+        // the vendored spec only covers /pro and /proclassic; the platform
+        // namespaces (Blueprints, Benchmarks) are pinned by live validation
+        guard !type.requiresGateway else { return }
+
         let list = try #require(gatewaySpec[specListPath(type)],
                                 "\(type.key): list path \(specListPath(type)) is not in the gateway spec")
         #expect(list.contains("GET"), "\(type.key): list path does not allow GET")
+
+        // settings singletons GET and PUT/PATCH their one path; nothing deletes
+        if case .singleton = type.listShape {
+            #expect(list.contains(type.updateMethod.rawValue),
+                    "\(type.key): singleton path does not allow \(type.updateMethod.rawValue)")
+            return
+        }
 
         let detail = try #require(gatewaySpec[specDetailPath(type)],
                                   "\(type.key): detail path \(specDetailPath(type)) is not in the gateway spec")
@@ -43,6 +54,9 @@ struct ObjectRegistryTests {
 
     @Test(arguments: ObjectRegistry.types)
     func createIsServedByTheGateway(type: ObjectType) throws {
+        guard !type.requiresGateway else { return }
+        if case .singleton = type.listShape { return }
+
         // patch policies are created through softwaretitleconfig (path override)
         let createPath = type.key == "patchpolicies"
             ? "/proclassic/patchpolicies/softwaretitleconfig/id/{}"

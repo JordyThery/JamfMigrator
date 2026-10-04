@@ -30,7 +30,8 @@ struct FakeGateway {
             if method == "GET" && path.hasPrefix("/proclassic/") {
                 return MockHTTP.Reply(status: 200, data: Data("{}".utf8))
             }
-            if method == "GET" && path.hasPrefix("/pro/") {
+            if method == "GET" {
+                // pro and platform namespaces share the paginated list shape
                 return MockHTTP.Reply(status: 200, data: Data(#"{"totalCount":0,"results":[]}"#.utf8))
             }
             return MockHTTP.Reply(status: 404)

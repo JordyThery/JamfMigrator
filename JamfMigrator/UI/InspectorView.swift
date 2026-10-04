@@ -65,6 +65,9 @@ struct InspectorView: View {
                     } else if case .update = entry.change {
                         Text("No field-level differences could be shown.")
                             .foregroundStyle(.secondary)
+                    } else if case .replace = entry.change {
+                        Text("No field-level differences could be shown.")
+                            .foregroundStyle(.secondary)
                     }
 
                     Spacer()

@@ -36,7 +36,14 @@ class WriteToLog {
             fileHandle.seekToEndOfFile()
             fileHandle.write(logData)
         } catch {
-            WriteToLog.shared.message("[Log Error] Failed to write to log file: \(error.localizedDescription)")
+            // never recurse into message(): create the log file once, and if
+            // that also fails fall back to stdout
+            do {
+                try FileManager.default.createDirectory(atPath: History.logPath, withIntermediateDirectories: true)
+                try logData.write(to: logURL, options: .atomic)
+            } catch {
+                print("[WriteToLog] could not write to \(logURL.path): \(error.localizedDescription)")
+            }
         }
     }
     

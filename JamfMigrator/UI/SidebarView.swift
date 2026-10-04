@@ -124,9 +124,10 @@ private struct TypeRow: View {
 
     var body: some View {
         @Bindable var appState = appState
+        let unavailable = type.requiresGateway && !appState.gatewayAvailable
         HStack {
             Toggle(type.displayName, isOn: .init(
-                get: { appState.selectedTypeKeys.contains(type.key) },
+                get: { !unavailable && appState.selectedTypeKeys.contains(type.key) },
                 set: { included in
                     if included {
                         appState.selectedTypeKeys.insert(type.key)
@@ -136,10 +137,18 @@ private struct TypeRow: View {
                 }))
                 .toggleStyle(.checkbox)
             Spacer()
-            if let plan = appState.plan {
+            if unavailable {
+                Image(systemName: "bolt.horizontal.circle")
+                    .foregroundStyle(.tertiary)
+            } else if let plan = appState.plan {
                 PlanBadge(entries: plan.entries(for: type.key), mode: plan.mode)
             }
         }
+        .disabled(unavailable)
+        .foregroundStyle(unavailable ? .secondary : .primary)
+        .help(unavailable
+              ? "Only available via the Platform API — a selected tenant connects directly to Jamf Pro."
+              : "")
         .tag(type.key)
     }
 }
@@ -162,7 +171,7 @@ private struct PlanBadge: View {
         for entry in entries {
             switch entry.change {
             case .create: create += 1
-            case .update: update += 1
+            case .update, .replace: update += 1
             case .unchanged: unchanged += 1
             case .blocked: blocked += 1
             case .delete: delete += 1

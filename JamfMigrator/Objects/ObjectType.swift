@@ -18,6 +18,9 @@ enum ObjectAPI: Hashable, Sendable {
     /// `idPath` is the path component before the id ("id" for everything except
     /// Jamf account users/groups, which use "userid"/"groupid").
     case classic(resource: String, idPath: String)
+    /// Platform-only namespaces served by the gateway root (Blueprints,
+    /// Compliance Benchmarks). JSON; no direct Jamf Pro equivalent.
+    case platform(resource: String)
 
     static func classic(_ resource: String) -> ObjectAPI {
         .classic(resource: resource, idPath: "id")
@@ -33,6 +36,7 @@ enum ObjectAPI: Hashable, Sendable {
         switch self {
         case .pro(let version, let resource): "pro/v\(version)/\(resource)"
         case .classic(let resource, _): "proclassic/\(resource)"
+        case .platform(let resource): resource
         }
     }
 
@@ -40,12 +44,13 @@ enum ObjectAPI: Hashable, Sendable {
         switch self {
         case .pro(let version, let resource): "pro/v\(version)/\(resource)/\(id)"
         case .classic(let resource, let idPath): "proclassic/\(resource)/\(idPath)/\(id)"
+        case .platform(let resource): "\(resource)/\(id)"
         }
     }
 
     var createPath: String {
         switch self {
-        case .pro: listPath
+        case .pro, .platform: listPath
         case .classic(let resource, let idPath): "proclassic/\(resource)/\(idPath)/0"
         }
     }
@@ -61,6 +66,9 @@ enum ListShape: Sendable {
     case classicArray(container: String)
     /// Classic /accounts: {"accounts": {"users": [...], "groups": [...]}}.
     case classicAccounts(sub: String)
+    /// A settings singleton: no list, no id. GET and PUT/PATCH the same path;
+    /// it always exists on both tenants, so runs only ever update it.
+    case singleton
 }
 
 struct ObjectType: Identifiable, Sendable {
@@ -83,6 +91,14 @@ struct ObjectType: Identifiable, Sendable {
     /// direct Jamf Pro equivalent and are Blocked on direct connections.
     var requiresGateway = false
     var id: String { key }
+
+    /// Where updates go: singletons PUT/PATCH their one path.
+    func updatePath(destId: String) -> String {
+        if case .singleton = listShape {
+            return api.listPath
+        }
+        return api.detailPath(id: destId)
+    }
 }
 
 enum ObjectRegistry {
@@ -212,6 +228,61 @@ enum ObjectRegistry {
         ObjectType(key: "appinstallers", displayName: "App Installers", step: 8,
                    api: .pro(version: 1, resource: "app-installers/deployments"), listShape: .proPaginated,
                    dependencies: ["categories", "sites", "smartcomputergroups"]),
+
+        // step 9
+        ObjectType(key: "enrollmentcustomizations", displayName: "Enrollment customizations", step: 9,
+                   api: .pro(version: 2, resource: "enrollment-customizations"), listShape: .proPaginated,
+                   nameKey: "displayName",
+                   dependencies: ["sites"]),
+
+        // step 10
+        ObjectType(key: "computerprestages", displayName: "Computer PreStages", step: 10,
+                   api: .pro(version: 3, resource: "computer-prestages"), listShape: .proPaginated,
+                   nameKey: "displayName",
+                   dependencies: ["sites", "buildings", "departments", "packages",
+                                  "osxconfigurationprofiles", "enrollmentcustomizations", "distributionpoints"],
+                   secretFields: ["admin password", "recovery lock password"]),
+        ObjectType(key: "mobiledeviceprestages", displayName: "Mobile device PreStages", step: 10,
+                   api: .pro(version: 3, resource: "mobile-device-prestages"), listShape: .proPaginated,
+                   nameKey: "displayName",
+                   dependencies: ["sites", "mobiledeviceconfigurationprofiles", "enrollmentcustomizations"]),
+
+        // step 11 (platform namespace: gateway only)
+        ObjectType(key: "blueprints", displayName: "Blueprints", step: 11,
+                   api: .platform(resource: "blueprints/v1"), listShape: .proPaginated,
+                   updateMethod: .patch,
+                   requiresGateway: true),
+
+        // step 12 (platform namespace: gateway only; no update endpoint → Replace)
+        ObjectType(key: "compliancebenchmarks", displayName: "Compliance Benchmarks", step: 12,
+                   api: .platform(resource: "compliance-benchmarks/v1"), listShape: .proPaginated,
+                   nameKey: "title",
+                   requiresGateway: true),
+
+        // step 13: tenant settings and webhooks
+        ObjectType(key: "webhooks", displayName: "Webhooks", step: 13,
+                   api: .classic("webhooks"), listShape: .classicArray(container: "webhooks"),
+                   dependencies: ["smartcomputergroups", "staticcomputergroups"],
+                   secretFields: ["webhook password"]),
+        ObjectType(key: "checkin", displayName: "Check-in settings", step: 13,
+                   api: .pro(version: 3, resource: "check-in"), listShape: .singleton),
+        ObjectType(key: "inventorycollection", displayName: "Inventory collection settings", step: 13,
+                   api: .pro(version: 2, resource: "computer-inventory-collection-settings"), listShape: .singleton,
+                   updateMethod: .patch),
+        ObjectType(key: "smtpserver", displayName: "SMTP server", step: 13,
+                   api: .pro(version: 2, resource: "smtp-server"), listShape: .singleton,
+                   secretFields: ["SMTP password"]),
+        ObjectType(key: "selfservicesettings", displayName: "Self Service settings", step: 13,
+                   api: .pro(version: 1, resource: "self-service/settings"), listShape: .singleton),
+        ObjectType(key: "reenrollment", displayName: "Re-enrollment settings", step: 13,
+                   api: .pro(version: 1, resource: "reenrollment"), listShape: .singleton),
+        ObjectType(key: "lapssettings", displayName: "LAPS settings", step: 13,
+                   api: .pro(version: 2, resource: "local-admin-password/settings"), listShape: .singleton),
+        ObjectType(key: "onboarding", displayName: "Onboarding", step: 13,
+                   api: .pro(version: 1, resource: "onboarding"), listShape: .singleton),
+        ObjectType(key: "sso", displayName: "Single sign-on", step: 13,
+                   api: .pro(version: 3, resource: "sso"), listShape: .singleton,
+                   secretFields: ["SSO secrets and certificates"]),
     ]
 
     static func type(_ key: String) -> ObjectType? {

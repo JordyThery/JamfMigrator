@@ -24,6 +24,12 @@ enum ClassicTransformer {
         case "sites", "softwareupdateservers", "printers", "dockitems", "userextensionattributes":
             break
 
+        case "webhooks":
+            if out.contains("password_sha256") {
+                out = ClassicXML.replacing(pattern: "<password_sha256[^>]*>(.*?)</password_sha256>", in: out, with: "")
+                warnings.append("The webhook password is not returned by the API; set it on the destination.")
+            }
+
         case "networksegments":
             // netboot/distribution servers and JCDS URLs don't transfer
             out = ClassicXML.replacing(pattern: "<distribution_server>(.*?)</distribution_server>", in: out, with: "<distribution_server/>")

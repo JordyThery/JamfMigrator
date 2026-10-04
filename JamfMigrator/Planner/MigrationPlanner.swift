@@ -66,6 +66,9 @@ actor MigrationPlanner {
             try await loadLookups(for: dependency)
         }
         try await loadLookups(for: type.key)
+        if ["blueprints", "compliancebenchmarks"].contains(type.key) {
+            try await loadPlatformGroupLookups()
+        }
 
         let sourceRefs = try await ObjectLister.list(type, on: source)
         sourceNamesById[type.key] = Dictionary(sourceRefs.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
@@ -102,6 +105,10 @@ actor MigrationPlanner {
                    case .xml(let destXml)? = destPayload {
                     context.destProfileUUID = ClassicXML.value(of: "uuid", in: ClassicXML.value(of: "general", in: destXml))
                 }
+                if ["computerprestages", "mobiledeviceprestages"].contains(type.key),
+                   case .json(let destJson)? = destPayload {
+                    context.destVersionLocks = Self.versionLocks(in: destJson)
+                }
             }
 
             let outcome = transform(type, payload: payload, context: context)
@@ -130,6 +137,12 @@ actor MigrationPlanner {
                     return ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
                                       change: .unchanged(destId: existingDestId))
                 }
+                // benchmarks have no update endpoint: delete and recreate
+                if type.key == "compliancebenchmarks" {
+                    return ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
+                                      change: .replace(destId: existingDestId),
+                                      warnings: transformed.warnings, diff: diff)
+                }
                 return ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
                                   change: .update(destId: existingDestId),
                                   warnings: transformed.warnings, diff: diff)
@@ -148,6 +161,10 @@ actor MigrationPlanner {
         for type in ObjectRegistry.deletionOrder where typeKeys.contains(type.key) {
             progress?(type.displayName)
             if type.requiresGateway && !dest.supportsPlatformEndpoints {
+                continue
+            }
+            if case .singleton = type.listShape {
+                // settings can't be deleted; they are left as they are
                 continue
             }
             do {
@@ -197,6 +214,28 @@ actor MigrationPlanner {
             }
         }
         return merged
+    }
+
+    /// Blueprints and Benchmarks reference device groups by platform UUID.
+    private func loadPlatformGroupLookups() async throws {
+        guard destIdsByName[platformGroupsKey] == nil else { return }
+        let destGroups = try await MappingCatalog.platformGroups(on: dest)
+        destIdsByName[platformGroupsKey] = Dictionary(destGroups.map { ($0.name, $0.id) }, uniquingKeysWith: { first, _ in first })
+        destNamesById[platformGroupsKey] = Dictionary(destGroups.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        let sourceGroups = try await MappingCatalog.platformGroups(on: source)
+        sourceNamesById[platformGroupsKey] = Dictionary(sourceGroups.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// The versionLock values a PreStage PUT must echo.
+    static func versionLocks(in json: [String: Any]) -> [String: Int] {
+        var locks = [String: Int]()
+        if let root = json["versionLock"] as? Int { locks["root"] = root }
+        for block in ["locationInformation", "purchasingInformation", "accountSettings"] {
+            if let nested = json[block] as? [String: Any], let lock = nested["versionLock"] as? Int {
+                locks[block] = lock
+            }
+        }
+        return locks
     }
 
     private func loadLookups(for typeKey: String) async throws {

@@ -116,6 +116,7 @@ struct ChangeBadge: View {
         switch change {
         case .create: "Create"
         case .update: "Update"
+        case .replace: "Replace"
         case .unchanged: "Unchanged"
         case .blocked: "Blocked"
         case .delete: "Delete"
@@ -127,6 +128,7 @@ struct ChangeBadge: View {
         switch change {
         case .create: .green
         case .update: .blue
+        case .replace: .purple
         case .unchanged: .secondary
         case .blocked: .orange
         case .delete: .red
@@ -139,7 +141,7 @@ extension PlannedChange {
     /// Whether a run would touch this object at all.
     var isRunnable: Bool {
         switch self {
-        case .create, .update, .delete: true
+        case .create, .update, .replace, .delete: true
         case .unchanged, .blocked, .keep: false
         }
     }

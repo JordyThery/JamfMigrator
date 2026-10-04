@@ -30,6 +30,9 @@ enum ObjectLister {
             let root = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]
             let array = root[container] as? [[String: Any]] ?? []
             return refs(from: array, nameKey: type.nameKey)
+        case .singleton:
+            // a settings singleton always exists, once, on every tenant
+            return [ObjectRef(id: "singleton", name: type.displayName)]
         case .classicAccounts(let sub):
             let response = try await client.send(.get, type.api.listPath, accept: "application/json")
             let root = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]
@@ -68,6 +71,11 @@ enum ObjectLister {
 
     /// The object's full payload: JSON dict for Pro, XML string for Classic.
     static func detail(_ type: ObjectType, id: String, on client: PlatformClient) async throws -> ObjectPayload {
+        if case .singleton = type.listShape {
+            let response = try await client.send(.get, type.api.listPath)
+            let json = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]
+            return .json(json)
+        }
         if type.api.isClassic {
             let response = try await client.send(.get, type.api.detailPath(id: id), accept: "application/xml")
             return .xml(String(decoding: response.data, as: UTF8.self))

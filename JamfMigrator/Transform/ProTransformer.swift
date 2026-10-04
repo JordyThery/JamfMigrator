@@ -22,6 +22,22 @@ enum ProTransformer {
             out[key] = nil
         }
 
+        // settings singletons copy as-is; their secrets never leave the source
+        if case .singleton = type.listShape {
+            for secret in type.secretFields {
+                warnings.append("The \(secret) is not returned by the API and must be re-entered on the destination.")
+            }
+            if type.key == "onboarding" {
+                warnings.append("Onboarding items reference policies and profiles by id and may need re-picking on the destination.")
+            }
+            do {
+                let body = try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys])
+                return .write(TransformedObject(body: body, contentType: "application/json", warnings: warnings))
+            } catch {
+                return .blocked(reason: "The payload could not be encoded: \(error.localizedDescription)")
+            }
+        }
+
         switch type.key {
         case "categories", "buildings", "departments", "mobiledeviceextensionattributes":
             break
@@ -124,6 +140,21 @@ enum ProTransformer {
                 out["selfServiceSettings"] = selfService
             }
 
+        case "enrollmentcustomizations":
+            remapSite(&out, context: context, warnings: &warnings)
+            if out["brandingSettings"] != nil {
+                warnings.append("Branding images are not copied; re-upload them on the destination.")
+            }
+
+        case "computerprestages", "mobiledeviceprestages":
+            return transformPreStage(type: type, source: out, context: context, warnings: &warnings)
+
+        case "blueprints":
+            return transformBlueprint(source: out, context: context, warnings: &warnings)
+
+        case "compliancebenchmarks":
+            return transformBenchmark(source: out, context: context, warnings: &warnings)
+
         default:
             return .blocked(reason: "No Pro transform for \(type.key)")
         }
@@ -134,6 +165,246 @@ enum ProTransformer {
         } catch {
             return .blocked(reason: "The payload could not be encoded: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: PreStages
+
+    private static func transformPreStage(type: ObjectType, source: [String: Any],
+                                          context: TransformContext, warnings: inout [String]) -> TransformOutcome {
+        var out = source
+        let isUpdate: Bool
+        if case .update = context.action { isUpdate = true } else { isUpdate = false }
+
+        out["profileUuid"] = nil
+
+        // ADE instance: devices belong to each tenant's own token
+        let adeId = "\(out["deviceEnrollmentProgramInstanceId"] ?? "")"
+        if !adeId.isEmpty && adeId != "0" {
+            if let mapped = context.mappings.adeInstances[adeId] {
+                out["deviceEnrollmentProgramInstanceId"] = mapped
+            } else {
+                return .blocked(reason: "No ADE instance mapping; map one in the Clone wizard (or the destination has none)")
+            }
+        }
+
+        remapSite(&out, context: context, warnings: &warnings)
+        if let enrollmentSiteId = out["enrollmentSiteId"] {
+            var scratch: [String: Any] = ["siteId": enrollmentSiteId]
+            remapSite(&scratch, context: context, warnings: &warnings)
+            out["enrollmentSiteId"] = scratch["siteId"]
+        }
+
+        // nested blocks: strip ids, remap references, echo the destination's versionLocks
+        if var location = out["locationInformation"] as? [String: Any] {
+            location["id"] = nil
+            remapNamedId(&location, idKey: "buildingId", lookupType: "buildings", context: context, warnings: &warnings)
+            remapNamedId(&location, idKey: "departmentId", lookupType: "departments", context: context, warnings: &warnings)
+            location["versionLock"] = isUpdate ? context.destVersionLocks["locationInformation"] : nil
+            out["locationInformation"] = location
+        }
+        if var purchasing = out["purchasingInformation"] as? [String: Any] {
+            purchasing["id"] = nil
+            purchasing["versionLock"] = isUpdate ? context.destVersionLocks["purchasingInformation"] : nil
+            out["purchasingInformation"] = purchasing
+        }
+        if var accounts = out["accountSettings"] as? [String: Any] {
+            accounts["id"] = nil
+            accounts["versionLock"] = isUpdate ? context.destVersionLocks["accountSettings"] : nil
+            out["accountSettings"] = accounts
+            warnings.append("The admin password is not returned by the API; set it on the destination PreStage.")
+        }
+        out["versionLock"] = isUpdate ? context.destVersionLocks["root"] : nil
+
+        // enrollment customization, profiles and packages by name through the id maps
+        let customizationId = "\(out["enrollmentCustomizationId"] ?? "")"
+        if !customizationId.isEmpty && customizationId != "0" {
+            if let name = context.sourceName("enrollmentcustomizations", id: customizationId),
+               let destId = context.destId("enrollmentcustomizations", named: name) {
+                out["enrollmentCustomizationId"] = destId
+            } else {
+                out["enrollmentCustomizationId"] = "0"
+                warnings.append("The enrollment customization does not exist on the destination and was unset.")
+            }
+        }
+
+        let profileType = type.key == "computerprestages" ? "osxconfigurationprofiles" : "mobiledeviceconfigurationprofiles"
+        remapIdArray(&out, key: "prestageInstalledProfileIds", lookupType: profileType,
+                     label: "configuration profile", context: context, warnings: &warnings)
+        remapIdArray(&out, key: "customPackageIds", lookupType: "packages",
+                     label: "package", context: context, warnings: &warnings)
+        for key in ["pssoConfigProfileId", "rtsConfigProfileId"] {
+            let value = "\(out[key] ?? "")"
+            guard !value.isEmpty, value != "0", value != "<null>" else { continue }
+            if let name = context.sourceName(profileType, id: value),
+               let destId = context.destId(profileType, named: name) {
+                out[key] = destId
+            } else {
+                out[key] = nil
+                warnings.append("The \(key) profile does not exist on the destination and was unset.")
+            }
+        }
+
+        let dpId = "\(out["customPackageDistributionPointId"] ?? "")"
+        if !dpId.isEmpty && dpId != "0" && dpId != "<null>" {
+            if let mapped = context.mappings.distributionPoints[dpId] {
+                out["customPackageDistributionPointId"] = mapped
+            } else {
+                warnings.append("The custom package distribution point is not mapped; map it in the Clone wizard.")
+            }
+        }
+
+        if out["defaultPrestage"] as? Bool == true {
+            warnings.append("This is the default PreStage; migrate it last if other PreStages change the default.")
+        }
+
+        do {
+            let body = try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys])
+            return .write(TransformedObject(body: body, contentType: "application/json", warnings: warnings))
+        } catch {
+            return .blocked(reason: "The payload could not be encoded: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: Blueprints
+
+    private static func transformBlueprint(source: [String: Any],
+                                           context: TransformContext, warnings: inout [String]) -> TransformOutcome {
+        var out = source
+        for readOnly in ["id", "created", "updated", "deploymentState"] {
+            out[readOnly] = nil
+        }
+
+        // device groups are referenced by groupPlatformId UUID
+        if var scope = out["scope"] as? [String: Any], let groups = scope["deviceGroups"] as? [String] {
+            var remapped = [String]()
+            for uuid in groups {
+                if let name = context.sourceName(platformGroupsKey, id: uuid),
+                   let destUuid = context.destId(platformGroupsKey, named: name) {
+                    remapped.append(destUuid)
+                } else {
+                    return .blocked(reason: "A scoped device group does not exist on the destination")
+                }
+            }
+            scope["deviceGroups"] = remapped
+            out["scope"] = scope
+        }
+        if var predicate = out["activationPredicate"] as? String, !predicate.isEmpty {
+            for (uuid, name) in context.sourceNamesById[platformGroupsKey] ?? [:] where predicate.contains(uuid) {
+                guard let destUuid = context.destId(platformGroupsKey, named: name) else {
+                    return .blocked(reason: "The activation predicate references a device group that does not exist on the destination")
+                }
+                predicate = predicate.replacingOccurrences(of: uuid, with: destUuid)
+            }
+            out["activationPredicate"] = predicate
+        }
+
+        // configuration-profile components get fresh payload identifiers;
+        // app-managed components reference the source tenant's VPP assets
+        out = reassignPayloadIdentifiers(in: out) { note in
+            if note == "app-managed" {
+                warnings.append("An app-managed component references VPP assets that belong to the source tenant; check it on the destination.")
+            }
+        } as? [String: Any] ?? out
+
+        do {
+            let body = try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys])
+            return .write(TransformedObject(body: body, contentType: "application/json", warnings: warnings))
+        } catch {
+            return .blocked(reason: "The payload could not be encoded: \(error.localizedDescription)")
+        }
+    }
+
+    private static func reassignPayloadIdentifiers(in value: Any, note: (String) -> Void) -> Any {
+        if var dict = value as? [String: Any] {
+            if dict["payloadIdentifier"] is String {
+                dict["payloadIdentifier"] = UUID().uuidString
+            }
+            if let type = dict["type"] as? String, type.contains("app-managed") {
+                note("app-managed")
+            }
+            for (key, nested) in dict {
+                dict[key] = reassignPayloadIdentifiers(in: nested, note: note)
+            }
+            return dict
+        }
+        if let array = value as? [Any] {
+            return array.map { reassignPayloadIdentifiers(in: $0, note: note) }
+        }
+        return value
+    }
+
+    // MARK: Compliance Benchmarks
+
+    private static func transformBenchmark(source: [String: Any],
+                                           context: TransformContext, warnings: inout [String]) -> TransformOutcome {
+        // the POST shape differs from the GET shape: only known fields go out,
+        // and the source's baselineId becomes sourceBaselineId
+        var out = [String: Any]()
+        out["title"] = source["title"]
+        if let description = source["description"] { out["description"] = description }
+        if let enforcementMode = source["enforcementMode"] { out["enforcementMode"] = enforcementMode }
+        if let versions = source["selectedOsVersions"] { out["selectedOsVersions"] = versions }
+        out["sourceBaselineId"] = source["baselineId"] ?? source["sourceBaselineId"]
+        if let rules = source["rules"] as? [[String: Any]] {
+            out["rules"] = rules.map { rule -> [String: Any] in
+                var trimmed = [String: Any]()
+                trimmed["id"] = rule["id"]
+                if let enabled = rule["enabled"] { trimmed["enabled"] = enabled }
+                if let odv = rule["odv"] { trimmed["odv"] = odv }
+                return trimmed
+            }
+        }
+        if var target = source["target"] as? [String: Any], let groups = target["deviceGroups"] as? [String] {
+            var remapped = [String]()
+            for uuid in groups {
+                if let name = context.sourceName(platformGroupsKey, id: uuid),
+                   let destUuid = context.destId(platformGroupsKey, named: name) {
+                    remapped.append(destUuid)
+                } else {
+                    return .blocked(reason: "A targeted device group does not exist on the destination")
+                }
+            }
+            target["deviceGroups"] = remapped
+            out["target"] = target
+        }
+
+        do {
+            let body = try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys])
+            return .write(TransformedObject(body: body, contentType: "application/json", warnings: warnings))
+        } catch {
+            return .blocked(reason: "The payload could not be encoded: \(error.localizedDescription)")
+        }
+    }
+
+    /// Remaps an id field via the source name and destination id lookups.
+    private static func remapNamedId(_ json: inout [String: Any], idKey: String, lookupType: String,
+                                     context: TransformContext, warnings: inout [String]) {
+        let value = "\(json[idKey] ?? "")"
+        guard !value.isEmpty, value != "-1", value != "0", value != "<null>" else { return }
+        if let name = context.sourceName(lookupType, id: value),
+           let destId = context.destId(lookupType, named: name) {
+            json[idKey] = destId
+        } else {
+            json[idKey] = "-1"
+            warnings.append("The \(lookupType) reference does not exist on the destination and was unset.")
+        }
+    }
+
+    /// Remaps an array of ids, dropping entries that don't exist on the destination.
+    private static func remapIdArray(_ json: inout [String: Any], key: String, lookupType: String,
+                                     label: String, context: TransformContext, warnings: inout [String]) {
+        guard let ids = json[key] as? [Any] else { return }
+        var remapped = [String]()
+        for id in ids {
+            let value = "\(id)"
+            if let name = context.sourceName(lookupType, id: value),
+               let destId = context.destId(lookupType, named: name) {
+                remapped.append(destId)
+            } else {
+                warnings.append("A \(label) referenced by the PreStage does not exist on the destination and was dropped.")
+            }
+        }
+        json[key] = remapped
     }
 
     /// Remaps categoryId/categoryName to the destination's category.

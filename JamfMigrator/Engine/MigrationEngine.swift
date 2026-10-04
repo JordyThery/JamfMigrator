@@ -75,6 +75,9 @@ actor MigrationEngine {
             try await loadLookups(for: dependency, destination: true, source: true)
         }
 
+        if ["blueprints", "compliancebenchmarks"].contains(type.key) {
+            try await loadPlatformGroupLookups()
+        }
         let sourceRefs = try await ObjectLister.list(type, on: source)
         sourceNamesById[type.key] = Dictionary(sourceRefs.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
         try await loadLookups(for: type.key, destination: true, source: false)
@@ -121,6 +124,13 @@ actor MigrationEngine {
                         context.destProfileUUID = ClassicXML.value(of: "uuid", in: ClassicXML.value(of: "general", in: xml))
                     }
                 }
+                // PreStage PUTs must echo the destination's versionLocks
+                if ["computerprestages", "mobiledeviceprestages"].contains(type.key) {
+                    let destDetail = try await ObjectLister.detail(type, id: existingDestId, on: dest)
+                    if case .json(let destJson) = destDetail {
+                        context.destVersionLocks = MigrationPlanner.versionLocks(in: destJson)
+                    }
+                }
             }
 
             let outcome: TransformOutcome
@@ -141,10 +151,30 @@ actor MigrationEngine {
             case .write(let object):
                 export?.writeTrimmed(type: type, ref: ref, payload: object.body, isXML: type.api.isClassic)
                 var warnings = object.warnings
-                let destId = try await write(object, type: type, action: context.action)
+
+                // benchmarks have no update endpoint: delete, then recreate
+                var action = context.action
+                if type.key == "compliancebenchmarks", case .update(let destId) = action {
+                    _ = try await dest.send(.delete, type.api.detailPath(id: destId))
+                    action = .create
+                }
+
+                let destId: String
+                do {
+                    destId = try await write(object, type: type, action: action)
+                } catch let error as GatewayError where error.status == 409 && type.key == "compliancebenchmarks" {
+                    // a duplicate title means a benchmark with this name already
+                    // exists: treat it as the match
+                    let refs = try await ObjectLister.list(type, on: dest)
+                    if let existing = refs.first(where: { $0.name == ref.name }) {
+                        return (.unchanged(destId: existing.id), warnings)
+                    }
+                    throw error
+                }
                 if let icon = object.icon {
                     await copyIcon(icon, type: type, destObjectId: destId, warnings: &warnings)
                 }
+                try await runPostActions(type: type, destId: destId, sourcePayload: payload, warnings: &warnings)
                 if case .update = context.action {
                     return (.updated(destId: destId), warnings)
                 }
@@ -165,13 +195,16 @@ actor MigrationEngine {
                                            contentType: object.contentType,
                                            accept: object.contentType)
         case .update(let destId):
-            response = try await dest.send(type.updateMethod, type.api.detailPath(id: destId),
+            response = try await dest.send(type.updateMethod, type.updatePath(destId: destId),
                                            body: object.body,
                                            contentType: object.contentType,
                                            accept: object.contentType)
             return destId
         }
 
+        if case .singleton = type.listShape {
+            return "singleton"
+        }
         // the created id: <id>n</id> on Classic, "id" in the JSON on Pro
         if type.api.isClassic {
             let id = ClassicXML.value(of: "id", in: String(decoding: response.data, as: UTF8.self))
@@ -181,6 +214,68 @@ actor MigrationEngine {
         let json = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any]
         guard let id = json?["id"] else { throw GatewayError.decoding(URLError(.cannotParseResponse)) }
         return "\(id)"
+    }
+
+    /// Type-specific follow-ups after a successful write.
+    private func runPostActions(type: ObjectType, destId: String, sourcePayload: ObjectPayload,
+                                warnings: inout [String]) async throws {
+        switch type.key {
+        case "computerprestages", "mobiledeviceprestages":
+            // further changes need the profileUuid, which lags the write
+            _ = try? await Poll.until("the PreStage profileUuid", timeout: .seconds(30), interval: .seconds(2)) { [dest] () -> String? in
+                let detail = try await ObjectLister.detail(type, id: destId, on: dest)
+                guard case .json(let json) = detail,
+                      let uuid = json["profileUuid"] as? String, !uuid.isEmpty else { return nil }
+                return uuid
+            }
+
+        case "blueprints":
+            // mirror the source's deploy state; a repeat deploy is harmless
+            guard case .json(let sourceJson) = sourcePayload,
+                  let state = sourceJson["deploymentState"] as? String,
+                  state.localizedCaseInsensitiveContains("DEPLOYED") || state.localizedCaseInsensitiveContains("SUCCEEDED") else {
+                return
+            }
+            _ = try await dest.send(.post, "\(type.api.listPath)/\(destId)/deploy",
+                                    body: Data("{}".utf8), contentType: "application/json")
+            let deployed = try? await Poll.until("the Blueprint deployment", timeout: .seconds(60), interval: .seconds(3)) { [dest] in
+                let detail = try await ObjectLister.detail(type, id: destId, on: dest)
+                guard case .json(let json) = detail else { return nil as Bool? }
+                let state = "\(json["deploymentState"] ?? "")"
+                return state.localizedCaseInsensitiveContains("DEPLOYED") || state.localizedCaseInsensitiveContains("SUCCEEDED")
+                    ? true : nil
+            }
+            if deployed != true {
+                warnings.append("The Blueprint was created but its deployment did not confirm in time; check it on the destination.")
+            }
+
+        case "compliancebenchmarks":
+            // the benchmark syncs in the background; report a sync that fails
+            let synced = try? await Poll.until("the benchmark sync", timeout: .seconds(60), interval: .seconds(3)) { [dest] in
+                let detail = try await ObjectLister.detail(type, id: destId, on: dest)
+                guard case .json(let json) = detail else { return nil as Bool? }
+                let state = "\(json["syncState"] ?? "")"
+                if state.localizedCaseInsensitiveContains("FAILED") { return false }
+                return state.localizedCaseInsensitiveContains("SYNCED") ? true : nil
+            }
+            if synced == false {
+                warnings.append("The benchmark reports syncState FAILED on the destination.")
+            } else if synced == nil {
+                warnings.append("The benchmark sync did not confirm in time; check its syncState on the destination.")
+            }
+
+        default:
+            break
+        }
+    }
+
+    /// Blueprints and Benchmarks reference device groups by platform UUID.
+    private func loadPlatformGroupLookups() async throws {
+        guard destIdsByName[platformGroupsKey] == nil else { return }
+        let destGroups = try await MappingCatalog.platformGroups(on: dest)
+        destIdsByName[platformGroupsKey] = Dictionary(destGroups.map { ($0.name, $0.id) }, uniquingKeysWith: { first, _ in first })
+        let sourceGroups = try await MappingCatalog.platformGroups(on: source)
+        sourceNamesById[platformGroupsKey] = Dictionary(sourceGroups.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
     }
 
     private func copyIcon(_ icon: SelfServiceIcon, type: ObjectType, destObjectId: String, warnings: inout [String]) async {

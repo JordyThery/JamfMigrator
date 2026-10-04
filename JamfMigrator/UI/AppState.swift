@@ -112,9 +112,20 @@ final class AppState {
     /// Delete mode acts on the destination tenant.
     var targetTenant: Tenant? { destTenant }
 
+    /// Whether the current tenant pair can reach the platform-only namespaces
+    /// (Blueprints, Compliance Benchmarks). Delete mode only needs the
+    /// destination; a copy needs both.
+    var gatewayAvailable: Bool {
+        let destOK = destTenant?.usesGateway ?? true
+        if mode == .delete { return destOK }
+        return destOK && (sourceTenant?.usesGateway ?? true)
+    }
+
     var canPreview: Bool {
         guard !isPlanning && !isRunning, destTenant != nil, !selectedTypeKeys.isEmpty else { return false }
-        return mode == .delete || sourceTenant != nil
+        if mode == .delete { return true }
+        // copying a tenant onto itself is never meaningful
+        return sourceTenant != nil && sourceTenantID != destTenantID
     }
 
     var canRun: Bool {

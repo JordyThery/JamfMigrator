@@ -43,6 +43,10 @@ actor DeleteEngine {
             if type.requiresGateway && !client.supportsPlatformEndpoints {
                 continue
             }
+            if case .singleton = type.listShape {
+                // settings singletons can't be deleted
+                continue
+            }
             let excluded = excluding[type.key] ?? []
             do {
                 let refs = try await ObjectLister.list(type, on: client)
@@ -92,8 +96,9 @@ actor DeleteEngine {
             return .deleted
         } catch let error as GatewayError {
             // a Classic DELETE sometimes reports a misleading 400 after doing
-            // the work; a follow-up GET decides
-            if type.api.isClassic, error.status == 400 {
+            // the work, and a Blueprint DELETE a misleading 500; a follow-up
+            // GET decides
+            if error.status == 400 || error.status == 500 {
                 if await objectIsGone(type, ref: ref) {
                     return .deleted
                 }

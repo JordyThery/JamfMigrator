@@ -113,7 +113,11 @@ struct ContentView: View {
         if appState.mode == .delete {
             return "\(counts.delete) objects will be deleted from \(appState.destTenant?.name ?? "the destination"); \(counts.keep) built-ins are kept. This cannot be undone."
         }
-        return "\(counts.create) to create, \(counts.update) to update, \(counts.unchanged) unchanged, \(counts.blocked) blocked."
+        var message = "\(counts.create) to create, \(counts.update) to update, \(counts.unchanged) unchanged, \(counts.blocked) blocked."
+        if counts.replace > 0 {
+            message += " \(counts.replace) Compliance Benchmarks will be DELETED and recreated (no update endpoint)."
+        }
+        return message
     }
 }
 

@@ -31,6 +31,10 @@ struct TransformContext: Sendable {
     /// ADE and distribution-point mappings from the Clone wizard (Phase 6
     /// PreStage transforms consume these).
     var mappings = TenantMappings()
+    /// For PreStage updates: the destination's versionLock values, which every
+    /// PUT must echo. Keys: "root", "locationInformation",
+    /// "purchasingInformation", "accountSettings".
+    var destVersionLocks: [String: Int] = [:]
 
     func destId(_ typeKey: String, named name: String) -> String? {
         destIdsByName[typeKey]?[name]

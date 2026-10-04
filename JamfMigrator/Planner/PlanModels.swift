@@ -14,6 +14,9 @@ enum PlannedChange: Sendable, Equatable, Codable {
     case create
     /// The object exists on the destination but differs; see the diff.
     case update(destId: String)
+    /// The object exists but can't be updated in place (Compliance Benchmarks
+    /// only): it will be deleted and recreated. Needs confirmation.
+    case replace(destId: String)
     /// The object exists and is identical. It will be skipped.
     case unchanged(destId: String)
     /// The object can't be migrated; the reason says why.
@@ -54,24 +57,25 @@ struct MigrationPlan: Sendable, Codable {
     }
 
     /// Counts per change kind, for the sidebar and the confirmation dialogs.
-    var counts: (create: Int, update: Int, unchanged: Int, blocked: Int, delete: Int, keep: Int) {
-        var create = 0, update = 0, unchanged = 0, blocked = 0, delete = 0, keep = 0
+    var counts: (create: Int, update: Int, replace: Int, unchanged: Int, blocked: Int, delete: Int, keep: Int) {
+        var create = 0, update = 0, replace = 0, unchanged = 0, blocked = 0, delete = 0, keep = 0
         for entry in entries {
             switch entry.change {
             case .create: create += 1
             case .update: update += 1
+            case .replace: replace += 1
             case .unchanged: unchanged += 1
             case .blocked: blocked += 1
             case .delete: delete += 1
             case .keep: keep += 1
             }
         }
-        return (create, update, unchanged, blocked, delete, keep)
+        return (create, update, replace, unchanged, blocked, delete, keep)
     }
 
     /// Everything that would actually change, i.e. what the confirmation shows.
     var changeCount: Int {
         let counts = counts
-        return counts.create + counts.update + counts.delete
+        return counts.create + counts.update + counts.replace + counts.delete
     }
 }

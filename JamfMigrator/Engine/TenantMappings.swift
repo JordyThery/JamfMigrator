@@ -22,7 +22,32 @@ struct TenantMappings: Codable, Equatable, Sendable {
     var isEmpty: Bool { adeInstances.isEmpty && distributionPoints.isEmpty }
 }
 
+/// The registry key under which platform device-group lookups are stored in
+/// the transform context: Blueprints and Benchmarks reference groups by their
+/// groupPlatformId UUID (/pro/v2/groups), not the Jamf Pro id.
+let platformGroupsKey = "platformgroups"
+
 enum MappingCatalog {
+
+    /// Device groups as the platform namespaces see them: id = groupPlatformId.
+    static func platformGroups(on client: PlatformClient) async throws -> [ObjectRef] {
+        var results = [ObjectRef]()
+        var page = 0
+        while true {
+            let query = [URLQueryItem(name: "page", value: "\(page)"),
+                         URLQueryItem(name: "page-size", value: "200")]
+            let response = try await client.send(.get, "pro/v2/groups", query: query)
+            let root = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]
+            let entries = root["results"] as? [[String: Any]] ?? []
+            for entry in entries {
+                guard let uuid = entry["groupPlatformId"] as? String else { continue }
+                results.append(ObjectRef(id: uuid, name: entry["groupName"] as? String ?? ""))
+            }
+            let totalCount = root["totalCount"] as? Int ?? results.count
+            if results.count >= totalCount || entries.isEmpty { return results }
+            page += 1
+        }
+    }
 
     /// The tenant's ADE instances (/pro/v1/device-enrollments).
     static func adeInstances(on client: PlatformClient) async throws -> [ObjectRef] {

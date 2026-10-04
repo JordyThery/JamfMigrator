@@ -61,6 +61,8 @@ enum Verifier {
                     result.discrepancies.append("\(entry.name): missing on the destination")
                 case .update:
                     result.discrepancies.append("\(entry.name): differs from the source")
+                case .replace:
+                    result.discrepancies.append("\(entry.name): differs from the source (would be replaced)")
                 case .delete:
                     break
                 }
