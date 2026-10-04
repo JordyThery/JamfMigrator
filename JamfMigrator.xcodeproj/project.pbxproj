@@ -390,7 +390,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "newMajor=\"$(date -u +%Y%m%d)\"\ndate24H=$(date -u +%H%M)\ntmpMinor=$(printf \"%x\\n\" $(echo $date24H | sed 's/^0*//'))\nnewMinor=$(echo $tmpMinor | tr '[:lower:]' '[:upper:]')\nnewBuildNumber=\"$newMajor-$newMinor\"\n##echo \"dir: ${PROJECT_DIR}\"\n##echo \"plist: ${INFOPLIST_FILE}\"\n##defaults read \"${PROJECT_DIR}/${INFOPLIST_FILE}\"\n\n## create folder to hold exported app\nshortVer=\"v${MARKETING_VERSION}\"\nexeName=\"${EXECUTABLE_NAME}\"\nbuildDir=\"/Users/lesliehelou/Documents/Travel/- Projects/$exeName/$shortVer/\"\n\nif [ ! -d \"$buildDir\" ];then\n    mkdir -p \"$buildDir\"\nfi\n\n/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $newBuildNumber\" \"${PROJECT_DIR}/${INFOPLIST_FILE}\"\n";
+			shellScript = "# stamp CFBundleVersion with a UTC date-time build number\nnewMajor=\"$(date -u +%Y%m%d)\"\ndate24H=$(date -u +%H%M)\ntmpMinor=$(printf \"%x\\n\" $(echo $date24H | sed 's/^0*//'))\nnewMinor=$(echo $tmpMinor | tr '[:lower:]' '[:upper:]')\nnewBuildNumber=\"$newMajor-$newMinor\"\n/usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $newBuildNumber\" \"${PROJECT_DIR}/${INFOPLIST_FILE}\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -661,7 +661,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.1;
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = be.jordythery.jamfmigrator;
 				PRODUCT_MODULE_NAME = JamfMigrator;
 				PRODUCT_NAME = "Jamf Migrator";
@@ -692,7 +692,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 0.1;
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = be.jordythery.jamfmigrator;
 				PRODUCT_MODULE_NAME = JamfMigrator;
 				PRODUCT_NAME = "Jamf Migrator";

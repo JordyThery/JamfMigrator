@@ -265,7 +265,7 @@ actor MigrationEngine {
         case "blueprints":
             // mirror the source's deploy state; a repeat deploy is harmless.
             // deploymentState is an object: {"state": "DEPLOYED", "lastDeployment": …}
-            func deployState(_ json: [String: Any]) -> String {
+            @Sendable func deployState(_ json: [String: Any]) -> String {
                 if let dict = json["deploymentState"] as? [String: Any] { return "\(dict["state"] ?? "")" }
                 return "\(json["deploymentState"] ?? "")"
             }

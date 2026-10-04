@@ -435,12 +435,14 @@ final class AppState {
         let excluding = excludedObjectIds
         let secrets = serviceSecrets
         let mappings = mappings
+        let progress: @Sendable (String) -> Void = { [weak self] name in
+            Task { @MainActor [weak self] in self?.planningStatus = name }
+        }
         Task { [weak self] in
             let report = await Verifier.verify(source: source, dest: dest,
                                                typeKeys: typeKeys, excluding: excluding,
-                                               secrets: secrets, mappings: mappings) { name in
-                Task { @MainActor [weak self] in self?.planningStatus = name }
-            }
+                                               secrets: secrets, mappings: mappings,
+                                               progress: progress)
             guard let self else { return }
             self.verifyReport = report
             self.isVerifying = false
