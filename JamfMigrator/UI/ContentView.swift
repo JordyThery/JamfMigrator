@@ -15,6 +15,8 @@ struct ContentView: View {
     @Environment(AppState.self) private var appState
     @State private var showRunConfirmation = false
     @State private var showRunSheet = false
+    @State private var showCloneWizard = false
+    @State private var showWipeWizard = false
 
     var body: some View {
         @Bindable var appState = appState
@@ -42,6 +44,21 @@ struct ContentView: View {
                 .pickerStyle(.segmented)
                 .help("Delete mode stays on for the session (⌘D) and always starts off at launch.")
 
+                if appState.mode == .copy {
+                    Button("Clone tenant", systemImage: "wand.and.stars") {
+                        showCloneWizard = true
+                    }
+                    .disabled(appState.sourceTenant == nil || appState.destTenant == nil || appState.isRunning)
+                    .help("The guided flow: connect, map ADE and distribution points, preview, run, verify.")
+                } else {
+                    Button("Wipe tenant", systemImage: "trash.slash") {
+                        showWipeWizard = true
+                    }
+                    .tint(.red)
+                    .disabled(appState.destTenant == nil || appState.isRunning)
+                    .help("Empties the tenant completely, behind its gates: preview, backup and a typed confirmation.")
+                }
+
                 Button("Preview", systemImage: "eye") {
                     appState.preview()
                 }
@@ -68,6 +85,12 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showRunSheet) {
             RunView()
+        }
+        .sheet(isPresented: $showCloneWizard) {
+            CloneWizard()
+        }
+        .sheet(isPresented: $showWipeWizard) {
+            WipeWizard()
         }
         .alert("Something went wrong", isPresented: .init(
             get: { appState.lastError != nil },

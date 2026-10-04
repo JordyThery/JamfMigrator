@@ -40,6 +40,11 @@
 		08ABF3D73071C5FA00606B36 /* InspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3D63071C5FA00606B36 /* InspectorView.swift */; };
 		08ABF3D93071C61000606B36 /* RunView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3D83071C61000606B36 /* RunView.swift */; };
 		08ABF3DB3071C62800606B36 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3DA3071C62800606B36 /* SettingsView.swift */; };
+		08ABF3DD3072203F00606B36 /* TenantMappings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3DC3072203F00606B36 /* TenantMappings.swift */; };
+		08ABF3DF3072205000606B36 /* TenantExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3DE3072205000606B36 /* TenantExporter.swift */; };
+		08ABF3E13072205D00606B36 /* Verifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3E03072205D00606B36 /* Verifier.swift */; };
+		08ABF3E3307220AB00606B36 /* CloneWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3E2307220AB00606B36 /* CloneWizard.swift */; };
+		08ABF3E5307220C600606B36 /* WipeWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3E4307220C600606B36 /* WipeWizard.swift */; };
 		9BC01C601DFB0C07007E634E /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC01C5F1DFB0C07007E634E /* AppDelegate.swift */; };
 		9BC01C621DFB0C07007E634E /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC01C611DFB0C07007E634E /* ViewController.swift */; };
 		9BC01C641DFB0C07007E634E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9BC01C631DFB0C07007E634E /* Assets.xcassets */; };
@@ -134,6 +139,11 @@
 		08ABF3D63071C5FA00606B36 /* InspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InspectorView.swift; sourceTree = "<group>"; };
 		08ABF3D83071C61000606B36 /* RunView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunView.swift; sourceTree = "<group>"; };
 		08ABF3DA3071C62800606B36 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		08ABF3DC3072203F00606B36 /* TenantMappings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TenantMappings.swift; sourceTree = "<group>"; };
+		08ABF3DE3072205000606B36 /* TenantExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TenantExporter.swift; sourceTree = "<group>"; };
+		08ABF3E03072205D00606B36 /* Verifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Verifier.swift; sourceTree = "<group>"; };
+		08ABF3E2307220AB00606B36 /* CloneWizard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloneWizard.swift; sourceTree = "<group>"; };
+		08ABF3E4307220C600606B36 /* WipeWizard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WipeWizard.swift; sourceTree = "<group>"; };
 		9BC01C5C1DFB0C07007E634E /* JamfMigrator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = JamfMigrator.app; path = "Jamf Migrator.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9BC01C5F1DFB0C07007E634E /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		9BC01C611DFB0C07007E634E /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
@@ -275,6 +285,9 @@
 				08ABF3B63071C23400606B36 /* IconMigrator.swift */,
 				08ABF3B83071C25300606B36 /* MigrationEngine.swift */,
 				08ABF3BA3071C26600606B36 /* DeleteEngine.swift */,
+				08ABF3DC3072203F00606B36 /* TenantMappings.swift */,
+				08ABF3DE3072205000606B36 /* TenantExporter.swift */,
+				08ABF3E03072205D00606B36 /* Verifier.swift */,
 			);
 			path = Engine;
 			sourceTree = "<group>";
@@ -301,6 +314,8 @@
 				08ABF3D63071C5FA00606B36 /* InspectorView.swift */,
 				08ABF3D83071C61000606B36 /* RunView.swift */,
 				08ABF3DA3071C62800606B36 /* SettingsView.swift */,
+				08ABF3E2307220AB00606B36 /* CloneWizard.swift */,
+				08ABF3E4307220C600606B36 /* WipeWizard.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -602,12 +617,14 @@
 				CE310A722D10BBE6007C2C6F /* RemoveData.swift in Sources */,
 				CE310A732D10BBE6007C2C6F /* RemoveObjects.swift in Sources */,
 				08ABF39F3071C0A600606B36 /* ObjectType.swift in Sources */,
+				08ABF3DD3072203F00606B36 /* TenantMappings.swift in Sources */,
 				08ABF3563071BAC100606B36 /* PlatformClient.swift in Sources */,
 				9BC01C621DFB0C07007E634E /* ViewController.swift in Sources */,
 				CEF467D82EB8444B00160D32 /* SummaryView.swift in Sources */,
 				08ABF3A63071C11C00606B36 /* Transformer.swift in Sources */,
 				CEE65A2F2CB953C5002AB294 /* Headless.swift in Sources */,
 				CEDB6A132CE05E7A00171FB0 /* PatchDelegate.swift in Sources */,
+				08ABF3E5307220C600606B36 /* WipeWizard.swift in Sources */,
 				CEAA10022F00000200171FB0 /* AppInstallersDelegate.swift in Sources */,
 				08ABF35D3071BADD00606B36 /* Tenant.swift in Sources */,
 				CEAA10042F00000400171FB0 /* ApiRequest.swift in Sources */,
@@ -629,6 +646,7 @@
 				08ABF3D13071C5BF00606B36 /* ContentView.swift in Sources */,
 				08ABF3CF3071C5AD00606B36 /* JamfMigratorApp.swift in Sources */,
 				08ABF3583071BAC800606B36 /* Poll.swift in Sources */,
+				08ABF3DF3072205000606B36 /* TenantExporter.swift in Sources */,
 				B53ECDF82391F8FB005EE6E5 /* Globals.swift in Sources */,
 				CE310A692D10BB49007C2C6F /* ExportItem.swift in Sources */,
 				08ABF35F3071BAE900606B36 /* SecretStore.swift in Sources */,
@@ -654,6 +672,7 @@
 				08ABF3B33071C1FD00606B36 /* ExportWriter.swift in Sources */,
 				CEE65A352CC37062002AB294 /* SecurityScopedBookmarks.swift in Sources */,
 				08ABF3B73071C23400606B36 /* IconMigrator.swift in Sources */,
+				08ABF3E3307220AB00606B36 /* CloneWizard.swift in Sources */,
 				08ABF3D93071C61000606B36 /* RunView.swift in Sources */,
 				B56CBA8A277B939100F26E8C /* SaveDelegate.swift in Sources */,
 				CE310A652D10BAEC007C2C6F /* EndpointXml.swift in Sources */,
@@ -668,6 +687,7 @@
 				08ABF3543071BAA400606B36 /* TokenProvider.swift in Sources */,
 				08ABF3C43071C3CE00606B36 /* MigrationPlanner.swift in Sources */,
 				CE310A6D2D10BB95007C2C6F /* ObjectDelegate.swift in Sources */,
+				08ABF3E13072205D00606B36 /* Verifier.swift in Sources */,
 				B5BD6ADB233510F6001D244A /* Credentials.swift in Sources */,
 				08ABF3D53071C5EC00606B36 /* ObjectListView.swift in Sources */,
 				CEDB6A152CE0D71E00171FB0 /* PatchManagementApi.swift in Sources */,

@@ -28,6 +28,9 @@ struct TransformContext: Sendable {
     var includedTypes: Set<String> = []
     /// For profile updates: the destination profile's payload UUID to keep.
     var destProfileUUID: String? = nil
+    /// ADE and distribution-point mappings from the Clone wizard (Phase 6
+    /// PreStage transforms consume these).
+    var mappings = TenantMappings()
 
     func destId(_ typeKey: String, named name: String) -> String? {
         destIdsByName[typeKey]?[name]

@@ -59,6 +59,25 @@ final class AppState {
     var report: RunReport?
     var lastError: String?
 
+    // MARK: Clone / Wipe wizard state
+
+    /// ADE and distribution-point mappings for the current tenant pair.
+    var mappings = TenantMappings() {
+        didSet { saveMappings() }
+    }
+    var sourceADEInstances: [ObjectRef] = []
+    var destADEInstances: [ObjectRef] = []
+    var sourceDistributionPoints: [ObjectRef] = []
+    var destDistributionPoints: [ObjectRef] = []
+    var isLoadingMappings = false
+
+    var isBackingUp = false
+    var backupResult: BackupResult?
+    private var activeExporter: TenantExporter?
+
+    var isVerifying = false
+    var verifyReport: VerifyReport?
+
     private var runTask: Task<Void, Never>?
     private var activeMigration: MigrationEngine?
     private var activeDelete: DeleteEngine?
@@ -218,6 +237,94 @@ final class AppState {
         }
         // refresh the plan so the list reflects the new destination state
         plan = nil
+    }
+
+    // MARK: Mappings
+
+    private var mappingsKey: String? {
+        guard let source = sourceTenantID, let dest = destTenantID else { return nil }
+        return "mappings-\(source.uuidString)-\(dest.uuidString)"
+    }
+
+    func loadMappingCandidates() {
+        guard let sourceTenant, let destTenant else { return }
+        if let key = mappingsKey,
+           let data = UserDefaults.standard.data(forKey: key),
+           let stored = try? JSONDecoder().decode(TenantMappings.self, from: data) {
+            mappings = stored
+        }
+        isLoadingMappings = true
+        let source = tenantStore.client(for: sourceTenant)
+        let dest = tenantStore.client(for: destTenant)
+        Task { [weak self] in
+            let sourceADE = (try? await MappingCatalog.adeInstances(on: source)) ?? []
+            let destADE = (try? await MappingCatalog.adeInstances(on: dest)) ?? []
+            let sourceDPs = (try? await MappingCatalog.distributionPoints(on: source)) ?? []
+            let destDPs = (try? await MappingCatalog.distributionPoints(on: dest)) ?? []
+            guard let self else { return }
+            self.sourceADEInstances = sourceADE
+            self.destADEInstances = destADE
+            self.sourceDistributionPoints = sourceDPs
+            self.destDistributionPoints = destDPs
+            if self.mappings.isEmpty {
+                self.mappings = MappingCatalog.propose(sourceADE: sourceADE, destADE: destADE,
+                                                       sourceDPs: sourceDPs, destDPs: destDPs)
+            }
+            self.isLoadingMappings = false
+        }
+    }
+
+    private func saveMappings() {
+        guard let key = mappingsKey, let data = try? JSONEncoder().encode(mappings) else { return }
+        UserDefaults.standard.set(data, forKey: key)
+    }
+
+    // MARK: Backup and verify
+
+    /// Full backup of the destination tenant, required before a wipe.
+    func backup() {
+        guard let destTenant, !isBackingUp else { return }
+        isBackingUp = true
+        backupResult = nil
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let root = URL(fileURLWithPath: AppInfo.appSupportPath, isDirectory: true)
+            .appendingPathComponent("backups", isDirectory: true)
+            .appendingPathComponent("\(destTenant.name)-\(formatter.string(from: Date()))", isDirectory: true)
+        let exporter = TenantExporter(client: tenantStore.client(for: destTenant)) { name in
+            Task { @MainActor [weak self] in self?.planningStatus = name }
+        }
+        activeExporter = exporter
+        let typeKeys = selectedTypeKeys
+        Task { [weak self] in
+            let result = await exporter.backup(typeKeys: typeKeys, to: root)
+            guard let self else { return }
+            self.backupResult = result
+            self.isBackingUp = false
+            self.activeExporter = nil
+        }
+    }
+
+    /// Plans again after a clone; clean means a second run would write nothing.
+    func verify() {
+        guard let sourceTenant, let destTenant, !isVerifying else { return }
+        isVerifying = true
+        verifyReport = nil
+        let source = tenantStore.client(for: sourceTenant)
+        let dest = tenantStore.client(for: destTenant)
+        let typeKeys = selectedTypeKeys
+        let excluding = excludedObjectIds
+        let secrets = serviceSecrets
+        Task { [weak self] in
+            let report = await Verifier.verify(source: source, dest: dest,
+                                               typeKeys: typeKeys, excluding: excluding,
+                                               secrets: secrets) { name in
+                Task { @MainActor [weak self] in self?.planningStatus = name }
+            }
+            guard let self else { return }
+            self.verifyReport = report
+            self.isVerifying = false
+        }
     }
 
     // MARK: Paths

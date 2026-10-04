@@ -36,7 +36,8 @@ struct ObjectListView: View {
     }
 
     private var typeTitle: String {
-        appState.selectedTypeKey.flatMap { ObjectRegistry.type($0)?.displayName } ?? "Objects"
+        guard appState.plan != nil else { return "Objects" }
+        return appState.selectedTypeKey.flatMap { ObjectRegistry.type($0)?.displayName } ?? "Objects"
     }
 
     private var filteredEntries: [ObjectPlan] {
