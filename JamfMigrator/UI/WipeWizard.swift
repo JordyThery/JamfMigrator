@@ -129,13 +129,13 @@ struct WipeWizard: View {
     }
 
     private var deleteCount: Int {
-        appState.plan?.counts.delete ?? 0
+        appState.effectiveCounts.delete
     }
 
     private var allGatesPass: Bool {
         guard appState.mode == .delete,
               let tenant = appState.destTenant, !tenant.isProtected,
-              let plan = appState.plan, plan.mode == .delete, plan.counts.delete > 0,
+              let plan = appState.plan, plan.mode == .delete, appState.effectiveCounts.delete > 0,
               typedName == tenant.name else { return false }
         return backupSkipped || appState.backupResult?.isComplete == true
     }

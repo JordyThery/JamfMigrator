@@ -129,7 +129,29 @@ final class AppState {
     }
 
     var canRun: Bool {
-        plan != nil && !isRunning && !isPlanning && plan!.changeCount > 0
+        plan != nil && !isRunning && !isPlanning && effectiveChangeCount > 0
+    }
+
+    /// The plan's actionable changes minus the unchecked objects — what a run
+    /// would actually touch (e.g. one specific script).
+    var effectiveCounts: (create: Int, update: Int, replace: Int, delete: Int) {
+        guard let plan else { return (0, 0, 0, 0) }
+        var create = 0, update = 0, replace = 0, delete = 0
+        for entry in plan.entries where !(excludedObjectIds[entry.typeKey]?.contains(entry.objectId) ?? false) {
+            switch entry.change {
+            case .create: create += 1
+            case .update: update += 1
+            case .replace: replace += 1
+            case .delete: delete += 1
+            case .unchanged, .blocked, .keep: break
+            }
+        }
+        return (create, update, replace, delete)
+    }
+
+    var effectiveChangeCount: Int {
+        let counts = effectiveCounts
+        return counts.create + counts.update + counts.replace + counts.delete
     }
 
     // MARK: Service secrets (bind/ldap/fsrw/fsro), stored in the Keychain

@@ -74,7 +74,7 @@ struct ContentView: View {
             }
         }
         .confirmationDialog(runConfirmationTitle, isPresented: $showRunConfirmation) {
-            Button(appState.mode == .delete ? "Delete \(appState.plan?.changeCount ?? 0) objects" : "Copy \(appState.plan?.changeCount ?? 0) changes",
+            Button(appState.mode == .delete ? "Delete \(appState.effectiveCounts.delete) objects" : "Copy \(appState.effectiveChangeCount) changes",
                    role: appState.mode == .delete ? .destructive : nil) {
                 appState.run()
                 showRunSheet = true
@@ -109,13 +109,18 @@ struct ContentView: View {
     }
 
     private var runConfirmationMessage: String {
-        guard let counts = appState.plan?.counts else { return "" }
+        guard let planCounts = appState.plan?.counts else { return "" }
+        let effective = appState.effectiveCounts
         if appState.mode == .delete {
-            return "\(counts.delete) objects will be deleted from \(appState.destTenant?.name ?? "the destination"); \(counts.keep) built-ins are kept. This cannot be undone."
+            return "\(effective.delete) objects will be deleted from \(appState.destTenant?.name ?? "the destination"); \(planCounts.keep) built-ins are kept. This cannot be undone."
         }
-        var message = "\(counts.create) to create, \(counts.update) to update, \(counts.unchanged) unchanged, \(counts.blocked) blocked."
-        if counts.replace > 0 {
-            message += " \(counts.replace) Compliance Benchmarks will be DELETED and recreated (no update endpoint)."
+        var message = "\(effective.create) to create, \(effective.update) to update, \(planCounts.unchanged) unchanged, \(planCounts.blocked) blocked."
+        let unchecked = appState.plan!.changeCount - appState.effectiveChangeCount
+        if unchecked > 0 {
+            message += " \(unchecked) unchecked objects are left out."
+        }
+        if effective.replace > 0 {
+            message += " \(effective.replace) Compliance Benchmarks will be DELETED and recreated (no update endpoint)."
         }
         return message
     }
