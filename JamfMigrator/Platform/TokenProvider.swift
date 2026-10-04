@@ -16,9 +16,27 @@ import Foundation
 actor TokenProvider {
 
     struct Credentials: Sendable {
+        enum Method: Sendable {
+            /// OAuth client credentials (/auth/token on the gateway,
+            /// /api/oauth/token on a Jamf Pro server).
+            case oauthClient(clientId: String, clientSecret: String)
+            /// A Jamf Pro user account (/api/v1/auth/token): the credentials
+            /// go in one Basic header to mint a bearer token; every API call
+            /// still uses the bearer token.
+            case userPassword(username: String, password: String)
+        }
+
         let tokenURL: URL
-        let clientId: String
-        let clientSecret: String
+        let method: Method
+
+        init(tokenURL: URL, method: Method) {
+            self.tokenURL = tokenURL
+            self.method = method
+        }
+
+        init(tokenURL: URL, clientId: String, clientSecret: String) {
+            self.init(tokenURL: tokenURL, method: .oauthClient(clientId: clientId, clientSecret: clientSecret))
+        }
     }
 
     private struct Token {
@@ -85,15 +103,21 @@ actor TokenProvider {
                                    now: @Sendable () -> Date) async throws -> Token {
         var request = URLRequest(url: credentials.tokenURL)
         request.httpMethod = "POST"
-        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        var form = URLComponents()
-        form.queryItems = [
-            URLQueryItem(name: "grant_type", value: "client_credentials"),
-            URLQueryItem(name: "client_id", value: credentials.clientId),
-            URLQueryItem(name: "client_secret", value: credentials.clientSecret),
-        ]
-        request.httpBody = form.percentEncodedQuery?.data(using: .utf8)
+        switch credentials.method {
+        case .oauthClient(let clientId, let clientSecret):
+            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            var form = URLComponents()
+            form.queryItems = [
+                URLQueryItem(name: "grant_type", value: "client_credentials"),
+                URLQueryItem(name: "client_id", value: clientId),
+                URLQueryItem(name: "client_secret", value: clientSecret),
+            ]
+            request.httpBody = form.percentEncodedQuery?.data(using: .utf8)
+        case .userPassword(let username, let password):
+            let basic = Data("\(username):\(password)".utf8).base64EncodedString()
+            request.setValue("Basic \(basic)", forHTTPHeaderField: "Authorization")
+        }
 
         let data: Data
         let response: URLResponse
@@ -110,7 +134,9 @@ actor TokenProvider {
                                             detail: String(data: data, encoding: .utf8))
         }
 
-        struct TokenResponse: Decodable {
+        // two response shapes: OAuth {access_token, expires_in} and the Jamf
+        // Pro user-token {token, expires: ISO8601}
+        struct OAuthResponse: Decodable {
             let accessToken: String
             let expiresIn: TimeInterval
             enum CodingKeys: String, CodingKey {
@@ -118,9 +144,19 @@ actor TokenProvider {
                 case expiresIn = "expires_in"
             }
         }
-        do {
-            let decoded = try JSONDecoder().decode(TokenResponse.self, from: data)
+        struct UserTokenResponse: Decodable {
+            let token: String
+            let expires: String
+        }
+        if let decoded = try? JSONDecoder().decode(OAuthResponse.self, from: data) {
             return Token(value: decoded.accessToken, obtained: now(), lifetime: decoded.expiresIn)
+        }
+        do {
+            let decoded = try JSONDecoder().decode(UserTokenResponse.self, from: data)
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let lifetime = formatter.date(from: decoded.expires).map { $0.timeIntervalSince(now()) } ?? 20 * 60
+            return Token(value: decoded.token, obtained: now(), lifetime: max(lifetime, 60))
         } catch {
             throw GatewayError.decoding(error)
         }

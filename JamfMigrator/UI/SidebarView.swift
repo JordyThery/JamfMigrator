@@ -32,6 +32,23 @@ struct SidebarView: View {
                 }
             }
 
+            Section {
+                HStack {
+                    Button("Check all") {
+                        appState.selectedTypeKeys = Set(ObjectRegistry.types.map(\.key))
+                    }
+                    Button("Uncheck all") {
+                        appState.selectedTypeKeys = []
+                    }
+                    Spacer()
+                }
+                .buttonStyle(.link)
+                .font(.callout)
+                .controlSize(.small)
+            } header: {
+                Text("Object types")
+            }
+
             ForEach(steps, id: \.self) { step in
                 Section("Step \(step)") {
                     ForEach(types(in: step)) { type in

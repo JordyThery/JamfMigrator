@@ -52,6 +52,11 @@ actor MigrationEngine {
 
         for type in types {
             guard !isCancelled else { break }
+            if type.requiresGateway && !(source.supportsPlatformEndpoints && dest.supportsPlatformEndpoints) {
+                report.add(type: type, ref: ObjectRef(id: "-", name: "(all objects)"),
+                           status: .blocked(reason: "\(type.displayName) require the Jamf Platform API gateway"))
+                continue
+            }
             do {
                 try await migrateType(type, included: typeKeys,
                                       excluded: excluding[type.key] ?? [], report: &report)

@@ -54,8 +54,20 @@ actor PlatformClient {
         }
     }
 
+    /// How canonical (gateway-form) paths map onto this server.
+    enum Connection: Sendable, Equatable {
+        /// The platform gateway: paths are used as-is, X-Environment-Id is sent.
+        case gateway
+        /// A Jamf Pro instance: pro/… → api/…, proclassic/… → JSSResource/….
+        /// Platform-only namespaces have no equivalent here.
+        case direct
+    }
+
     nonisolated let baseURL: URL
     nonisolated let environmentId: String
+    nonisolated let connection: Connection
+    /// Blueprints and Compliance Benchmarks exist only behind the gateway.
+    nonisolated var supportsPlatformEndpoints: Bool { connection == .gateway }
     private let tokenProvider: TokenProvider
     private let session: URLSession
     private let configuration: Configuration
@@ -72,6 +84,22 @@ actor PlatformClient {
          sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         self.baseURL = region.gatewayURL
         self.environmentId = environmentId
+        self.connection = .gateway
+        self.tokenProvider = tokenProvider
+        self.session = session
+        self.configuration = configuration
+        self.sleep = sleep
+    }
+
+    /// A direct Jamf Pro connection, for MSP tenants without Platform API access.
+    init(serverURL: URL,
+         tokenProvider: TokenProvider,
+         session: URLSession = URLSession(configuration: .ephemeral),
+         configuration: Configuration = Configuration(),
+         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
+        self.baseURL = serverURL
+        self.environmentId = ""
+        self.connection = .direct
         self.tokenProvider = tokenProvider
         self.session = session
         self.configuration = configuration
@@ -146,15 +174,16 @@ actor PlatformClient {
                              contentType: String?,
                              accept: String?) throws -> URLRequest {
         let trimmedPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
-        guard var components = URLComponents(url: baseURL.appendingPathComponent(trimmedPath),
+        let mappedPath = try map(trimmedPath)
+        guard var components = URLComponents(url: baseURL.appendingPathComponent(mappedPath),
                                              resolvingAgainstBaseURL: false) else {
-            throw GatewayError.invalidURL("\(baseURL)/\(trimmedPath)")
+            throw GatewayError.invalidURL("\(baseURL)/\(mappedPath)")
         }
         if !query.isEmpty {
             components.queryItems = query
         }
         guard let url = components.url else {
-            throw GatewayError.invalidURL("\(baseURL)/\(trimmedPath)?\(query)")
+            throw GatewayError.invalidURL("\(baseURL)/\(mappedPath)?\(query)")
         }
 
         // the Classic namespace speaks XML, everything else JSON
@@ -163,7 +192,9 @@ actor PlatformClient {
 
         var request = URLRequest(url: url)
         request.httpMethod = method.rawValue
-        request.setValue(environmentId, forHTTPHeaderField: "X-Environment-Id")
+        if !environmentId.isEmpty {
+            request.setValue(environmentId, forHTTPHeaderField: "X-Environment-Id")
+        }
         request.setValue(accept ?? defaultType, forHTTPHeaderField: "Accept")
         request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
         if let body {
@@ -174,6 +205,22 @@ actor PlatformClient {
             request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
         }
         return request
+    }
+
+    /// Maps a canonical gateway-form path onto this connection.
+    private func map(_ path: String) throws -> String {
+        switch connection {
+        case .gateway:
+            return path
+        case .direct:
+            if path.hasPrefix("pro/") {
+                return "api/" + path.dropFirst("pro/".count)
+            }
+            if path.hasPrefix("proclassic/") {
+                return "JSSResource/" + path.dropFirst("proclassic/".count)
+            }
+            throw GatewayError.invalidURL("\(path) requires the Jamf Platform API gateway; this tenant connects directly to Jamf Pro")
+        }
     }
 
     // MARK: Retry and throttle

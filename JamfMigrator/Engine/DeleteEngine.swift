@@ -40,6 +40,9 @@ actor DeleteEngine {
 
         for type in ObjectRegistry.deletionOrder where typeKeys.contains(type.key) {
             guard !isCancelled else { break }
+            if type.requiresGateway && !client.supportsPlatformEndpoints {
+                continue
+            }
             let excluded = excluding[type.key] ?? []
             do {
                 let refs = try await ObjectLister.list(type, on: client)

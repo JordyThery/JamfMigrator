@@ -20,6 +20,29 @@ Jamf Migrator does what [terraform-provider-jamfplatform](https://github.com/jam
 | Dropped object types | API roles and API integrations (the gateway doesn't serve them), computers, mobile devices. |
 | Added | PreStages (with ADE instance mapping), enrollment customizations, Blueprints, Compliance Benchmarks, tenant settings, dry-run preview, one-button tenant clone, gated one-button tenant wipe. |
 
+### Revision 2026-10-04: direct Jamf Pro API connections
+
+Jamf MSP customers don't have the Platform API in their Jamf Account yet, so
+"gateway only" is relaxed: each tenant chooses its connection kind.
+
+- **Platform API gateway** (default): region + environment UUID, as before.
+- **Direct Jamf Pro server**: the instance URL (https://tenant.jamfcloud.com)
+  with an API client via `/api/oauth/token`. Client credentials only — basic
+  auth and user/password tokens stay removed.
+- The two kinds mix freely: gateway source → direct destination and the
+  reverse both work. Paths map 1:1 (`pro/…` ↔ `/api/…`, `proclassic/…` ↔
+  `/JSSResource/…`).
+- **Blueprints and Compliance Benchmarks exist only behind the gateway**
+  (`/blueprints/v1`, `/compliance-benchmarks/v1`). When either tenant is a
+  direct connection, those types are Blocked with a clear reason.
+- Open item for direct connections: multi-node Jamf Cloud instances may need
+  the old sticky-session treatment for read-after-write; watch for 404s after
+  creates during live validation.
+
+Selective migration stays a first-class flow: any subset of types (down to a
+single type, e.g. only App Installers) and any subset of objects can be
+checked, with Check all / Uncheck all controls on both lists.
+
 ## What gets copied, in order
 
 The API column shows the intended split. The newest version of each endpoint is confirmed against the gateway spec in Phase 2 and pinned in the registry.

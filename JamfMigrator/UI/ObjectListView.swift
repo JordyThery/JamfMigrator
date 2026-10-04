@@ -33,6 +33,22 @@ struct ObjectListView: View {
         }
         .searchable(text: $appState.searchText, placement: .automatic, prompt: "Filter by name")
         .navigationTitle(typeTitle)
+        .toolbar {
+            if let typeKey = appState.selectedTypeKey, appState.plan != nil {
+                ToolbarItem {
+                    Menu("Select", systemImage: "checklist") {
+                        Button("Check all") {
+                            appState.excludedObjectIds[typeKey] = []
+                        }
+                        Button("Uncheck all") {
+                            appState.excludedObjectIds[typeKey] = Set(
+                                appState.plan?.entries(for: typeKey).map(\.objectId) ?? [])
+                        }
+                    }
+                    .help("Check or uncheck every object of this type.")
+                }
+            }
+        }
     }
 
     private var typeTitle: String {

@@ -57,6 +57,11 @@ actor MigrationPlanner {
     }
 
     private func planType(_ type: ObjectType, included: Set<String>, into plan: inout MigrationPlan) async throws {
+        if type.requiresGateway && !(source.supportsPlatformEndpoints && dest.supportsPlatformEndpoints) {
+            plan.entries.append(ObjectPlan(typeKey: type.key, objectId: "-", name: "(all objects)",
+                                           change: .blocked(reason: "\(type.displayName) require the Jamf Platform API gateway; a tenant here connects directly to Jamf Pro")))
+            return
+        }
         for dependency in type.dependencies + ["sites"] {
             try await loadLookups(for: dependency)
         }
@@ -142,6 +147,9 @@ actor MigrationPlanner {
         var plan = MigrationPlan(mode: .delete)
         for type in ObjectRegistry.deletionOrder where typeKeys.contains(type.key) {
             progress?(type.displayName)
+            if type.requiresGateway && !dest.supportsPlatformEndpoints {
+                continue
+            }
             do {
                 let refs = try await ObjectLister.list(type, on: dest)
                 for ref in refs {

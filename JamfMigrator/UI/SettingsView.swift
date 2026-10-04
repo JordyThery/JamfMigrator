@@ -21,7 +21,7 @@ struct SettingsView: View {
                 ExportSettings()
             }
         }
-        .frame(width: 560, height: 420)
+        .frame(width: 680, height: 480)
     }
 }
 
@@ -88,33 +88,97 @@ private struct TenantEditor: View {
     @Environment(AppState.self) private var appState
     let tenant: Tenant
     @State private var secret = ""
+    @State private var useUserAuth = false
 
     var body: some View {
         Form {
             TextField("Name", text: binding(\.name))
-            Picker("Region", selection: binding(\.region)) {
-                ForEach(Region.allCases) { region in
-                    Text(region.displayName).tag(region)
-                }
+
+            Picker("Connection", selection: usesGatewayBinding) {
+                Text("Platform API gateway").tag(true)
+                Text("Jamf Pro server").tag(false)
             }
-            TextField("Environment ID", text: binding(\.environmentId))
-                .font(.body.monospaced())
-            TextField("Client ID", text: binding(\.clientId))
-                .font(.body.monospaced())
-            SecureField("Client secret", text: $secret)
-                .onChange(of: secret) {
-                    appState.tenantStore.setSecret(secret, for: tenant)
+            .help("MSP tenants without Platform API access connect to their Jamf Pro server directly.")
+
+            if usesGatewayBinding.wrappedValue {
+                Picker("Region", selection: binding(\.region)) {
+                    ForEach(Region.allCases) { region in
+                        Text(region.displayName).tag(region)
+                    }
                 }
+                TextField("Environment ID", text: binding(\.environmentId))
+                    .font(.body.monospaced())
+                TextField("Client ID", text: binding(\.clientId))
+                    .font(.body.monospaced())
+                SecureField("Client secret", text: $secret)
+                    .onChange(of: secret) {
+                        appState.tenantStore.setSecret(secret, for: tenant)
+                    }
+            } else {
+                TextField("Server URL", text: optionalBinding(\.serverURL), prompt: Text("https://tenant.jamfcloud.com"))
+                    .font(.body.monospaced())
+                Picker("Authentication", selection: $useUserAuth) {
+                    Text("API client").tag(false)
+                    Text("Username & password").tag(true)
+                }
+                if useUserAuth {
+                    TextField("Username", text: optionalBinding(\.username))
+                    SecureField("Password", text: $secret)
+                        .onChange(of: secret) {
+                            appState.tenantStore.setSecret(secret, for: tenant)
+                        }
+                } else {
+                    TextField("Client ID", text: binding(\.clientId))
+                        .font(.body.monospaced())
+                    SecureField("Client secret", text: $secret)
+                        .onChange(of: secret) {
+                            appState.tenantStore.setSecret(secret, for: tenant)
+                        }
+                }
+                Text("Blueprints and Compliance Benchmarks need the Platform API and are unavailable over a direct connection.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
             Toggle("Protected — this tenant can never be wiped", isOn: binding(\.isProtected))
                 .help("On by default for the golden master. A protected tenant can't be wiped at all.")
         }
         .formStyle(.grouped)
-        .onAppear {
-            secret = appState.tenantStore.secret(for: tenant) ?? ""
+        .onAppear { reload() }
+        .onChange(of: tenant.id) { reload() }
+        .onChange(of: useUserAuth) {
+            // switching back to an API client drops the username
+            if !useUserAuth {
+                var updated = appState.tenantStore.tenant(id: tenant.id) ?? tenant
+                updated.username = nil
+                appState.tenantStore.upsert(updated)
+            }
         }
-        .onChange(of: tenant.id) {
-            secret = appState.tenantStore.secret(for: tenant) ?? ""
-        }
+    }
+
+    private var usesGatewayBinding: Binding<Bool> {
+        Binding(
+            get: { (appState.tenantStore.tenant(id: tenant.id) ?? tenant).usesGateway },
+            set: { usesGateway in
+                var updated = appState.tenantStore.tenant(id: tenant.id) ?? tenant
+                updated.serverURL = usesGateway ? nil : (updated.serverURL?.isEmpty == false ? updated.serverURL : "https://")
+                appState.tenantStore.upsert(updated)
+            })
+    }
+
+    private func reload() {
+        secret = appState.tenantStore.secret(for: tenant) ?? ""
+        useUserAuth = ((appState.tenantStore.tenant(id: tenant.id) ?? tenant).username ?? "").isEmpty == false
+    }
+
+    private func optionalBinding(_ keyPath: WritableKeyPath<Tenant, String?>) -> Binding<String> {
+        Binding(
+            get: { (appState.tenantStore.tenant(id: tenant.id) ?? tenant)[keyPath: keyPath] ?? "" },
+            set: { newValue in
+                var updated = appState.tenantStore.tenant(id: tenant.id) ?? tenant
+                updated[keyPath: keyPath] = newValue
+                appState.tenantStore.upsert(updated)
+            })
     }
 
     private func binding<Value>(_ keyPath: WritableKeyPath<Tenant, Value>) -> Binding<Value> {

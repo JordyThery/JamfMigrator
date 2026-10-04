@@ -79,6 +79,9 @@ struct ObjectType: Identifiable, Sendable {
     var dependencies: [String] = []
     /// Write-only secrets the API never returns; surfaced as warnings.
     var secretFields: [String] = []
+    /// Platform-only namespaces (Blueprints, Compliance Benchmarks) have no
+    /// direct Jamf Pro equivalent and are Blocked on direct connections.
+    var requiresGateway = false
     var id: String { key }
 }
 

@@ -61,13 +61,31 @@ final class TenantStore {
 
     // MARK: Clients
 
-    /// A client for the tenant. The secret is read from the Keychain at token
-    /// time, so it can be corrected without rebuilding the client.
+    /// A client for the tenant. The secret (or password) is read from the
+    /// Keychain at token time, so it can be corrected without rebuilding the
+    /// client.
     func client(for tenant: Tenant) -> PlatformClient {
-        let tokenURL = tenant.region.tokenURL
-        let clientId = tenant.clientId
         let secrets = secrets
         let account = tenant.id.uuidString
+
+        if !tenant.usesGateway, let serverURL = URL(string: tenant.serverURL ?? "") {
+            let username = (tenant.username ?? "").trimmingCharacters(in: .whitespaces)
+            let tokenURL = serverURL.appendingPathComponent(username.isEmpty ? "api/oauth/token" : "api/v1/auth/token")
+            let clientId = tenant.clientId
+            let provider = TokenProvider(credentials: {
+                guard let secret = secrets.secret(for: account), !secret.isEmpty else {
+                    throw GatewayError.tokenFailure(status: 0, detail: "no client secret stored for this tenant")
+                }
+                let method: TokenProvider.Credentials.Method = username.isEmpty
+                    ? .oauthClient(clientId: clientId, clientSecret: secret)
+                    : .userPassword(username: username, password: secret)
+                return TokenProvider.Credentials(tokenURL: tokenURL, method: method)
+            })
+            return PlatformClient(serverURL: serverURL, tokenProvider: provider)
+        }
+
+        let tokenURL = tenant.region.tokenURL
+        let clientId = tenant.clientId
         let provider = TokenProvider(credentials: {
             guard let secret = secrets.secret(for: account), !secret.isEmpty else {
                 throw GatewayError.tokenFailure(status: 0, detail: "no client secret stored for this tenant")

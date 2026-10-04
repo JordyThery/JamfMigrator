@@ -29,11 +29,22 @@ final class AppState {
         }
     }
 
+    // Only non-nil selections persist: a transient Picker rebuild (e.g. the
+    // delete-mode toggle recreating the tenant pickers) writes nil through
+    // the binding and must not erase the stored selection.
     var sourceTenantID: Tenant.ID? {
-        didSet { UserDefaults.standard.set(sourceTenantID?.uuidString, forKey: "sourceTenantID") }
+        didSet {
+            if let sourceTenantID {
+                UserDefaults.standard.set(sourceTenantID.uuidString, forKey: "sourceTenantID")
+            }
+        }
     }
     var destTenantID: Tenant.ID? {
-        didSet { UserDefaults.standard.set(destTenantID?.uuidString, forKey: "destTenantID") }
+        didSet {
+            if let destTenantID {
+                UserDefaults.standard.set(destTenantID.uuidString, forKey: "destTenantID")
+            }
+        }
     }
 
     var selectedTypeKeys: Set<String> {
