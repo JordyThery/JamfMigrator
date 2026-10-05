@@ -230,7 +230,8 @@ final class AppState {
         secretStore.secret(for: "service-\(key)") ?? ""
     }
 
-    func setServiceSecret(_ value: String, for key: String) {
+    @discardableResult
+    func setServiceSecret(_ value: String, for key: String) -> Bool {
         secretStore.setSecret(value.isEmpty ? nil : value, for: "service-\(key)")
     }
 

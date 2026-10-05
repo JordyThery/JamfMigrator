@@ -16,7 +16,9 @@ final class InMemorySecretStore: SecretStore, @unchecked Sendable {
         lock.withLock { secrets[account] }
     }
 
-    func setSecret(_ secret: String?, for account: String) {
+    @discardableResult
+    func setSecret(_ secret: String?, for account: String) -> Bool {
         lock.withLock { secrets[account] = secret }
+        return true
     }
 }
