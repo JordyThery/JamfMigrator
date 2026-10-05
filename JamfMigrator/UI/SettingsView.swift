@@ -90,6 +90,7 @@ private struct TenantEditor: View {
     let tenant: Tenant
     @State private var secret = ""
     @State private var useUserAuth = false
+    @State private var secretSaveFailed = false
 
     var body: some View {
         Form {
@@ -112,9 +113,7 @@ private struct TenantEditor: View {
                 TextField("Client ID", text: binding(\.clientId))
                     .font(.body.monospaced())
                 SecureField("Client secret", text: $secret)
-                    .onChange(of: secret) {
-                        appState.tenantStore.setSecret(secret, for: tenant)
-                    }
+                    .onChange(of: secret) { saveSecret() }
             } else {
                 TextField("Server URL", text: optionalBinding(\.serverURL), prompt: Text("https://tenant.jamfcloud.com"))
                     .font(.body.monospaced())
@@ -125,20 +124,23 @@ private struct TenantEditor: View {
                 if useUserAuth {
                     TextField("Username", text: optionalBinding(\.username))
                     SecureField("Password", text: $secret)
-                        .onChange(of: secret) {
-                            appState.tenantStore.setSecret(secret, for: tenant)
-                        }
+                        .onChange(of: secret) { saveSecret() }
                 } else {
                     TextField("Client ID", text: binding(\.clientId))
                         .font(.body.monospaced())
                     SecureField("Client secret", text: $secret)
-                        .onChange(of: secret) {
-                            appState.tenantStore.setSecret(secret, for: tenant)
-                        }
+                        .onChange(of: secret) { saveSecret() }
                 }
                 Text("Blueprints and Compliance Benchmarks need the Platform API and are unavailable over a direct connection.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+            }
+
+            if secretSaveFailed {
+                Label("The Keychain refused to save this secret, so the tenant can't connect. See the log for the error code.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.red)
             }
 
             Toggle("Protected — this tenant can never be wiped", isOn: binding(\.isProtected))
@@ -167,7 +169,12 @@ private struct TenantEditor: View {
             })
     }
 
+    private func saveSecret() {
+        secretSaveFailed = !appState.tenantStore.setSecret(secret.isEmpty ? nil : secret, for: tenant)
+    }
+
     private func reload() {
+        secretSaveFailed = false
         secret = appState.tenantStore.secret(for: tenant) ?? ""
         useUserAuth = ((appState.tenantStore.tenant(id: tenant.id) ?? tenant).username ?? "").isEmpty == false
     }
@@ -219,13 +226,21 @@ private struct ServiceSecretField: View {
     let key: String
     let label: String
     @State private var value = ""
+    @State private var saveFailed = false
 
     var body: some View {
-        SecureField(label, text: $value)
-            .onAppear { value = appState.serviceSecret(key) }
-            .onChange(of: value) {
-                appState.setServiceSecret(value, for: key)
+        VStack(alignment: .leading, spacing: 4) {
+            SecureField(label, text: $value)
+                .onAppear { value = appState.serviceSecret(key) }
+                .onChange(of: value) {
+                    saveFailed = !appState.setServiceSecret(value, for: key)
+                }
+            if saveFailed {
+                Text("The Keychain refused to save this password.")
+                    .font(.caption)
+                    .foregroundStyle(.red)
             }
+        }
     }
 }
 

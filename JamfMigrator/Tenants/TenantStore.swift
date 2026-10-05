@@ -55,7 +55,8 @@ final class TenantStore {
         secrets.secret(for: tenant.id.uuidString)
     }
 
-    func setSecret(_ secret: String?, for tenant: Tenant) {
+    @discardableResult
+    func setSecret(_ secret: String?, for tenant: Tenant) -> Bool {
         secrets.setSecret(secret, for: tenant.id.uuidString)
     }
 
