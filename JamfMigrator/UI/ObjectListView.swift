@@ -16,14 +16,14 @@ struct ObjectListView: View {
         @Bindable var appState = appState
 
         Group {
-            if appState.plan == nil {
+            if appState.isPlanning {
+                PlanningProgressView()
+            } else if appState.plan == nil {
                 ContentUnavailableView("No preview yet",
                                        systemImage: "eye",
                                        description: Text("Select the tenants, then click Preview to see what would change."))
-            } else if appState.selectedTypeKey == nil {
-                ContentUnavailableView("No object type selected",
-                                       systemImage: "sidebar.left",
-                                       description: Text("Select a type in the sidebar."))
+            } else if appState.selectedTypeKey == nil || appState.selectedTypeKey == AppState.summaryKey {
+                PlanSummaryView()
             } else {
                 List(filteredEntries, selection: $appState.selectedObjectID) { entry in
                     ObjectRow(entry: entry)
@@ -34,7 +34,7 @@ struct ObjectListView: View {
         .searchable(text: $appState.searchText, placement: .automatic, prompt: "Filter by name")
         .navigationTitle(typeTitle)
         .toolbar {
-            if let typeKey = appState.selectedTypeKey, appState.plan != nil {
+            if let typeKey = appState.selectedTypeKey, typeKey != AppState.summaryKey, appState.plan != nil {
                 ToolbarItem {
                     Menu("Select", systemImage: "checklist") {
                         Button("Check all") {
@@ -53,6 +53,7 @@ struct ObjectListView: View {
 
     private var typeTitle: String {
         guard appState.plan != nil else { return "Objects" }
+        if appState.selectedTypeKey == nil || appState.selectedTypeKey == AppState.summaryKey { return "Summary" }
         return appState.selectedTypeKey.flatMap { ObjectRegistry.type($0)?.displayName } ?? "Objects"
     }
 

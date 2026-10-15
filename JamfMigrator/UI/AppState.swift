@@ -65,6 +65,13 @@ final class AppState {
     var plan: MigrationPlan?
     var isPlanning = false
     var planningStatus = ""
+    /// Which selected type the planner is on (1-based) and how many there
+    /// are, for the progress view; 0 while the tenants are being checked.
+    var planningStep = 0
+    var planningTotal = 0
+
+    /// Sidebar selection that shows the plan summary instead of one type.
+    static let summaryKey = "summary"
 
     var isRunning = false
     var runEvents: [ProgressEvent] = []
@@ -258,10 +265,18 @@ final class AppState {
         let typeKeys = selectedTypeKeys
         let secrets = serviceSecrets
         let mappings = mappings
+        planningStep = 0
+        planningTotal = ObjectRegistry.types.filter { typeKeys.contains($0.key) }.count
+        planningStatus = mode == .copy ? "Checking both tenants" : "Listing the tenant"
         runTask = Task { [weak self] in
             guard let self else { return }
+            // the planner reports each type as it starts on it
             let progress: @Sendable (String) -> Void = { name in
-                Task { @MainActor [weak self] in self?.planningStatus = name }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.planningStatus = name
+                    self.planningStep = min(self.planningStep + 1, self.planningTotal)
+                }
             }
             if mode == .delete {
                 let planner = MigrationPlanner(source: dest, dest: dest, secrets: secrets, mappings: mappings, progress: progress)
@@ -278,9 +293,10 @@ final class AppState {
                 self.plan = plan
             }
             self.isPlanning = false
-            if self.selectedTypeKey == nil {
-                self.selectedTypeKey = ObjectRegistry.types.first { self.selectedTypeKeys.contains($0.key) }?.key
-            }
+            // land on the overview, not on whichever type happened to be
+            // selected before
+            self.selectedTypeKey = Self.summaryKey
+            self.selectedObjectID = nil
         }
     }
 

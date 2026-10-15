@@ -34,6 +34,10 @@ struct SidebarView: View {
             .tourAnchor(.tenants)
 
             Section {
+                if appState.plan != nil {
+                    Label("Summary", systemImage: "list.bullet.rectangle")
+                        .tag(AppState.summaryKey)
+                }
                 HStack {
                     Button("Check all") {
                         appState.selectedTypeKeys = Set(ObjectRegistry.types.map(\.key))
@@ -61,17 +65,6 @@ struct SidebarView: View {
             }
         }
         .listStyle(.sidebar)
-        .overlay(alignment: .bottom) {
-            if appState.isPlanning {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text(appState.planningStatus)
-                        .font(.caption)
-                        .lineLimit(1)
-                }
-                .padding(8)
-            }
-        }
     }
 
     private var steps: [Int] {
@@ -103,11 +96,12 @@ private struct PreflightSummary: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
+            let ok = preflight.isReady && preflight.deniedTypes.isEmpty
             Label("\(preflight.source.version ?? "?") → \(preflight.destination.version ?? "?")",
-                  systemImage: preflight.isReady ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                .foregroundStyle(preflight.isReady ? .green : .orange)
+                  systemImage: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(ok ? .green : .orange)
             if !preflight.deniedTypes.isEmpty {
-                Text("No permission: \(preflight.deniedTypes.joined(separator: ", "))")
+                Text("No permission: \(PreflightReport.displayNames(preflight.deniedTypes))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
