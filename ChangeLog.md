@@ -1,5 +1,11 @@
 # Change log
 
+## v1.0.3
+- An update check: at launch, at most once a day, the app asks GitHub
+  for the latest release and offers a newer one with its release notes
+  and a download. Check on demand from Jamf Migrator › Check for
+  Updates…; turn the daily check off in Settings › Updates.
+
 ## v1.0.2
 - A dry run now shows a clear progress view while it plans ("type 12 of
   51"), and opens on a new Summary page: totals per outcome, every
