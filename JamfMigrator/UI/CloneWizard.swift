@@ -106,16 +106,28 @@ private struct ConnectStep: View {
                 Label(tenantLabel("Destination", preflight.destination),
                       systemImage: preflight.destination.reachable ? "checkmark.circle.fill" : "xmark.circle.fill")
                     .foregroundStyle(preflight.destination.reachable ? .green : .red)
+                if !preflight.unavailableTypes.isEmpty {
+                    Label("Skipped: \(PreflightReport.displayNames(preflight.unavailableTypes)). These need the Platform API gateway, and a tenant here connects directly to Jamf Pro.",
+                          systemImage: "info.circle")
+                        .foregroundStyle(.secondary)
+                }
                 if preflight.deniedTypes.isEmpty {
                     Label("Both integrations have permission for every selected type.", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                 } else {
-                    Label("Missing permission for: \(preflight.deniedTypes.joined(separator: ", "))",
-                          systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label("Missing permission for: \(PreflightReport.displayNames(preflight.deniedTypes)). These types will fail; grant the permission and test again, or leave them out.",
+                              systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Button("Leave these types out") {
+                            appState.selectedTypeKeys.subtract(preflight.deniedTypes)
+                            runPreflight()
+                        }
+                        .padding(.leading, 24)
+                    }
                 }
                 if !preflight.destinationIsEmpty {
-                    Label("The destination is not empty; matching objects will be updated in place.",
+                    Label("The destination is not empty. Objects with a matching name are updated in place; everything else on the destination is left alone.",
                           systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.orange)
                 }
@@ -132,7 +144,9 @@ private struct ConnectStep: View {
                         .disabled(appState.isPlanning || appState.destTenant == nil || appState.sourceTenant == nil)
                 } else {
                     Button("Test again") { runPreflight() }
-                    Button("Continue") { next() }
+                    // only an unreachable tenant blocks; warnings are the
+                    // user's call
+                    Button(appState.preflight?.hasWarnings == true ? "Continue anyway" : "Continue") { next() }
                         .buttonStyle(.borderedProminent)
                         .disabled(!(appState.preflight?.isReady ?? false))
                 }
@@ -251,7 +265,7 @@ private struct PreviewStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if appState.isPlanning {
-                ProgressView("Planning… \(appState.planningStatus)")
+                PlanningProgressView()
             } else if let plan = appState.plan {
                 let counts = plan.counts
                 Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 6) {

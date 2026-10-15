@@ -244,10 +244,40 @@ struct PreflightTests {
         #expect(report.sourcePermissions["categories"] == .allowed)
         #expect(report.destinationPermissions["policies"] == .denied)
         #expect(report.deniedTypes == ["policies"])
-        #expect(!report.isReady)
+        // a missing permission is a warning the user can continue past
+        #expect(report.isReady)
+        #expect(report.hasWarnings)
         #expect(report.destinationCounts["categories"] == 1)
         #expect(report.destinationCounts["policies"] == nil)
         #expect(!report.destinationIsEmpty)
+    }
+
+    @Test func gatewayOnlyTypesAreSkippedOnADirectPair() async throws {
+        let probed = Locked([String]())
+        let session = MockHTTP.session { request in
+            let path = request.url?.path ?? ""
+            if path.contains("token") { return MockHTTP.tokenJSON() }
+            probed.withLock { $0.append(path) }
+            if path.hasSuffix("jamf-pro-version") {
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["version": "11.33.0"]))
+            }
+            return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 0, "results": []]))
+        }
+        let direct = PlatformClient(serverURL: URL(string: "https://msp.jamfcloud.com")!,
+                                    tokenProvider: TokenProvider(
+                                        credentials: { .init(tokenURL: URL(string: "https://msp.jamfcloud.com/api/oauth/token")!,
+                                                             clientId: "i", clientSecret: "s") },
+                                        session: session),
+                                    session: session)
+
+        let report = await Preflight.run(source: direct, dest: direct,
+                                         typeKeys: ["categories", "blueprints", "compliancebenchmarks"])
+
+        // not probed, so not reported as missing permissions
+        #expect(report.unavailableTypes == ["blueprints", "compliancebenchmarks"])
+        #expect(report.deniedTypes.isEmpty)
+        #expect(report.isReady)
+        #expect(!probed.value.contains { $0.contains("blueprints") || $0.contains("benchmarks") })
     }
 
     @Test func unreachableTenantIsReported() async throws {

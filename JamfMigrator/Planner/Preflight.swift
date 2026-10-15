@@ -23,11 +23,16 @@ struct PreflightReport: Sendable {
     /// Probe results per registry key.
     let sourcePermissions: [String: ProbeResult]
     let destinationPermissions: [String: ProbeResult]
-    /// Objects already on the destination, per registry key.
+    /// Objects already on the destination, per registry key; -1 = the list
+    /// failed.
     let destinationCounts: [String: Int]
+    /// Selected types that need the Platform API gateway while a tenant
+    /// connects directly. They aren't probed — they are Blocked by design,
+    /// not missing a permission.
+    var unavailableTypes: [String] = []
 
     var destinationIsEmpty: Bool {
-        destinationCounts.values.allSatisfy { $0 == 0 }
+        destinationCounts.values.allSatisfy { $0 <= 0 }
     }
 
     /// Registry keys either integration lacks permission for.
@@ -38,8 +43,21 @@ struct PreflightReport: Sendable {
         return denied.filter { $0.value != .allowed }.map(\.key).sorted()
     }
 
+    /// Only an unreachable tenant stops a clone. Missing permissions and a
+    /// non-empty destination are warnings: the affected types simply fail or
+    /// update in place, and the user decides.
     var isReady: Bool {
-        source.reachable && destination.reachable && deniedTypes.isEmpty
+        source.reachable && destination.reachable
+    }
+
+    var hasWarnings: Bool {
+        !deniedTypes.isEmpty || !destinationIsEmpty
+    }
+
+    /// Display names for a list of registry keys, in registry order.
+    static func displayNames(_ keys: [String]) -> String {
+        ObjectRegistry.types.filter { keys.contains($0.key) }.map(\.displayName)
+            .joined(separator: ", ")
     }
 
     /// What the API cannot copy; shown before every clone.
@@ -59,7 +77,12 @@ enum Preflight {
         let sourceCheck = await check(source)
         let destCheck = await check(dest)
 
-        let types = ObjectRegistry.types.filter { typeKeys.contains($0.key) }
+        // gateway-only types can't be reached over a direct connection;
+        // probing them would report a "missing permission" that isn't one
+        let directPair = !(source.supportsPlatformEndpoints && dest.supportsPlatformEndpoints)
+        let selected = ObjectRegistry.types.filter { typeKeys.contains($0.key) }
+        let unavailable = directPair ? selected.filter(\.requiresGateway).map(\.key) : []
+        let types = selected.filter { !unavailable.contains($0.key) }
         let pathsByType = Dictionary(uniqueKeysWithValues: types.map { ($0.key, $0.api.listPath) })
 
         var sourcePermissions = [String: ProbeResult]()
@@ -86,7 +109,8 @@ enum Preflight {
                                destination: destCheck,
                                sourcePermissions: sourcePermissions,
                                destinationPermissions: destPermissions,
-                               destinationCounts: destinationCounts)
+                               destinationCounts: destinationCounts,
+                               unavailableTypes: unavailable)
     }
 
     private static func check(_ client: PlatformClient) async -> PreflightReport.TenantCheck {

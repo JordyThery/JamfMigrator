@@ -69,7 +69,10 @@ struct WipeWizard: View {
         Form {
             Section("1 — Preview") {
                 if appState.isPlanning {
-                    ProgressView("Planning… \(appState.planningStatus)")
+                    ProgressView(value: Double(appState.planningStep),
+                                 total: Double(max(appState.planningTotal, 1))) {
+                        Text("Planning… \(appState.planningStatus)")
+                    }
                 } else if let plan = appState.plan, plan.mode == .delete {
                     let counts = plan.counts
                     Label("\(counts.delete) objects will be deleted; \(counts.keep) built-ins are kept.",

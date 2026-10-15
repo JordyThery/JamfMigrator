@@ -1,5 +1,15 @@
 # Change log
 
+## v1.0.2
+- A dry run now shows a clear progress view while it plans ("type 12 of
+  51"), and opens on a new Summary page: totals per outcome, every
+  planned type with its counts, and a legend for the sidebar badges.
+- Clone tenant: missing permissions and a non-empty destination are
+  warnings now and no longer block the wizard ("Continue anyway"), with a
+  button to leave the denied types out. Blueprints and Compliance
+  Benchmarks are skipped on direct connections instead of being reported
+  as missing permissions.
+
 ## v1.0.1
 - Fixed: secrets and passwords entered in Settings were not saved in the
   released build, so every tenant failed with "No client secret or
