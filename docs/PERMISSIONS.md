@@ -149,8 +149,20 @@ as failed objects in the run report, with Jamf's error.
 The permissions are taken from the `x-required-privileges` of every
 endpoint the app calls, in the API specs Jamf publishes in
 [jamfplatform-go-sdk](https://github.com/jamf/jamfplatform-go-sdk) (Jamf Pro
-API 11.33.0, Classic API 11.32.0, Blueprints, Compliance Benchmarks). The Jamf
-Pro API spec also names the matching Jamf Pro privilege. The Classic API spec
-only names gateway capabilities, so the privilege groups for Classic types
-were matched by name. Every privilege on this page is checked against the
-privilege list of a Jamf Pro 11.32 instance.
+API 11.33.0, Classic API 11.32.0, Blueprints, Compliance Benchmarks). They are
+checked against the API reference on the
+[Jamf developer portal](https://developer.jamf.com/mcp), through its MCP
+server, for each of those calls:
+
+- **Gateway capabilities**: every one is confirmed by the portal's Platform
+  API specs.
+- **Jamf Pro privileges, Jamf Pro API types**: confirmed by the portal's
+  Jamf Pro API reference, except for **App Installers**. The portal doesn't
+  document their endpoints, so the Mac Applications privilege group comes
+  from Jamf's SDK spec alone.
+- **Jamf Pro privileges, Classic API types**: neither source names them;
+  both list only gateway capabilities. Their privilege groups were matched by
+  name.
+
+Every privilege on this page exists in the privilege list of a Jamf Pro 11.32
+instance.
