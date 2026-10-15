@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		080E98B630814C020014F885 /* UpdateChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 080E98B530814C020014F885 /* UpdateChecker.swift */; };
+		080E98B830814C0F0014F885 /* UpdateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 080E98B730814C0F0014F885 /* UpdateView.swift */; };
 		0898866F3080ACB100ACA5EB /* PlanSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0898866E3080ACB100ACA5EB /* PlanSummaryView.swift */; };
 		08ABF3503071BA8300606B36 /* Region.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF34F3071BA8300606B36 /* Region.swift */; };
 		08ABF3523071BA9400606B36 /* GatewayError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3513071BA9400606B36 /* GatewayError.swift */; };
@@ -53,6 +55,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		080E98B530814C020014F885 /* UpdateChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateChecker.swift; sourceTree = "<group>"; };
+		080E98B730814C0F0014F885 /* UpdateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateView.swift; sourceTree = "<group>"; };
 		0898866E3080ACB100ACA5EB /* PlanSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanSummaryView.swift; sourceTree = "<group>"; };
 		08ABF3433071B13E00606B36 /* JamfMigratorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JamfMigratorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		08ABF34F3071BA8300606B36 /* Region.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Region.swift; sourceTree = "<group>"; };
@@ -210,6 +214,7 @@
 				08ABF3E4307220C600606B36 /* WipeWizard.swift */,
 				08ABF3EF3072586200606B36 /* GuidedTour.swift */,
 				0898866E3080ACB100ACA5EB /* PlanSummaryView.swift */,
+				080E98B730814C0F0014F885 /* UpdateView.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -218,6 +223,7 @@
 			isa = PBXGroup;
 			children = (
 				08ABF3ED3072392700606B36 /* Support.swift */,
+				080E98B530814C020014F885 /* UpdateChecker.swift */,
 			);
 			path = Support;
 			sourceTree = "<group>";
@@ -439,6 +445,7 @@
 				08ABF3B33071C1FD00606B36 /* ExportWriter.swift in Sources */,
 				08ABF3B73071C23400606B36 /* IconMigrator.swift in Sources */,
 				08ABF3E3307220AB00606B36 /* CloneWizard.swift in Sources */,
+				080E98B630814C020014F885 /* UpdateChecker.swift in Sources */,
 				08ABF3D93071C61000606B36 /* RunView.swift in Sources */,
 				08ABF3523071BA9400606B36 /* GatewayError.swift in Sources */,
 				08ABF3C23071C39800606B36 /* PayloadDiff.swift in Sources */,
@@ -449,6 +456,7 @@
 				08ABF3D53071C5EC00606B36 /* ObjectListView.swift in Sources */,
 				08ABF3AA3071C16700606B36 /* ProTransformer.swift in Sources */,
 				08ABF3A43071C10F00606B36 /* ClassicXML.swift in Sources */,
+				080E98B830814C0F0014F885 /* UpdateView.swift in Sources */,
 				08ABF3C63071C3E000606B36 /* Preflight.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -475,7 +483,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.3;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = be.jordythery.JamfMigratorTests;
@@ -513,7 +521,7 @@
 				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.3;
 				MTL_FAST_MATH = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = be.jordythery.JamfMigratorTests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -665,7 +673,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.3;
 				PRODUCT_BUNDLE_IDENTIFIER = be.jordythery.jamfmigrator;
 				PRODUCT_MODULE_NAME = JamfMigrator;
 				PRODUCT_NAME = "Jamf Migrator";
@@ -696,7 +704,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.3;
 				PRODUCT_BUNDLE_IDENTIFIER = be.jordythery.jamfmigrator;
 				PRODUCT_MODULE_NAME = JamfMigrator;
 				PRODUCT_NAME = "Jamf Migrator";

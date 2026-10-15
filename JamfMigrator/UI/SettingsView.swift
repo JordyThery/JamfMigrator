@@ -20,6 +20,9 @@ struct SettingsView: View {
             Tab("Export", systemImage: "square.and.arrow.up") {
                 ExportSettings()
             }
+            Tab("Updates", systemImage: "arrow.down.circle") {
+                UpdateSettings()
+            }
         }
         .frame(width: 680, height: 480)
     }
@@ -254,6 +257,25 @@ private struct ExportSettings: View {
         Form {
             Toggle("Save payloads during runs", isOn: $exportOnRun)
             Text("Each run writes the raw source payloads and the trimmed payloads that were sent, per object, under Application Support › JamfMigrator › exports.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+}
+
+// MARK: - Updates
+
+private struct UpdateSettings: View {
+
+    @Environment(UpdateChecker.self) private var updates
+    @AppStorage(UpdateChecker.automaticCheckKey) private var checksForUpdates = true
+
+    var body: some View {
+        Form {
+            Toggle("Check for updates daily", isOn: $checksForUpdates)
+            Text("Asks GitHub for the latest release at launch, at most once a day. Nothing else is sent. To check now, choose Jamf Migrator › Check for Updates…. Installed: version \(updates.currentVersion).")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }

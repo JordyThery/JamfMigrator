@@ -113,6 +113,14 @@ through an extra confirmation), and typing the tenant's name. Deletes run in
 reverse dependency order, retry objects held by dependencies, and end with a
 report of anything left behind.
 
+### Updates
+
+At launch, at most once a day, the app asks GitHub for the latest release and
+offers it once, with its release notes and a download of the zip. **Jamf
+Migrator › Check for Updates…** checks on demand; **Settings › Updates** turns
+the daily check off. The app is sandboxed and can't replace itself: save the
+zip, quit, and swap the app in Applications.
+
 ## Logs and files
 
 - Log: `~/Library/Containers/be.jordythery.jamfmigrator/Data/Library/Logs/JamfMigrator/`
