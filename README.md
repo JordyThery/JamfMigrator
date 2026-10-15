@@ -31,10 +31,13 @@ Secrets are stored in the macOS Keychain, never on disk.
 
 ### Permissions
 
-Give the API integration (or API client/user) read access on the source and
-full CRUD on the destination for every object type you plan to copy. The
-**Clone tenant** wizard's Connect step probes every selected type on both
-tenants and names anything the integration lacks permission for.
+The quick version: the source needs Read and the destination needs Read,
+Create and Update on every object type you copy, plus Delete for delete
+mode. For least privilege, [Permissions](docs/PERMISSIONS.md) lists the
+gateway capability and the Jamf Pro privileges for each object type, the
+types each one also reads, and the few exceptions. The **Clone tenant**
+wizard's Connect step checks every selected type on both tenants and names
+any the integration can't read.
 
 ## What gets copied
 
