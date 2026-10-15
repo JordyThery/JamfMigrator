@@ -13,6 +13,7 @@ import SwiftUI
 struct ContentView: View {
 
     @Environment(AppState.self) private var appState
+    @Environment(UpdateChecker.self) private var updates
     @State private var showRunConfirmation = false
     @State private var showRunSheet = false
     @State private var showCloneWizard = false
@@ -104,6 +105,12 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showWipeWizard) {
             WipeWizard()
+        }
+        .sheet(isPresented: .init(
+            get: { updates.isPresented },
+            set: { updates.isPresented = $0 })) {
+            UpdateView()
+                .environment(updates)
         }
         .alert("Can’t complete this action", isPresented: .init(
             get: { appState.lastError != nil },

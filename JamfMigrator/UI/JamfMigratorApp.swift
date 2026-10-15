@@ -12,11 +12,14 @@ import SwiftUI
 struct JamfMigratorApp: App {
 
     @State private var appState = AppState()
+    @State private var updates = UpdateChecker()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(appState)
+                .environment(updates)
+                .task { await updates.checkAutomatically() }
         }
         .commands {
             CommandGroup(replacing: .appInfo) {
@@ -30,6 +33,7 @@ struct JamfMigratorApp: App {
                             ]),
                     ])
                 }
+                Button("Check for Updates…") { updates.checkManually() }
             }
 
             CommandGroup(after: .help) {
@@ -58,6 +62,7 @@ struct JamfMigratorApp: App {
         Settings {
             SettingsView()
                 .environment(appState)
+                .environment(updates)
         }
     }
 }
