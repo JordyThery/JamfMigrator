@@ -1,5 +1,13 @@
 # Change log
 
+## v1.0.4
+- Licensed software is now copied (step 7). The licenses and their
+  purchasing details are copied; the list of matching computers comes
+  from inventory and is not, and license attachments are left behind with
+  a warning in the run report.
+- The Permissions page lists the new type, and notes Jamf Pro's separate
+  View License Serial Numbers privilege for direct connections.
+
 ## v1.0.3
 - An update check: at launch, at most once a day, the app asks GitHub
   for the latest release and offers a newer one with its release notes
