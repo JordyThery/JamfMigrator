@@ -1,5 +1,15 @@
 # Change log
 
+## v1.0.5
+- Fixed: patch management titles were never copied — the type always
+  appeared empty, and patch policies were blocked as a result. Titles are
+  now listed, created by subscribing the destination to the same title
+  from the same patch source, and updated with the source's display name,
+  category, site, notifications, packages and accepted extension
+  attributes.
+- The Permissions page notes the patch source reads a new title needs on
+  the destination.
+
 ## v1.0.4
 - Licensed software is now copied (step 7). The licenses and their
   purchasing details are copied; the list of matching computers comes

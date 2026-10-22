@@ -123,6 +123,12 @@ mode leaves them as they are.
   updating them. The destination has Read anyway.
 - **Categories**: the category list also accepts Read Self Service. Grant
   Read Categories.
+- **Patch management titles**: a new title is created by subscribing the
+  destination to it from the same patch source, so the destination also
+  needs **Read** on the patch sources: `patch-internal-source` and
+  `patch-external-source`, or **Read Patch Internal Source** and **Read Patch
+  External Source**. The patch source (an external one, by name) must exist
+  on the destination; otherwise the title fails with a clear message.
 - **Licensed software**: Jamf Pro has a separate **View License Serial
   Numbers** privilege. On a direct connection, grant it on the source as
   well; without it, the license serial numbers are likely not returned, and

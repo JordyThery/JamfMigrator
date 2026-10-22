@@ -77,6 +77,74 @@ struct MigrationEngineTests {
         #expect(gateway.writes(to: "dst").map { "\($0.method) \($0.path)" } == ["PUT /pro/v1/categories/70"])
     }
 
+    /// A new patch title subscribes the destination by name id first (the
+    /// Pro create needs the destination's own softwareTitleId), then the
+    /// configuration is written to the new id.
+    @Test func patchTitlesSubscribeTheDestinationBeforeWriting() async throws {
+        let gateway = FakeGateway { env, method, path, _ in
+            switch (env, method, path) {
+            case ("src", "GET", "/pro/v3/patch-software-title-configurations"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json([["id": "6", "displayName": "Google Chrome"]]))
+            case ("dst", "GET", "/pro/v3/patch-software-title-configurations"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json([[String: Any]]()))
+            case ("src", "GET", "/pro/v3/patch-software-title-configurations/6"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(
+                    ["id": "6", "displayName": "Google Chrome", "softwareTitleId": "6", "softwareTitleNameId": "0BC",
+                     "patchSourceName": "Jamf", "categoryId": "-1", "siteId": "-1", "packages": [[String: Any]]()]))
+            case ("dst", "GET", "/proclassic/patchinternalsources"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["patch_internal_sources": [["id": 1, "name": "Jamf"]]]))
+            case ("dst", "GET", "/proclassic/patchexternalsources"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["patch_external_sources": [[String: Any]]()]))
+            case ("dst", "POST", "/proclassic/patchsoftwaretitles/id/0"):
+                return MockHTTP.Reply(status: 201, data: Data("<patch_software_title><id>152</id></patch_software_title>".utf8))
+            case ("dst", "PATCH", "/pro/v3/patch-software-title-configurations/152"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["id": "152"]))
+            default:
+                return nil
+            }
+        }
+
+        let engine = MigrationEngine(source: gateway.source, dest: gateway.dest, journal: makeJournal())
+        let report = await engine.migrate(typeKeys: ["patchsoftwaretitles"])
+
+        #expect(report.entries.first?.status == .created(destId: "152"))
+        let writes = gateway.writes(to: "dst")
+        #expect(writes.map { "\($0.method) \($0.path)" } == ["POST /proclassic/patchsoftwaretitles/id/0",
+                                                            "PATCH /pro/v3/patch-software-title-configurations/152"])
+        let subscribe = String(decoding: writes.first?.body ?? Data(), as: UTF8.self)
+        #expect(subscribe.contains("<name_id>0BC</name_id>"))
+        #expect(subscribe.contains("<source_id>1</source_id>"))
+        let patch = try JSONSerialization.jsonObject(with: writes.last?.body ?? Data()) as? [String: Any]
+        #expect(patch?["softwareTitleId"] == nil, "the source's row id is never sent")
+        #expect(patch?["displayName"] as? String == "Google Chrome")
+    }
+
+    @Test func patchTitlesFailClearlyWithoutThePatchSource() async throws {
+        let gateway = FakeGateway { env, method, path, _ in
+            switch (env, method, path) {
+            case ("src", "GET", "/pro/v3/patch-software-title-configurations"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json([["id": "6", "displayName": "Custom Tool"]]))
+            case ("src", "GET", "/pro/v3/patch-software-title-configurations/6"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(
+                    ["id": "6", "displayName": "Custom Tool", "softwareTitleNameId": "CT1", "patchSourceName": "Acme Patch Server"]))
+            case ("dst", "GET", "/proclassic/patchinternalsources"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["patch_internal_sources": [["id": 1, "name": "Jamf"]]]))
+            default:
+                return nil
+            }
+        }
+
+        let engine = MigrationEngine(source: gateway.source, dest: gateway.dest, journal: makeJournal())
+        let report = await engine.migrate(typeKeys: ["patchsoftwaretitles"])
+
+        guard case .failed(let reason)? = report.entries.first?.status else {
+            Issue.record("expected .failed, got \(String(describing: report.entries.first?.status))")
+            return
+        }
+        #expect(reason.contains("Acme Patch Server"))
+        #expect(gateway.writes(to: "dst").isEmpty, "nothing is written without the source")
+    }
+
     @Test func resumeSkipsFinishedObjects() async throws {
         let gateway = FakeGateway { env, method, path, _ in
             switch (env, method, path) {

@@ -74,6 +74,18 @@ struct TransformedObject: Sendable {
     var createPathOverride: String? = nil
     var warnings: [String] = []
     var icon: SelfServiceIcon? = nil
+    /// Patch titles: the title to subscribe the destination to before the
+    /// configuration can be written (see MigrationEngine).
+    var patchSubscription: PatchSubscription? = nil
+}
+
+/// A patch title as the patch source identifies it. The configuration's own
+/// softwareTitleId is a per-tenant row id, so a create first subscribes the
+/// destination by name id and patch source, which yields its row.
+struct PatchSubscription: Sendable, Equatable {
+    let nameId: String
+    let sourceName: String
+    let displayName: String
 }
 
 enum TransformOutcome: Sendable {
