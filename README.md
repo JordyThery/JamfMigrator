@@ -60,7 +60,7 @@ destination. The dry run labels every object:
 | 4 | Scripts, packages (records only), distribution points |
 | 5 | Jamf user/group accounts, LDAP servers, users, user groups, directory bindings, software update servers |
 | 6 | Smart/static computer and mobile device groups, advanced searches |
-| 7 | Configuration profiles, Mac and mobile apps, eBooks, classes, restricted software, printers, dock items (+ self-service icons) |
+| 7 | Configuration profiles, Mac and mobile apps, eBooks, classes, restricted and licensed software, printers, dock items (+ self-service icons) |
 | 8 | Policies, patch management titles and policies, App Installers |
 | 9 | Enrollment customizations |
 | 10 | Computer and mobile device PreStages (with ADE and distribution-point mapping) |
@@ -76,6 +76,8 @@ destination. The dry run labels every object:
   **API clients and roles**.
 - **Package files** — records are copied; the files must already be on the
   destination's distribution points.
+- **License attachments** on licensed software — the licenses are copied,
+  the attached files are not (the run report warns).
 - **Secrets the API won't return** — LDAP/bind/file-share passwords are taken
   from **Settings › Secrets** (or written as a placeholder); PreStage admin and
   SMTP/SSO/webhook passwords must be re-entered on the destination.

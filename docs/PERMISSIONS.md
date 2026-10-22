@@ -73,6 +73,7 @@ whole type is blocked in the dry run.
 | 7 | eBooks | `ebooks` | eBooks | Categories, Sites |
 | 7 | Classes | `classes` | Classes | Sites, User groups, Static mobile device groups |
 | 7 | Restricted software | `restricted-software` | Restricted Software | Sites, Smart computer groups, Static computer groups |
+| 7 | Licensed software | `licensed-software` | Licensed Software | Sites |
 | 7 | Printers | `printers` | Printers | Categories |
 | 7 | Dock items | `dock-items` | Dock Items | — |
 | 8 | Policies | `policies` | Policies | Categories, Sites, Smart computer groups, Static computer groups, Packages, Scripts, Printers, Dock items, Network segments, Distribution points |
@@ -122,6 +123,10 @@ mode leaves them as they are.
   updating them. The destination has Read anyway.
 - **Categories**: the category list also accepts Read Self Service. Grant
   Read Categories.
+- **Licensed software**: Jamf Pro has a separate **View License Serial
+  Numbers** privilege. On a direct connection, grant it on the source as
+  well; without it, the license serial numbers are likely not returned, and
+  so not copied.
 - **Self Service icons** of policies, Mac applications and mobile device
   applications are downloaded from the source and uploaded to the
   destination. Jamf's spec lists no separate privilege for the icon
