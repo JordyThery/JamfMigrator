@@ -60,6 +60,9 @@ enum ObjectAPI: Hashable, Sendable {
 enum ListShape: Sendable {
     /// Pro: {"totalCount": n, "results": [...]} with page/page-size paging.
     case proPaginated
+    /// Pro: a bare JSON array of every object, unpaginated (patch title
+    /// configurations, verified live 2026-10-22).
+    case proArray
     /// Classic: {"<container>": [{id, name}, ...]}.
     case classicArray(container: String)
     /// Classic /accounts: {"accounts": {"users": [...], "groups": [...]}}.
@@ -222,7 +225,7 @@ enum ObjectRegistry {
                    dependencies: ["categories", "sites", "smartcomputergroups", "staticcomputergroups",
                                   "packages", "scripts", "printers", "dockitems", "networksegments", "distributionpoints"]),
         ObjectType(key: "patchsoftwaretitles", displayName: "Patch management titles", step: 8,
-                   api: .pro(version: 3, resource: "patch-software-title-configurations"), listShape: .proPaginated,
+                   api: .pro(version: 3, resource: "patch-software-title-configurations"), listShape: .proArray,
                    nameKey: "displayName", updateMethod: .patch,
                    dependencies: ["categories", "sites", "packages"]),
         ObjectType(key: "patchpolicies", displayName: "Patch policies", step: 8,

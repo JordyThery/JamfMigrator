@@ -14,6 +14,7 @@ enum ProTransformer {
     static func transform(type: ObjectType, json: [String: Any], context: TransformContext) -> TransformOutcome {
         var out = json
         var warnings = [String]()
+        var patchSubscription: PatchSubscription? = nil
 
         out["id"] = nil
         // drop JSON nulls so they don't overwrite destination defaults
@@ -86,6 +87,20 @@ enum ProTransformer {
             remapSite(&out, context: context, warnings: &warnings)
 
         case "patchsoftwaretitles":
+            // softwareTitleId is the source tenant's row id for the title, so
+            // it never transfers: a create subscribes the destination by name
+            // id and patch source first, and an update keeps the destination's
+            let nameId = out["softwareTitleNameId"] as? String ?? ""
+            let sourceName = out["patchSourceName"] as? String ?? ""
+            guard !nameId.isEmpty, !sourceName.isEmpty else {
+                return .blocked(reason: "The patch title's name id or patch source is missing")
+            }
+            patchSubscription = PatchSubscription(nameId: nameId, sourceName: sourceName,
+                                                  displayName: out["displayName"] as? String ?? "")
+            for readOnlyField in ["softwareTitleId", "softwareTitleNameId", "softwareTitleName", "softwareTitlePublisher",
+                                  "jamfOfficial", "patchSourceName", "patchSourceEnabled"] {
+                out[readOnlyField] = nil
+            }
             // detail payloads may carry ids only — resolve names through the
             // source lookups before matching on the destination
             var categoryName = out["categoryName"] as? String
@@ -191,7 +206,12 @@ enum ProTransformer {
 
         do {
             let body = try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys])
-            return .write(TransformedObject(body: body, contentType: "application/json", warnings: warnings))
+            // patch titles are only ever PATCHed (a create subscribes first),
+            // and that endpoint accepts nothing but merge-patch (HTTP 415
+            // otherwise, verified live 2026-10-22)
+            let contentType = type.key == "patchsoftwaretitles" ? "application/merge-patch+json" : "application/json"
+            return .write(TransformedObject(body: body, contentType: contentType, warnings: warnings,
+                                            patchSubscription: patchSubscription))
         } catch {
             return .blocked(reason: "The payload could not be encoded: \(error.localizedDescription)")
         }

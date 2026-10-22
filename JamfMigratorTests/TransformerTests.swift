@@ -292,10 +292,15 @@ struct ProTransformerTests {
         #expect(object.warnings.contains { $0.contains("inventory") })
     }
 
+    /// The fields as Jamf Pro 11.32 returns them (verified live 2026-10-22).
     @Test func patchTitlesRemapEverything() throws {
         let json: [String: Any] = [
             "id": "5", "displayName": "Google Chrome", "categoryName": "Utilities", "siteName": "HQ",
             "packages": [["packageId": "8", "version": "120.0"], ["packageId": "99", "version": "1.0"]],
+            "jamfOfficial": true, "softwareTitleId": "6", "softwareTitleName": "Google Chrome",
+            "softwareTitleNameId": "0BC", "softwareTitlePublisher": "Google",
+            "patchSourceName": "Jamf", "patchSourceEnabled": true,
+            "extensionAttributes": [["accepted": true, "eaId": "jamf-patch-google-chrome"]],
         ]
         let outcome = ProTransformer.transform(type: ObjectRegistry.type("patchsoftwaretitles")!, json: json, context: context())
         let out = try jsonBody(outcome)
@@ -303,8 +308,23 @@ struct ProTransformerTests {
         #expect(out["siteId"] as? String == "9")
         let packages = out["packages"] as? [[String: String]]
         #expect(packages == [["packageId": "31", "version": "120.0"]])
+        // the source's row id and the read-only title fields never transfer
+        for field in ["softwareTitleId", "softwareTitleNameId", "softwareTitleName", "softwareTitlePublisher",
+                      "jamfOfficial", "patchSourceName", "patchSourceEnabled"] {
+            #expect(out[field] == nil, "\(field) is not sent")
+        }
+        #expect(out["extensionAttributes"] != nil, "accepted EAs are kept")
         guard case .write(let object) = outcome else { return }
         #expect(object.warnings.count == 1) // the unknown package was dropped with a warning
+        #expect(object.patchSubscription == PatchSubscription(nameId: "0BC", sourceName: "Jamf", displayName: "Google Chrome"))
+    }
+
+    @Test func patchTitlesWithoutANameIdAreBlocked() {
+        let json: [String: Any] = ["id": "5", "displayName": "Custom App", "softwareTitleId": "6"]
+        guard case .blocked = ProTransformer.transform(type: ObjectRegistry.type("patchsoftwaretitles")!, json: json, context: context()) else {
+            Issue.record("expected .blocked")
+            return
+        }
     }
 
     @Test func appInstallersDisableWhenTheGroupIsMissing() throws {

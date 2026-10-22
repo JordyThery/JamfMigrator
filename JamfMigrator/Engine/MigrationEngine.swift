@@ -25,6 +25,8 @@ actor MigrationEngine {
     /// Filled per type as the run proceeds and reused by later transforms.
     private var destIdsByName = [String: [String: String]]()
     private var sourceNamesById = [String: [String: String]]()
+    /// Destination patch source ids by name, loaded on the first patch title create.
+    private var patchSourceIds = [String: String]()
 
     init(source: PlatformClient,
          dest: PlatformClient,
@@ -214,17 +216,27 @@ actor MigrationEngine {
     /// Creates or updates the object and returns its destination id.
     private func write(_ object: TransformedObject, type: ObjectType, action: TransformAction) async throws -> String {
         let response: PlatformClient.Response
+        // a merge-patch request still answers in plain JSON
+        let accept = object.contentType == "application/merge-patch+json" ? "application/json" : object.contentType
+        if case .create = action, let subscription = object.patchSubscription {
+            let destId = try await subscribe(to: subscription)
+            _ = try await dest.send(type.updateMethod, type.updatePath(destId: destId),
+                                    body: object.body,
+                                    contentType: object.contentType,
+                                    accept: accept)
+            return destId
+        }
         switch action {
         case .create:
             let path = object.createPathOverride ?? type.api.createPath
             response = try await dest.send(.post, path, body: object.body,
                                            contentType: object.contentType,
-                                           accept: object.contentType)
+                                           accept: accept)
         case .update(let destId):
             response = try await dest.send(type.updateMethod, type.updatePath(destId: destId),
                                            body: object.body,
                                            contentType: object.contentType,
-                                           accept: object.contentType)
+                                           accept: accept)
             return destId
         }
 
@@ -244,6 +256,49 @@ actor MigrationEngine {
             throw GatewayError.decoding(URLError(.cannotParseResponse))
         }
         return "\(id)"
+    }
+
+    /// Subscribes the destination to a patch title through the Classic API,
+    /// which creates its configuration, and returns the new id. The Pro
+    /// create needs a softwareTitleId, which only exists once the destination
+    /// is subscribed (verified live 2026-10-22).
+    private func subscribe(to subscription: PatchSubscription) async throws -> String {
+        let sourceId = try await patchSourceId(named: subscription.sourceName)
+        let xml = "<patch_software_title><name>\(ClassicXML.escape(subscription.displayName))</name>"
+            + "<name_id>\(ClassicXML.escape(subscription.nameId))</name_id>"
+            + "<source_id>\(sourceId)</source_id></patch_software_title>"
+        let response = try await dest.send(.post, "proclassic/patchsoftwaretitles/id/0", body: Data(xml.utf8),
+                                           contentType: "application/xml", accept: "application/xml")
+        let id = ClassicXML.value(of: "id", in: String(decoding: response.data, as: UTF8.self))
+        guard !id.isEmpty else { throw GatewayError.decoding(URLError(.cannotParseResponse)) }
+        return id
+    }
+
+    /// The destination's id for a patch source, internal (Jamf) or external,
+    /// matched by name.
+    private func patchSourceId(named name: String) async throws -> String {
+        if let cached = patchSourceIds[name] { return cached }
+        for (path, container) in [("proclassic/patchinternalsources", "patch_internal_sources"),
+                                  ("proclassic/patchexternalsources", "patch_external_sources")] {
+            let response = try await dest.send(.get, path, accept: "application/json")
+            let root = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]
+            for entry in root[container] as? [[String: Any]] ?? [] {
+                if let id = entry["id"], let sourceName = entry["name"] as? String {
+                    patchSourceIds[sourceName] = "\(id)"
+                }
+            }
+        }
+        guard let id = patchSourceIds[name] else {
+            throw MissingPatchSource(name: name)
+        }
+        return id
+    }
+
+    struct MissingPatchSource: LocalizedError {
+        let name: String
+        var errorDescription: String? {
+            "The patch source \"\(name)\" does not exist on the destination; add it there first."
+        }
     }
 
     /// Type-specific follow-ups after a successful write.

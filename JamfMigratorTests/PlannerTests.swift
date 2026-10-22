@@ -166,10 +166,13 @@ struct MigrationPlannerTests {
     @Test func dependenciesPlannedInTheSameRunUnblock() async throws {
         let gateway = FakeGateway { env, method, path, _ in
             switch (env, method, path) {
+            // a bare array, unpaginated, as Jamf Pro 11.32 returns it
             case ("src", "GET", "/pro/v3/patch-software-title-configurations"):
-                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 1, "results": [["id": "5", "displayName": "Google Chrome"]]]))
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json([["id": "5", "displayName": "Google Chrome"]]))
             case ("src", "GET", "/pro/v3/patch-software-title-configurations/5"):
-                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["id": "5", "displayName": "Google Chrome", "softwareTitleId": "10"]))
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(
+                    ["id": "5", "displayName": "Google Chrome", "softwareTitleId": "10",
+                     "softwareTitleNameId": "0BC", "patchSourceName": "Jamf"]))
             case ("src", "GET", "/proclassic/patchpolicies"):
                 return MockHTTP.Reply(status: 200, data: MockHTTP.json(["patch_policies": [["id": 2, "name": "Chrome Stable"]]]))
             case ("src", "GET", "/proclassic/patchpolicies/id/2"):

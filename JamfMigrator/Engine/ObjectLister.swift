@@ -21,6 +21,10 @@ enum ObjectLister {
         switch type.listShape {
         case .proPaginated:
             return try await listProPaginated(type, on: client)
+        case .proArray:
+            let response = try await client.send(.get, type.api.listPath)
+            let array = try JSONSerialization.jsonObject(with: response.data) as? [[String: Any]] ?? []
+            return refs(from: array, nameKey: type.nameKey)
         case .classicArray(let container):
             let response = try await client.send(.get, type.api.listPath, accept: "application/json")
             let root = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]
