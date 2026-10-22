@@ -102,6 +102,39 @@ struct ClassicTransformerTests {
         #expect(reason.contains("Unknown LDAP"))
     }
 
+    /// The shape the Classic API returns (Jamf Pro 11.33, 2026-10-22).
+    @Test func licensedSoftwareDropsInventoryAndKeepsLicenses() throws {
+        let xml = """
+        <licensed_software><computers><computer><id>7</id><name>MacBook</name></computer></computers>\
+        <general><id>1</id><name>Adobe Creative Cloud</name><publisher>Adobe</publisher><platform>Mac</platform>\
+        <site><id>2</id><name>HQ</name></site></general><software_definitions/>\
+        <licenses><size>1</size><license><serial_number_1>AAAZZZ</serial_number_1><license_count>1</license_count>\
+        <purchasing><is_perpetual>true</is_perpetual></purchasing><attachments/></license></licenses></licensed_software>
+        """
+        let outcome = ClassicTransformer.transform(type: try #require(ObjectRegistry.type("licensedsoftware")), xml: xml, context: context())
+        let out = try xmlBody(outcome)
+        #expect(!out.contains("<computers>"))
+        #expect(!out.contains("MacBook"))
+        #expect(!out.contains("attachments"))
+        #expect(out.contains("<site><name>HQ</name></site>"), "the site resolves by name")
+        #expect(out.contains("<serial_number_1>AAAZZZ</serial_number_1>"))
+        guard case .write(let object) = outcome else { return }
+        #expect(object.warnings.isEmpty, "no attachments, so no warning")
+    }
+
+    @Test func licensedSoftwareWarnsAboutAttachments() throws {
+        let xml = """
+        <licensed_software><general><name>Office</name></general><licenses><license>\
+        <attachments><attachment><id>3</id><filename>invoice.pdf</filename></attachment></attachments>\
+        </license></licenses></licensed_software>
+        """
+        let outcome = ClassicTransformer.transform(type: try #require(ObjectRegistry.type("licensedsoftware")), xml: xml, context: context())
+        let out = try xmlBody(outcome)
+        #expect(!out.contains("invoice.pdf"))
+        guard case .write(let object) = outcome else { return }
+        #expect(object.warnings.contains { $0.contains("attachments") })
+    }
+
     @Test func asmClassesAreBlocked() {
         let xml = "<class><name>Math</name><source>Apple School Manager</source></class>"
         guard case .blocked = ClassicTransformer.transform(type: ObjectRegistry.type("classes")!, xml: xml, context: context()) else {

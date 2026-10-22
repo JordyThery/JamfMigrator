@@ -111,6 +111,15 @@ enum ClassicTransformer {
         case "ebooks", "restrictedsoftware":
             break
 
+        case "licensedsoftware":
+            // the matching computers come from inventory, and license
+            // attachments are files the XML can't carry
+            out = ClassicXML.strippingTag("computers", from: out)
+            if ClassicXML.value(of: "attachments", in: out).contains("<") {
+                warnings.append("License attachments are not copied; add them on the destination.")
+            }
+            out = ClassicXML.strippingTag("attachments", from: out)
+
         case "policies", "macapplications", "mobiledeviceapplications":
             // self-service icon: captured here, copied by the engine after the write
             if out.contains("</self_service_icon>") {
