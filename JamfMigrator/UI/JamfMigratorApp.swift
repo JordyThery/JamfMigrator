@@ -28,6 +28,16 @@ struct JamfMigratorApp: App {
         .commands {
             AppInfoCommands(appName: "Jamf Migrator") { updates.checkManually() }
 
+            // JTKit's Connection menu, with the same choices as the sidebar:
+            // Source and Destination, or only the tenant in delete mode.
+            ConnectionCommands(
+                store: appState.tenantStore.connections,
+                roles: appState.mode == .copy
+                    ? [ConnectionRole("Source", selection: $appState.sourceTenantID),
+                       ConnectionRole("Destination", selection: $appState.destTenantID)]
+                    : [ConnectionRole("Tenant", selection: $appState.destTenantID)]
+            )
+
             CommandGroup(after: .help) {
                 Button("Guided Tour") { appState.tour.start() }
             }
