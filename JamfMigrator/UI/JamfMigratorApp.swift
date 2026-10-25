@@ -54,8 +54,9 @@ struct JamfMigratorApp: App {
         AboutWindow(configuration: .jamfMigrator)
 
         // JTKit's Settings window: General (Appearance), the app's Connections,
-        // Secrets and Export tabs, then Updates.
-        SettingsWindow(updates: updates) {
+        // Secrets and Export tabs, then Updates. Every tab has a name, so
+        // "Add tenants in Settings…" can open Connections.
+        SettingsWindow(updates: updates, opensTabsByName: true) {
             Group {
                 ConnectionsSettings()
                 SecretsSettings()

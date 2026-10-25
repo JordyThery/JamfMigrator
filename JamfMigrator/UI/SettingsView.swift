@@ -86,6 +86,7 @@ struct SecretsSettings: View {
         .padding()
         .frame(width: SettingsLayout.width, height: tabHeight)
         .tabItem { Label("Secrets", systemImage: "key") }
+        .settingsTabName("Secrets")
     }
 }
 
@@ -130,5 +131,6 @@ struct ExportSettings: View {
         .padding()
         .frame(width: SettingsLayout.width, height: tabHeight)
         .tabItem { Label("Export", systemImage: "square.and.arrow.up") }
+        .settingsTabName("Export")
     }
 }

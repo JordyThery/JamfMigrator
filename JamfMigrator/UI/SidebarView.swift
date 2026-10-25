@@ -12,7 +12,6 @@ import SwiftUI
 struct SidebarView: View {
 
     @Environment(AppState.self) private var appState
-    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         @Bindable var appState = appState
@@ -25,7 +24,7 @@ struct SidebarView: View {
                 TenantPicker(title: appState.mode == .copy ? "Destination" : "Tenant",
                              selection: $appState.destTenantID)
                 if appState.tenantStore.tenants.isEmpty {
-                    Button("Add tenants in Settings…") { openSettings() }
+                    SettingsTabLink(SettingsTabName.connections) { Text("Add tenants in Settings…") }
                         .buttonStyle(.link)
                 }
                 if let preflight = appState.preflight, appState.mode == .copy {
