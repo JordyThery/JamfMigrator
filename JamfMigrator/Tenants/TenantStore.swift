@@ -2,79 +2,67 @@
 //  TenantStore.swift
 //  JamfMigrator
 //
-//  Persists the configured tenants and vends platform clients for them.
+//  The configured tenants (JTKit's saved connections) and platform clients
+//  for them.
 //
 
 import Foundation
+import JTKit
 import Observation
 
-/// The list of configured tenants. Tenants are saved as JSON in Application
-/// Support; each tenant's client secret goes to the Keychain keyed by its id.
+/// The list of configured tenants. JTKit's `ConnectionStore` keeps them where
+/// they have always been: tenants.json in Application Support, and each
+/// tenant's client secret or password in the Keychain under service
+/// "JamfMigrator-tenant", account = the tenant's id.
 @MainActor
 @Observable
 final class TenantStore {
 
-    private(set) var tenants: [Tenant] = []
+    /// The Keychain items of tenants and service secrets. Builds before 1.0.1
+    /// wrote to the data-protection keychain; such items move over on read.
+    nonisolated static func keychain() -> KeychainSecretStore {
+        KeychainSecretStore(service: "JamfMigrator-tenant",
+                            accessibility: .afterFirstUnlock,
+                            movesItemsFromDataProtectionKeychain: true,
+                            log: { WriteToLog.shared.message($0) })
+    }
 
-    private let fileURL: URL
-    private let secrets: any SecretStore
+    let connections: ConnectionStore<Tenant>
+    /// The same items `connections` uses, read directly at token time, off
+    /// the main actor.
+    @ObservationIgnored private let secrets: any SecretStore
 
     init(directory: URL = URL(fileURLWithPath: AppInfo.appSupportPath, isDirectory: true),
-         secrets: any SecretStore = KeychainSecretStore()) {
-        self.fileURL = directory.appendingPathComponent("tenants.json")
+         secrets: any SecretStore = TenantStore.keychain()) {
         self.secrets = secrets
-        load()
+        connections = ConnectionStore(
+            storage: JSONFileConnectionStorage<Tenant>(fileURL: directory.appendingPathComponent("tenants.json")),
+            secrets: [.main: SecretLocation(store: secrets)],
+            log: { WriteToLog.shared.message("[TenantStore] \($0)") })
     }
 
-    // MARK: Tenants
+    var tenants: [Tenant] { connections.records }
 
     func tenant(id: Tenant.ID) -> Tenant? {
-        tenants.first { $0.id == id }
-    }
-
-    /// Adds a new tenant or updates the stored one with the same id.
-    func upsert(_ tenant: Tenant) {
-        if let index = tenants.firstIndex(where: { $0.id == tenant.id }) {
-            tenants[index] = tenant
-        } else {
-            tenants.append(tenant)
-        }
-        save()
-    }
-
-    /// Removes the tenant and its Keychain secret.
-    func remove(_ tenant: Tenant) {
-        tenants.removeAll { $0.id == tenant.id }
-        secrets.setSecret(nil, for: tenant.id.uuidString)
-        save()
-    }
-
-    // MARK: Secrets
-
-    func secret(for tenant: Tenant) -> String? {
-        secrets.secret(for: tenant.id.uuidString)
-    }
-
-    @discardableResult
-    func setSecret(_ secret: String?, for tenant: Tenant) -> Bool {
-        secrets.setSecret(secret, for: tenant.id.uuidString)
+        connections.record(id: id)
     }
 
     // MARK: Clients
 
     /// A client for the tenant. The secret (or password) is read from the
     /// Keychain at token time, so it can be corrected without rebuilding the
-    /// client.
-    func client(for tenant: Tenant) -> PlatformClient {
+    /// client. `secretOverride` uses a secret typed in Settings instead, to
+    /// test values that aren't saved yet.
+    func client(for tenant: Tenant, secretOverride: String? = nil) -> PlatformClient {
         let secrets = secrets
         let account = tenant.id.uuidString
         let clientId = tenant.clientId
 
         @Sendable func storedSecret() throws -> String {
-            guard let secret = secrets.secret(for: account), !secret.isEmpty else {
+            guard let secret = secretOverride ?? secrets.secret(for: account), !secret.isEmpty else {
                 throw GatewayError.tokenFailure(
                     status: 0,
-                    detail: "No client secret or password is stored for this tenant. Enter it in Settings › Tenants.")
+                    detail: "No client secret or password is stored for this tenant. Enter it in Settings › Connections.")
             }
             return secret
         }
@@ -107,32 +95,5 @@ final class TenantStore {
         return PlatformClient(region: tenant.region,
                               environmentId: tenant.environmentId,
                               tokenProvider: provider)
-    }
-
-    // MARK: Persistence
-
-    private func load() {
-        guard let data = try? Data(contentsOf: fileURL) else { return }
-        do {
-            tenants = try JSONDecoder().decode([Tenant].self, from: data)
-        } catch {
-            // move the unreadable file aside so a later save can't overwrite it
-            let aside = fileURL.appendingPathExtension("unreadable")
-            try? FileManager.default.removeItem(at: aside)
-            try? FileManager.default.moveItem(at: fileURL, to: aside)
-            WriteToLog.shared.message("[TenantStore] could not read \(fileURL.path): \(error.localizedDescription); moved it to \(aside.lastPathComponent)")
-        }
-    }
-
-    private func save() {
-        do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(),
-                                                    withIntermediateDirectories: true)
-            try encoder.encode(tenants).write(to: fileURL, options: .atomic)
-        } catch {
-            WriteToLog.shared.message("[TenantStore] could not save \(fileURL.path): \(error.localizedDescription)")
-        }
     }
 }

@@ -113,7 +113,9 @@ enum Preflight {
                                unavailableTypes: unavailable)
     }
 
-    private static func check(_ client: PlatformClient) async -> PreflightReport.TenantCheck {
+    /// Whether the tenant answers, and its Jamf Pro version. Also Settings'
+    /// Test Connection.
+    static func check(_ client: PlatformClient) async -> PreflightReport.TenantCheck {
         struct Version: Decodable { let version: String }
         do {
             let version = try await client.get(Version.self, "pro/v1/jamf-pro-version")

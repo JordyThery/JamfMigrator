@@ -2,10 +2,10 @@
 //  SettingsView.swift
 //  JamfMigrator
 //
-//  The app's own Settings tabs: tenants (with client secret and the
-//  Protected toggle), the service-account secrets used by transforms, and
-//  export options. JTKit's `SettingsWindow` adds General before them and
-//  Updates after them.
+//  The app's own Settings tabs: Connections (JTKit's shared tenants list,
+//  with the Protected toggle), the service-account secrets used by
+//  transforms, and export options. JTKit's `SettingsWindow` adds General
+//  before them and Updates after them.
 //
 
 import JTKit
@@ -15,181 +15,56 @@ import SwiftUI
 /// the tabs look as before.
 private let tabHeight: CGFloat = 480
 
-// MARK: - Tenants
+// MARK: - Connections
 
-struct TenantsSettings: View {
+/// JTKit's shared Connections tab for the tenants. Source and Destination
+/// stay chosen in the sidebar too; the buttons here set the same choice.
+struct ConnectionsSettings: View {
 
     @Environment(AppState.self) private var appState
-    @State private var selectedTenantID: Tenant.ID?
 
     var body: some View {
-        HSplitView {
-            VStack(spacing: 0) {
-                List(appState.tenantStore.tenants, selection: $selectedTenantID) { tenant in
-                    HStack {
-                        Text(tenant.name)
-                        if tenant.isProtected {
-                            Image(systemName: "lock.fill")
-                                .foregroundStyle(.secondary)
-                                .help("Protected: this tenant can never be wiped.")
-                        }
-                    }
-                    .tag(tenant.id)
-                }
-                HStack {
-                    Button("Add", systemImage: "plus") {
-                        let tenant = Tenant(name: "New tenant")
-                        appState.tenantStore.upsert(tenant)
-                        selectedTenantID = tenant.id
-                    }
-                    Button("Remove", systemImage: "minus") {
-                        if let tenant = selectedTenant {
-                            appState.tenantStore.remove(tenant)
-                            appState.forgetTenant(tenant.id)
-                            selectedTenantID = nil
-                        }
-                    }
-                    .disabled(selectedTenant == nil)
-                    Spacer()
-                }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderless)
-                .padding(6)
-            }
-            .frame(minWidth: 160, maxWidth: 220)
+        @Bindable var appState = appState
 
-            if let tenant = selectedTenant {
-                TenantEditor(tenant: tenant)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            } else {
-                ContentUnavailableView("No tenant selected", systemImage: "building.2")
-                    .frame(maxWidth: .infinity)
+        ConnectionsSettingsTab(
+            store: appState.tenantStore.connections,
+            services: [.jamfPlatform, .jamfPro],
+            roles: [ConnectionRole("Source", selection: $appState.sourceTenantID),
+                    ConnectionRole("Destination", selection: $appState.destTenantID)],
+            height: tabHeight,
+            newRecord: { service in
+                Tenant(connection: Connection(name: "New tenant", service: service))
+            },
+            didDelete: { tenant in appState.forgetTenant(tenant.id) },
+            test: { tenant, secrets in
+                let client = appState.tenantStore.client(for: tenant, secretOverride: secrets[.main])
+                let check = await Preflight.check(client)
+                guard check.reachable else {
+                    throw TenantTestError(message: check.error ?? "No response.")
+                }
+                return "Connected · Jamf Pro \(check.version ?? "?")"
+            }
+        ) { $tenant in
+            Section {
+                Toggle("Protected", isOn: $tenant.isProtected)
+            } footer: {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("A protected tenant can never be wiped. Recommended for the source tenant.")
+                    if !tenant.usesGateway {
+                        Text("Blueprints and Compliance Benchmarks need the Platform API and are unavailable over a direct connection.")
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .padding()
-        .frame(width: SettingsLayout.width, height: tabHeight)
-        .tabItem { Label("Tenants", systemImage: "building.2") }
-    }
-
-    private var selectedTenant: Tenant? {
-        selectedTenantID.flatMap(appState.tenantStore.tenant(id:))
     }
 }
 
-private struct TenantEditor: View {
-
-    @Environment(AppState.self) private var appState
-    let tenant: Tenant
-    @State private var secret = ""
-    @State private var useUserAuth = false
-    @State private var secretSaveFailed = false
-
-    var body: some View {
-        Form {
-            TextField("Name", text: binding(\.name))
-
-            Picker("Connection", selection: usesGatewayBinding) {
-                Text("Platform API gateway").tag(true)
-                Text("Jamf Pro server").tag(false)
-            }
-            .help("Tenants without Platform API access connect to their Jamf Pro server directly.")
-
-            if usesGatewayBinding.wrappedValue {
-                Picker("Region", selection: binding(\.region)) {
-                    ForEach(Region.allCases) { region in
-                        Text(region.displayName).tag(region)
-                    }
-                }
-                TextField("Environment ID", text: binding(\.environmentId))
-                    .font(.body.monospaced())
-                TextField("Client ID", text: binding(\.clientId))
-                    .font(.body.monospaced())
-                SecureField("Client secret", text: $secret)
-                    .onChange(of: secret) { saveSecret() }
-            } else {
-                TextField("Server URL", text: optionalBinding(\.serverURL), prompt: Text("https://tenant.jamfcloud.com"))
-                    .font(.body.monospaced())
-                Picker("Authentication", selection: $useUserAuth) {
-                    Text("API client").tag(false)
-                    Text("Username & password").tag(true)
-                }
-                if useUserAuth {
-                    TextField("Username", text: optionalBinding(\.username))
-                    SecureField("Password", text: $secret)
-                        .onChange(of: secret) { saveSecret() }
-                } else {
-                    TextField("Client ID", text: binding(\.clientId))
-                        .font(.body.monospaced())
-                    SecureField("Client secret", text: $secret)
-                        .onChange(of: secret) { saveSecret() }
-                }
-                Text("Blueprints and Compliance Benchmarks need the Platform API and are unavailable over a direct connection.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-
-            if secretSaveFailed {
-                Label("The Keychain refused to save this secret, so the tenant can't connect. See the log for the error code.",
-                      systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout)
-                    .foregroundStyle(.red)
-            }
-
-            Toggle("Protected — this tenant can never be wiped", isOn: binding(\.isProtected))
-                .help("Recommended for the source tenant.")
-        }
-        .formStyle(.grouped)
-        .onAppear { reload() }
-        .onChange(of: tenant.id) { reload() }
-        .onChange(of: useUserAuth) {
-            // switching back to an API client drops the username
-            if !useUserAuth {
-                var updated = appState.tenantStore.tenant(id: tenant.id) ?? tenant
-                updated.username = nil
-                appState.tenantStore.upsert(updated)
-            }
-        }
-    }
-
-    private var usesGatewayBinding: Binding<Bool> {
-        Binding(
-            get: { (appState.tenantStore.tenant(id: tenant.id) ?? tenant).usesGateway },
-            set: { usesGateway in
-                var updated = appState.tenantStore.tenant(id: tenant.id) ?? tenant
-                updated.serverURL = usesGateway ? nil : (updated.serverURL?.isEmpty == false ? updated.serverURL : "https://")
-                appState.tenantStore.upsert(updated)
-            })
-    }
-
-    private func saveSecret() {
-        secretSaveFailed = !appState.tenantStore.setSecret(secret.isEmpty ? nil : secret, for: tenant)
-    }
-
-    private func reload() {
-        secretSaveFailed = false
-        secret = appState.tenantStore.secret(for: tenant) ?? ""
-        useUserAuth = ((appState.tenantStore.tenant(id: tenant.id) ?? tenant).username ?? "").isEmpty == false
-    }
-
-    private func optionalBinding(_ keyPath: WritableKeyPath<Tenant, String?>) -> Binding<String> {
-        Binding(
-            get: { (appState.tenantStore.tenant(id: tenant.id) ?? tenant)[keyPath: keyPath] ?? "" },
-            set: { newValue in
-                var updated = appState.tenantStore.tenant(id: tenant.id) ?? tenant
-                updated[keyPath: keyPath] = newValue
-                appState.tenantStore.upsert(updated)
-            })
-    }
-
-    private func binding<Value>(_ keyPath: WritableKeyPath<Tenant, Value>) -> Binding<Value> {
-        Binding(
-            get: { (appState.tenantStore.tenant(id: tenant.id) ?? tenant)[keyPath: keyPath] },
-            set: { newValue in
-                var updated = appState.tenantStore.tenant(id: tenant.id) ?? tenant
-                updated[keyPath: keyPath] = newValue
-                appState.tenantStore.upsert(updated)
-            })
-    }
+private struct TenantTestError: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
 }
 
 // MARK: - Service secrets
