@@ -2,36 +2,22 @@
 //  SettingsView.swift
 //  JamfMigrator
 //
-//  Settings: tenants (with client secret and the Protected toggle), the
-//  service-account secrets used by transforms, and export options.
+//  The app's own Settings tabs: tenants (with client secret and the
+//  Protected toggle), the service-account secrets used by transforms, and
+//  export options. JTKit's `SettingsWindow` adds General before them and
+//  Updates after them.
 //
 
 import JTKit
 import SwiftUI
 
-struct SettingsView: View {
-    var body: some View {
-        TabView {
-            Tab("Tenants", systemImage: "building.2") {
-                TenantsSettings()
-            }
-            Tab("Secrets", systemImage: "key") {
-                SecretsSettings()
-            }
-            Tab("Export", systemImage: "square.and.arrow.up") {
-                ExportSettings()
-            }
-            Tab("Updates", systemImage: "arrow.down.circle") {
-                UpdateSettings()
-            }
-        }
-        .frame(width: 680, height: 480)
-    }
-}
+/// The size every Jamf Migrator tab had in its own Settings window, kept so
+/// the tabs look as before.
+private let tabHeight: CGFloat = 480
 
 // MARK: - Tenants
 
-private struct TenantsSettings: View {
+struct TenantsSettings: View {
 
     @Environment(AppState.self) private var appState
     @State private var selectedTenantID: Tenant.ID?
@@ -81,6 +67,8 @@ private struct TenantsSettings: View {
             }
         }
         .padding()
+        .frame(width: SettingsLayout.width, height: tabHeight)
+        .tabItem { Label("Tenants", systemImage: "building.2") }
     }
 
     private var selectedTenant: Tenant? {
@@ -206,7 +194,7 @@ private struct TenantEditor: View {
 
 // MARK: - Service secrets
 
-private struct SecretsSettings: View {
+struct SecretsSettings: View {
 
     @Environment(AppState.self) private var appState
 
@@ -221,6 +209,8 @@ private struct SecretsSettings: View {
         }
         .formStyle(.grouped)
         .padding()
+        .frame(width: SettingsLayout.width, height: tabHeight)
+        .tabItem { Label("Secrets", systemImage: "key") }
     }
 }
 
@@ -250,7 +240,7 @@ private struct ServiceSecretField: View {
 
 // MARK: - Export
 
-private struct ExportSettings: View {
+struct ExportSettings: View {
 
     @AppStorage("exportOnRun") private var exportOnRun = false
 
@@ -263,24 +253,7 @@ private struct ExportSettings: View {
         }
         .formStyle(.grouped)
         .padding()
-    }
-}
-
-// MARK: - Updates
-
-private struct UpdateSettings: View {
-
-    @Environment(UpdateChecker.self) private var updates
-    @AppStorage(UpdateChecker.automaticCheckKey) private var checksForUpdates = true
-
-    var body: some View {
-        Form {
-            Toggle("Check for updates daily", isOn: $checksForUpdates)
-            Text("Asks GitHub for the latest release at launch, at most once a day. Nothing else is sent. To check now, choose Jamf Migrator › Check for Updates…. Installed: version \(updates.currentVersion).")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
-        .formStyle(.grouped)
-        .padding()
+        .frame(width: SettingsLayout.width, height: tabHeight)
+        .tabItem { Label("Export", systemImage: "square.and.arrow.up") }
     }
 }
