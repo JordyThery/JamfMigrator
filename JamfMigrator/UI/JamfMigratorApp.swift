@@ -53,11 +53,11 @@ struct JamfMigratorApp: App {
 
         AboutWindow(configuration: .jamfMigrator)
 
-        // JTKit's Settings window: General (Appearance), the app's Tenants,
+        // JTKit's Settings window: General (Appearance), the app's Connections,
         // Secrets and Export tabs, then Updates.
         SettingsWindow(updates: updates) {
             Group {
-                TenantsSettings()
+                ConnectionsSettings()
                 SecretsSettings()
                 ExportSettings()
             }

@@ -129,7 +129,7 @@ final class AppState {
     private var activeMigration: MigrationEngine?
     private var activeDelete: DeleteEngine?
 
-    init(tenantStore: TenantStore? = nil, secretStore: any SecretStore = KeychainSecretStore()) {
+    init(tenantStore: TenantStore? = nil, secretStore: any SecretStore = TenantStore.keychain()) {
         self.tenantStore = tenantStore ?? TenantStore()
         self.secretStore = secretStore
         let defaults = UserDefaults.standard

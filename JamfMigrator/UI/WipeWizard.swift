@@ -39,7 +39,7 @@ struct WipeWizard: View {
                 ContentUnavailableView {
                     Label("\(tenant.name) is protected", systemImage: "lock.fill")
                 } description: {
-                    Text("A protected tenant can't be wiped at all. Switch protection off in Settings › Tenants first.")
+                    Text("A protected tenant can't be wiped at all. Switch protection off in Settings › Connections first.")
                 }
             } else if started || appState.isRunning || appState.report != nil {
                 runSection

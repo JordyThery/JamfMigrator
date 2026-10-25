@@ -24,7 +24,7 @@ extension TourStep where AnchorID == TourAnchorID {
         TourStep(title: "Welcome to Jamf Migrator",
                  text: "This app copies a source Jamf tenant to a destination tenant — everything, or any selection down to a single object. This tour walks through the workflow; nothing is read or written while it runs."),
         TourStep(title: "1 · Tenants",
-                 text: "Pick the source and destination tenants here. Tenants are added in Settings › Tenants, either through the Jamf Platform API gateway or as a direct Jamf Pro connection. Mark the source tenant Protected so it can never be wiped.",
+                 text: "Pick the source and destination tenants here. Tenants are added in Settings › Connections, either through the Jamf Platform API gateway or as a direct Jamf Pro connection. Mark the source tenant Protected so it can never be wiped.",
                  anchorID: .tenants),
         TourStep(title: "2 · Object types",
                  text: "Choose what to copy. The steps mirror dependency order — sites before groups, groups before policies. Use Check all / Uncheck all for quick selections; a bolt icon marks types that need the Platform API gateway.",
@@ -48,6 +48,6 @@ extension TourStep where AnchorID == TourAnchorID {
                  text: "⌘D switches to delete mode for the session: a red banner, a red Run, and a confirmation for every run. The Wipe tenant button deletes every selected type from a tenant — behind gates: a preview, a verified backup, and the tenant's name typed out.",
                  pointsAtToolbar: true),
         TourStep(title: "That's the tour",
-                 text: "Start by adding your tenants in Settings › Tenants, then Preview. Logs and exports live in the app's Application Support folder. Replay this tour any time from Help › Guided Tour."),
+                 text: "Start by adding your tenants in Settings › Connections, then Preview. Logs and exports live in the app's Application Support folder. Replay this tour any time from Help › Guided Tour."),
     ]
 }

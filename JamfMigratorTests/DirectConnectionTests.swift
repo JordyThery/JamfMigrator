@@ -8,6 +8,8 @@
 //
 
 import Foundation
+import JTKit
+import JTKitTestSupport
 import Testing
 @testable import JamfMigrator
 
@@ -121,7 +123,7 @@ struct DirectConnectionTests {
         var tenant = Tenant(name: "MSP customer")
         tenant.serverURL = "https://msp.jamfcloud.com"
         tenant.clientId = "client-1"
-        await store.upsert(tenant)
+        try await store.connections.save(tenant)
 
         let client = await store.client(for: tenant)
         #expect(!client.supportsPlatformEndpoints)
