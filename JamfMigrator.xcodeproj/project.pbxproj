@@ -48,10 +48,20 @@
 		08ABF3E5307220C600606B36 /* WipeWizard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3E4307220C600606B36 /* WipeWizard.swift */; };
 		08ABF3EE3072392700606B36 /* Support.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3ED3072392700606B36 /* Support.swift */; };
 		08ABF3F03072586200606B36 /* GuidedTour.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3EF3072586200606B36 /* GuidedTour.swift */; };
+		0A0000000000000000000003 /* JTKit in Frameworks */ = {isa = PBXBuildFile; productRef = 0A0000000000000000000002 /* JTKit */; };
 		9BC01C641DFB0C07007E634E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9BC01C631DFB0C07007E634E /* Assets.xcassets */; };
 		B53796CA2273FFBA0006C1E4 /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B53796C92273FFBA0006C1E4 /* WebKit.framework */; };
-		0A0000000000000000000003 /* JTKit in Frameworks */ = {isa = PBXBuildFile; productRef = 0A0000000000000000000002 /* JTKit */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		0A0000000000000000000004 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9BC01C541DFB0C07007E634E /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9BC01C5B1DFB0C07007E634E;
+			remoteInfo = JamfMigrator;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		0898866E3080ACB100ACA5EB /* PlanSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanSummaryView.swift; sourceTree = "<group>"; };
@@ -102,16 +112,6 @@
 		B53796C92273FFBA0006C1E4 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		B562410D215151C4007F8144 /* JamfMigrator.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = JamfMigrator.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
-
-/* Begin PBXContainerItemProxy section */
-		0A0000000000000000000004 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 9BC01C541DFB0C07007E634E /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 9BC01C5B1DFB0C07007E634E;
-			remoteInfo = JamfMigrator;
-		};
-/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		08ABF3443071B13E00606B36 /* JamfMigratorTests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = JamfMigratorTests; sourceTree = "<group>"; };
@@ -770,7 +770,7 @@
 			repositoryURL = "https://github.com/JordyThery/JTKit.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 0.2.0;
+				minimumVersion = 0.3.1;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

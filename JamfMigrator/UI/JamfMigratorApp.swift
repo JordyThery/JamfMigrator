@@ -41,7 +41,7 @@ struct JamfMigratorApp: App {
             }
 
             CommandGroup(after: .help) {
-                Button("Guided Tour") { appState.startTour() }
+                Button("Guided Tour") { appState.tour.start() }
             }
 
             CommandMenu("Migration") {

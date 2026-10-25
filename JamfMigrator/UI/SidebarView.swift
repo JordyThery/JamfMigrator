@@ -6,6 +6,7 @@
 //  each with its selection checkbox and the plan's counts.
 //
 
+import JTKit
 import SwiftUI
 
 struct SidebarView: View {
@@ -31,7 +32,7 @@ struct SidebarView: View {
                     PreflightSummary(preflight: preflight)
                 }
             }
-            .tourAnchor(.tenants)
+            .tourAnchor(TourAnchorID.tenants)
 
             Section {
                 if appState.plan != nil {
@@ -53,13 +54,13 @@ struct SidebarView: View {
             } header: {
                 Text("Object types")
             }
-            .tourAnchor(.objectTypes)
+            .tourAnchor(TourAnchorID.objectTypes)
 
             ForEach(steps, id: \.self) { step in
                 Section("Step \(step)") {
                     ForEach(types(in: step)) { type in
                         TypeRow(type: type)
-                            .tourAnchor(.objectTypes)
+                            .tourAnchor(TourAnchorID.objectTypes)
                     }
                 }
             }

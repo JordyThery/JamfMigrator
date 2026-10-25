@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import JTKit
 import Observation
 
 @MainActor
@@ -100,25 +101,10 @@ final class AppState {
 
     // MARK: Guided tour
 
-    /// The current tour step, nil when the tour is off. Starts automatically
-    /// on first launch and can be replayed from Help › Guided Tour.
-    var tourIndex: Int?
-
-    func startTour() {
-        tourIndex = 0
-    }
-
-    func endTour() {
-        tourIndex = nil
-        UserDefaults.standard.set(true, forKey: "hasSeenGuidedTour")
-    }
-
-    func startTourOnFirstLaunch() {
-        // mark it seen right away, so a second window can't restart the tour
-        guard !UserDefaults.standard.bool(forKey: "hasSeenGuidedTour") else { return }
-        UserDefaults.standard.set(true, forKey: "hasSeenGuidedTour")
-        startTour()
-    }
+    /// Starts automatically on first launch and can be replayed from
+    /// Help › Guided Tour. The "tour seen" key is the one the app has always
+    /// used, so people who saw the tour don't get it again.
+    let tour = TourState(steps: TourStep.all, firstLaunchDefaultsKey: "hasSeenGuidedTour")
 
     // MARK: Clone / Wipe wizard state
 
@@ -187,7 +173,7 @@ final class AppState {
     }
 
     var canPreview: Bool {
-        guard !isPlanning && !isRunning, tourIndex == nil,
+        guard !isPlanning && !isRunning, tour.index == nil,
               destTenant != nil, !selectedTypeKeys.isEmpty else { return false }
         if mode == .delete { return true }
         // copying a tenant onto itself is never meaningful
@@ -197,7 +183,7 @@ final class AppState {
     var canRun: Bool {
         // the plan must match the current mode — a stale plan from before a
         // mode switch must never drive a run
-        plan?.mode == mode && !isRunning && !isPlanning && tourIndex == nil
+        plan?.mode == mode && !isRunning && !isPlanning && tour.index == nil
             && effectiveChangeCount > 0
     }
 

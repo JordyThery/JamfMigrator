@@ -30,13 +30,13 @@ struct ContentView: View {
             ObjectListView()
                 .navigationSplitViewColumnWidth(min: 320, ideal: 420)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .tourAnchor(.plan)
+                .tourAnchor(TourAnchorID.plan)
         } detail: {
             InspectorView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .tourAnchor(.inspector)
+                .tourAnchor(TourAnchorID.inspector)
         }
-        .guidedTour(appState: appState)
+        .guidedTour(appState.tour)
         .safeAreaInset(edge: .top, spacing: 0) {
             if appState.mode == .delete {
                 DeleteModeBanner()
