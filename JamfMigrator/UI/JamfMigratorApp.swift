@@ -2,8 +2,8 @@
 //  JamfMigratorApp.swift
 //  JamfMigrator
 //
-//  The SwiftUI app entry: the main window, the Settings scene, and the
-//  menu commands.
+//  The SwiftUI app entry: the main window, the About and Settings windows,
+//  and the menu commands.
 //
 
 import JTKit
@@ -26,19 +26,7 @@ struct JamfMigratorApp: App {
                 .task { await updates.checkAutomatically() }
         }
         .commands {
-            CommandGroup(replacing: .appInfo) {
-                Button("About Jamf Migrator") {
-                    NSApplication.shared.orderFrontStandardAboutPanel(options: [
-                        .credits: NSAttributedString(
-                            string: "Based on Replicator by Jamf.",
-                            attributes: [
-                                .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
-                                .foregroundColor: NSColor.secondaryLabelColor,
-                            ]),
-                    ])
-                }
-                Button("Check for Updates…") { updates.checkManually() }
-            }
+            AppInfoCommands(appName: "Jamf Migrator") { updates.checkManually() }
 
             CommandGroup(after: .help) {
                 Button("Guided Tour") { appState.tour.start() }
@@ -63,10 +51,17 @@ struct JamfMigratorApp: App {
             }
         }
 
-        Settings {
-            SettingsView()
-                .environment(appState)
-                .environment(updates)
+        AboutWindow(configuration: .jamfMigrator)
+
+        // JTKit's Settings window: General (Appearance), the app's Tenants,
+        // Secrets and Export tabs, then Updates.
+        SettingsWindow(updates: updates) {
+            Group {
+                TenantsSettings()
+                SecretsSettings()
+                ExportSettings()
+            }
+            .environment(appState)
         }
     }
 }

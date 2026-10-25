@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		087B3C98308E70B400D0CB8A /* AboutInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 087B3C97308E70B400D0CB8A /* AboutInfo.swift */; };
 		0898866F3080ACB100ACA5EB /* PlanSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0898866E3080ACB100ACA5EB /* PlanSummaryView.swift */; };
 		08ABF3503071BA8300606B36 /* Region.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF34F3071BA8300606B36 /* Region.swift */; };
 		08ABF3523071BA9400606B36 /* GatewayError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3513071BA9400606B36 /* GatewayError.swift */; };
@@ -64,6 +65,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		087B3C97308E70B400D0CB8A /* AboutInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutInfo.swift; sourceTree = "<group>"; };
 		0898866E3080ACB100ACA5EB /* PlanSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanSummaryView.swift; sourceTree = "<group>"; };
 		08ABF3433071B13E00606B36 /* JamfMigratorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JamfMigratorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		08ABF34F3071BA8300606B36 /* Region.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Region.swift; sourceTree = "<group>"; };
@@ -222,6 +224,7 @@
 				08ABF3E4307220C600606B36 /* WipeWizard.swift */,
 				08ABF3EF3072586200606B36 /* GuidedTour.swift */,
 				0898866E3080ACB100ACA5EB /* PlanSummaryView.swift */,
+				087B3C97308E70B400D0CB8A /* AboutInfo.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -441,6 +444,7 @@
 				08ABF3DB3071C62800606B36 /* SettingsView.swift in Sources */,
 				08ABF3D13071C5BF00606B36 /* ContentView.swift in Sources */,
 				08ABF3CF3071C5AD00606B36 /* JamfMigratorApp.swift in Sources */,
+				087B3C98308E70B400D0CB8A /* AboutInfo.swift in Sources */,
 				08ABF3583071BAC800606B36 /* Poll.swift in Sources */,
 				08ABF3DF3072205000606B36 /* TenantExporter.swift in Sources */,
 				08ABF35F3071BAE900606B36 /* SecretStore.swift in Sources */,
@@ -770,7 +774,7 @@
 			repositoryURL = "https://github.com/JordyThery/JTKit.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 0.3.1;
+				minimumVersion = 0.4.3;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
