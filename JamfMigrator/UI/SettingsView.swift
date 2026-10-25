@@ -6,6 +6,7 @@
 //  service-account secrets used by transforms, and export options.
 //
 
+import JTKit
 import SwiftUI
 
 struct SettingsView: View {

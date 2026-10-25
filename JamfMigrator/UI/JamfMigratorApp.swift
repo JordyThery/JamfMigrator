@@ -6,13 +6,17 @@
 //  menu commands.
 //
 
+import JTKit
 import SwiftUI
 
 @main
 struct JamfMigratorApp: App {
 
     @State private var appState = AppState()
-    @State private var updates = UpdateChecker()
+    @State private var updates = UpdateChecker(
+        configuration: UpdateConfiguration(owner: "JordyThery", repository: "JamfMigrator", appName: "Jamf Migrator"),
+        activity: { WriteToLog.shared.message("[UpdateChecker] \($0)") }
+    )
 
     var body: some Scene {
         WindowGroup {
