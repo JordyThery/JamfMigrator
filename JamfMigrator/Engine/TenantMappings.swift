@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import JTKit
 
 /// Source id → destination id mappings for one tenant pair.
 struct TenantMappings: Codable, Equatable, Sendable {
@@ -43,7 +44,7 @@ let platformGroupsKey = "platformgroups"
 enum MappingCatalog {
 
     /// Device groups as the platform namespaces see them: id = groupPlatformId.
-    static func platformGroups(on client: PlatformClient) async throws -> [ObjectRef] {
+    static func platformGroups(on client: JamfPlatform.Client) async throws -> [ObjectRef] {
         var results = [ObjectRef]()
         var page = 0
         while true {
@@ -63,7 +64,7 @@ enum MappingCatalog {
     }
 
     /// The tenant's ADE instances (/pro/v1/device-enrollments).
-    static func adeInstances(on client: PlatformClient) async throws -> [ObjectRef] {
+    static func adeInstances(on client: JamfPlatform.Client) async throws -> [ObjectRef] {
         let type = ObjectType(key: "deviceenrollments", displayName: "ADE instances", step: 0,
                               api: .pro(version: 1, resource: "device-enrollments"),
                               listShape: .proPaginated)
@@ -71,7 +72,7 @@ enum MappingCatalog {
     }
 
     /// The tenant's distribution points (/pro/v1/distribution-points).
-    static func distributionPoints(on client: PlatformClient) async throws -> [ObjectRef] {
+    static func distributionPoints(on client: JamfPlatform.Client) async throws -> [ObjectRef] {
         guard let type = ObjectRegistry.type("distributionpoints") else { return [] }
         return try await ObjectLister.list(type, on: client)
     }

@@ -10,7 +10,6 @@ import JTKit
 
 enum AppInfo {
     static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
-    static let userAgentHeader = "JamfMigrator/\(version)"
 
     /// Application Support/JamfMigrator (inside the sandbox container).
     static let appSupportPath: String = {

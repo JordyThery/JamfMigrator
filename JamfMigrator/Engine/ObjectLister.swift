@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import JTKit
 
 /// One object in a list: its id and unique name on that tenant.
 struct ObjectRef: Sendable, Hashable {
@@ -17,7 +18,7 @@ struct ObjectRef: Sendable, Hashable {
 enum ObjectLister {
 
     /// Every object of `type` on the tenant behind `client`.
-    static func list(_ type: ObjectType, on client: PlatformClient) async throws -> [ObjectRef] {
+    static func list(_ type: ObjectType, on client: JamfPlatform.Client) async throws -> [ObjectRef] {
         switch type.listShape {
         case .proPaginated:
             return try await listProPaginated(type, on: client)
@@ -42,7 +43,7 @@ enum ObjectLister {
         }
     }
 
-    private static func listProPaginated(_ type: ObjectType, on client: PlatformClient) async throws -> [ObjectRef] {
+    private static func listProPaginated(_ type: ObjectType, on client: JamfPlatform.Client) async throws -> [ObjectRef] {
         var results = [ObjectRef]()
         var page = 0
         let pageSize = 200
@@ -76,7 +77,7 @@ enum ObjectLister {
     }
 
     /// The object's full payload: JSON dict for Pro, XML string for Classic.
-    static func detail(_ type: ObjectType, id: String, on client: PlatformClient) async throws -> ObjectPayload {
+    static func detail(_ type: ObjectType, id: String, on client: JamfPlatform.Client) async throws -> ObjectPayload {
         if case .singleton = type.listShape {
             let response = try await client.send(.get, type.api.listPath)
             let json = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]

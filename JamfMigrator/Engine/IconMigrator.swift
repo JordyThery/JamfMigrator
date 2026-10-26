@@ -8,14 +8,15 @@
 //
 
 import Foundation
+import JTKit
 
 actor IconMigrator {
-    private let source: PlatformClient
-    private let dest: PlatformClient
+    private let source: JamfPlatform.Client
+    private let dest: JamfPlatform.Client
     /// source icon id → destination icon id, so shared icons upload once
     private var copied = [String: String]()
 
-    init(source: PlatformClient, dest: PlatformClient) {
+    init(source: JamfPlatform.Client, dest: JamfPlatform.Client) {
         self.source = source
         self.dest = dest
     }
@@ -31,14 +32,16 @@ actor IconMigrator {
         if icon.sourceId.allSatisfy(\.isNumber) {
             imageData = try await source.send(.get, "pro/v1/icon/download/\(icon.sourceId)", accept: "*/*").data
         } else if let url = URL(string: icon.uri), icon.uri.hasPrefix("https://") {
-            // recorded in the activity log with the source tenant's requests
+            // recorded in the activity log with the source tenant's requests;
+            // as always, the image itself is not recorded
             let (data, response) = try await source.recorder.send(URLRequest(url: url), category: "Icons")
             guard response.statusCode == 200 else {
-                throw GatewayError.from(status: response.statusCode, body: data)
+                let answer = HTTPResponse(status: response.statusCode, data: data)
+                throw JamfPlatformError(HTTPError.status(answer, method: "GET", path: url.path(), duringSignIn: false))
             }
             imageData = data
         } else {
-            throw GatewayError.invalidURL("no usable icon source for \(icon.name)")
+            throw JamfPlatformError(.invalidResponse("No usable icon source for \(icon.name)."))
         }
         let upload = multipartBody(fileName: icon.name.isEmpty ? "icon.png" : icon.name, data: imageData)
         let response = try await dest.send(.post, "pro/v1/icon",
@@ -46,7 +49,7 @@ actor IconMigrator {
                                            contentType: upload.contentType)
         let json = try JSONSerialization.jsonObject(with: response.data) as? [String: Any]
         guard let id = json?["id"] else {
-            throw GatewayError.decoding(URLError(.cannotParseResponse))
+            throw JamfPlatformError(.invalidResponse("The new icon’s ID is missing from the answer."))
         }
         let destIconId = "\(id)"
         copied[icon.sourceId] = destIconId
@@ -54,7 +57,7 @@ actor IconMigrator {
     }
 
     /// Points a freshly written Classic object at the destination icon.
-    func assign(iconId: String, displayName: String, to type: ObjectType, destObjectId: String, on client: PlatformClient) async throws {
+    func assign(iconId: String, displayName: String, to type: ObjectType, destObjectId: String, on client: JamfPlatform.Client) async throws {
         let xml: String
         switch type.key {
         case "policies":

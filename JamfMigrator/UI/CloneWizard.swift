@@ -111,19 +111,34 @@ private struct ConnectStep: View {
                           systemImage: "info.circle")
                         .foregroundStyle(.secondary)
                 }
-                if preflight.deniedTypes.isEmpty {
+                if preflight.flaggedTypes.isEmpty {
                     Label("Both integrations have permission for every selected type.", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
-                        Label("Missing permission for: \(PreflightReport.displayNames(preflight.deniedTypes)). These types will fail; grant the permission and test again, or leave them out.",
-                              systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                        Button("Leave these types out") {
-                            appState.selectedTypeKeys.subtract(preflight.deniedTypes)
-                            runPreflight()
+                        if !preflight.missingPermissionTypes.isEmpty {
+                            Label("Missing permission for: \(PreflightReport.displayNames(preflight.missingPermissionTypes)). These types will fail; grant the permission and test again, or leave them out.",
+                                  systemImage: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
                         }
-                        .padding(.leading, 24)
+                        if !preflight.notFoundTypes.isEmpty {
+                            Label("Not found: \(PreflightReport.displayNames(preflight.notFoundTypes)). A tenant doesn't have these lists, so these types will fail; leave them out.",
+                                  systemImage: "folder.badge.questionmark")
+                                .foregroundStyle(.orange)
+                        }
+                        if !preflight.uncheckedTypes.isEmpty {
+                            Label("Couldn't check: \(PreflightReport.displayNames(preflight.uncheckedTypes)). The check got an error or no answer; these types may still work. Choose Test again to retry.",
+                                  systemImage: "questionmark.circle")
+                                .foregroundStyle(.secondary)
+                        }
+                        let failing = preflight.missingPermissionTypes + preflight.notFoundTypes
+                        if !failing.isEmpty {
+                            Button(preflight.uncheckedTypes.isEmpty ? "Leave these types out" : "Leave out the types that will fail") {
+                                appState.selectedTypeKeys.subtract(failing)
+                                runPreflight()
+                            }
+                            .padding(.leading, 24)
+                        }
                     }
                 }
                 if !preflight.destinationIsEmpty {

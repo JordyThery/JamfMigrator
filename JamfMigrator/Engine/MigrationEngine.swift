@@ -8,11 +8,12 @@
 //
 
 import Foundation
+import JTKit
 
 actor MigrationEngine {
 
-    private let source: PlatformClient
-    private let dest: PlatformClient
+    private let source: JamfPlatform.Client
+    private let dest: JamfPlatform.Client
     private let journal: JournalStore
     private let export: ExportWriter?
     private let secrets: [String: String]
@@ -28,8 +29,8 @@ actor MigrationEngine {
     /// Destination patch source ids by name, loaded on the first patch title create.
     private var patchSourceIds = [String: String]()
 
-    init(source: PlatformClient,
-         dest: PlatformClient,
+    init(source: JamfPlatform.Client,
+         dest: JamfPlatform.Client,
          journal: JournalStore,
          export: ExportWriter? = nil,
          secrets: [String: String] = [:],
@@ -182,7 +183,7 @@ actor MigrationEngine {
                 if type.key == "compliancebenchmarks", case .update(let destId) = action {
                     do {
                         _ = try await dest.send(.delete, type.api.detailPath(id: destId))
-                    } catch let error as GatewayError where error.status != nil {
+                    } catch let error as JamfPlatformError where error.status != nil {
                         guard await objectIsGone(type, id: destId) else { throw error }
                     }
                     action = .create
@@ -191,7 +192,7 @@ actor MigrationEngine {
                 let destId: String
                 do {
                     destId = try await write(object, type: type, action: action)
-                } catch let error as GatewayError where error.status == 409 && type.key == "compliancebenchmarks" {
+                } catch let error as JamfPlatformError where error.status == 409 && type.key == "compliancebenchmarks" {
                     // a duplicate title means a benchmark with this name already
                     // exists: treat it as the match
                     let refs = try await ObjectLister.list(type, on: dest)
@@ -216,7 +217,7 @@ actor MigrationEngine {
 
     /// Creates or updates the object and returns its destination id.
     private func write(_ object: TransformedObject, type: ObjectType, action: TransformAction) async throws -> String {
-        let response: PlatformClient.Response
+        let response: HTTPResponse
         // a merge-patch request still answers in plain JSON
         let accept = object.contentType == "application/merge-patch+json" ? "application/json" : object.contentType
         if case .create = action, let subscription = object.patchSubscription {
@@ -247,14 +248,14 @@ actor MigrationEngine {
         // the created id: <id>n</id> on Classic, "id" in the JSON on Pro
         if type.api.isClassic {
             let id = ClassicXML.value(of: "id", in: String(decoding: response.data, as: UTF8.self))
-            guard !id.isEmpty else { throw GatewayError.decoding(URLError(.cannotParseResponse)) }
+            guard !id.isEmpty else { throw JamfPlatformError(.invalidResponse("The new object’s ID is missing from the answer.")) }
             return id
         }
         let json = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any]
         // benchmark create responses name the id "benchmarkId" (verified live
         // 2026-10-04); everything else uses "id"
         guard let id = json?["id"] ?? json?["benchmarkId"] else {
-            throw GatewayError.decoding(URLError(.cannotParseResponse))
+            throw JamfPlatformError(.invalidResponse("The new object’s ID is missing from the answer."))
         }
         return "\(id)"
     }
@@ -271,7 +272,7 @@ actor MigrationEngine {
         let response = try await dest.send(.post, "proclassic/patchsoftwaretitles/id/0", body: Data(xml.utf8),
                                            contentType: "application/xml", accept: "application/xml")
         let id = ClassicXML.value(of: "id", in: String(decoding: response.data, as: UTF8.self))
-        guard !id.isEmpty else { throw GatewayError.decoding(URLError(.cannotParseResponse)) }
+        guard !id.isEmpty else { throw JamfPlatformError(.invalidResponse("The new object’s ID is missing from the answer.")) }
         return id
     }
 
@@ -307,44 +308,52 @@ actor MigrationEngine {
                                 warnings: inout [String]) async throws {
         switch type.key {
         case "computerprestages", "mobiledeviceprestages":
-            // further changes need the profileUuid, which lags the write
-            let uuid = try? await Poll.until("the PreStage profileUuid", timeout: .seconds(30), interval: .seconds(2)) { [dest] () -> String? in
-                let detail = try await ObjectLister.detail(type, id: destId, on: dest)
-                guard case .json(let json) = detail,
-                      let uuid = json["profileUuid"] as? String, !uuid.isEmpty else { return nil }
-                return uuid
-            }
-            if uuid == nil {
+            // further changes need the profileUuid, which lags the write; a
+            // 404 just after the create means the PreStage isn't there yet
+            let outcome = try? await Self.poller(timeLimit: .seconds(30)).poll(
+                check: { [dest] () -> String? in
+                    let detail = try await ObjectLister.detail(type, id: destId, on: dest)
+                    guard case .json(let json) = detail,
+                          let uuid = json["profileUuid"] as? String, !uuid.isEmpty else { return nil }
+                    return uuid
+                },
+                isDone: { $0 != nil },
+                isNotReadyYet: { ($0 as? JamfPlatformError)?.status == 404 })
+            if outcome?.isFinished != true {
                 warnings.append("The PreStage's profile UUID did not appear in time; check the PreStage on the destination.")
             }
 
         case "blueprints":
             // mirror the source's deploy state; a repeat deploy is harmless.
             // deploymentState is an object: {"state": "DEPLOYED", "lastDeployment": …}
-            @Sendable func deployState(_ json: [String: Any]) -> String {
-                if let dict = json["deploymentState"] as? [String: Any] { return "\(dict["state"] ?? "")" }
-                return "\(json["deploymentState"] ?? "")"
-            }
             guard case .json(let sourceJson) = sourcePayload else { return }
-            let state = deployState(sourceJson)
+            let state: String
+            if let dict = sourceJson["deploymentState"] as? [String: Any] {
+                state = "\(dict["state"] ?? "")"
+            } else {
+                state = "\(sourceJson["deploymentState"] ?? "")"
+            }
             guard state.localizedCaseInsensitiveContains("DEPLOYED") || state.localizedCaseInsensitiveContains("SUCCEEDED") else {
                 return
             }
+            // JTKit's deploy-and-watch: it tells the new deployment from an
+            // earlier one by its start time and waits until it succeeds or fails
+            let blueprints = JamfPlatform.Blueprints(client: dest)
+            let previousStart: String?
             do {
-                _ = try await dest.send(.post, "\(type.api.listPath)/\(destId)/deploy",
-                                        body: Data("{}".utf8), contentType: "application/json")
+                previousStart = try await blueprints.startDeployment(id: destId)
             } catch {
                 warnings.append("The blueprint was created but could not be deployed: \(error.localizedDescription)")
                 return
             }
-            let deployed = try? await Poll.until("the Blueprint deployment", timeout: .seconds(60), interval: .seconds(3)) { [dest] in
-                let detail = try await ObjectLister.detail(type, id: destId, on: dest)
-                guard case .json(let json) = detail else { return nil as Bool? }
-                let state = deployState(json)
-                return state.localizedCaseInsensitiveContains("DEPLOYED") || state.localizedCaseInsensitiveContains("SUCCEEDED")
-                    ? true : nil
-            }
-            if deployed != true {
+            let outcome = try? await blueprints.watchDeployment(id: destId, previousStart: previousStart,
+                                                                poller: Self.poller(timeLimit: .seconds(60)))
+            switch outcome {
+            case .finished(let status)? where status.didSucceed:
+                break
+            case .finished?:
+                warnings.append("The blueprint was created but its deployment failed on the destination; check it there.")
+            default:
                 warnings.append("The blueprint was created but its deployment did not confirm in time; check it on the destination.")
             }
 
@@ -352,15 +361,18 @@ actor MigrationEngine {
             // the benchmark syncs in the background; report a sync that fails.
             // syncState only appears on list entries, not the detail
             // (verified live 2026-10-04)
-            let synced = try? await Poll.until("the benchmark sync", timeout: .seconds(60), interval: .seconds(3)) { [dest] in
-                let response = try await dest.send(.get, type.api.listPath)
-                let root = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]
-                let entries = root["benchmarks"] as? [[String: Any]] ?? []
-                guard let entry = entries.first(where: { "\($0["id"] ?? "")" == destId }) else { return nil as Bool? }
-                let state = "\(entry["syncState"] ?? "")"
-                if state.localizedCaseInsensitiveContains("FAILED") { return false }
-                return state.localizedCaseInsensitiveContains("SYNCED") ? true : nil
-            }
+            let outcome = try? await Self.poller(timeLimit: .seconds(60)).poll(
+                check: { [dest] () -> Bool? in
+                    let response = try await dest.send(.get, type.api.listPath)
+                    let root = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]
+                    let entries = root["benchmarks"] as? [[String: Any]] ?? []
+                    guard let entry = entries.first(where: { "\($0["id"] ?? "")" == destId }) else { return nil }
+                    let state = "\(entry["syncState"] ?? "")"
+                    if state.localizedCaseInsensitiveContains("FAILED") { return false }
+                    return state.localizedCaseInsensitiveContains("SYNCED") ? true : nil
+                },
+                isDone: { $0 != nil })
+            let synced = outcome?.isFinished == true ? outcome?.value ?? nil : nil
             if synced == false {
                 warnings.append("The benchmark reports syncState FAILED on the destination.")
             } else if synced == nil {
@@ -372,6 +384,12 @@ actor MigrationEngine {
         }
     }
 
+    /// JTKit's wait for a job after a write (from 2 s, growing to 10 s), with
+    /// the app's own time limit.
+    private static func poller(timeLimit: Duration) -> JamfPlatform.Poller {
+        JamfPlatform.Poller(policy: JamfPlatform.PollingPolicy(timeLimit: timeLimit))
+    }
+
     /// Whether a GET of the object now fails with "not found" (benchmarks
     /// answer 403 for a deleted id).
     private func objectIsGone(_ type: ObjectType, id: String) async -> Bool {
@@ -379,7 +397,7 @@ actor MigrationEngine {
             _ = try await dest.send(.get, type.api.detailPath(id: id),
                                     accept: type.api.isClassic ? "application/xml" : "application/json")
             return false
-        } catch let error as GatewayError {
+        } catch let error as JamfPlatformError {
             return error.status == 404 || error.status == 403
         } catch {
             return false

@@ -103,28 +103,37 @@ extension URLRequest {
     }
 }
 
-extension PlatformClient {
+/// Environment IDs for tests: JTKit refuses one that isn't a UUID.
+enum TestEnvironment {
+    static let id = "e77c1408-10c8-4007-b177-abc9157fbcaa"
+    static let source = "5c0a1e00-0000-4000-8000-00000000005c"
+    static let destination = "d5700000-0000-4000-8000-0000000000d5"
+}
+
+extension JamfPlatform.Client {
     /// A gateway client on a fake session. It signs in at /auth/token with
     /// a fixed secret, records nothing unless given a log, and records waits
     /// instead of sleeping them; retries add no randomness.
-    static func fake(environmentId: String = "env-1",
+    static func fake(environmentId: String = TestEnvironment.id,
                      session: URLSession,
                      writeSpacing: Duration = .zero,
-                     sleep: @escaping @Sendable (Duration) async throws -> Void = { _ in }) -> PlatformClient {
+                     sleep: @escaping @Sendable (Duration) async throws -> Void = { _ in }) -> JamfPlatform.Client {
         let recorder = RequestRecorder(session: session, log: nil)
-        let tokens = JamfTokenProvider(tokenURL: Region.us.tokenURL, method: .apiClient(clientID: "id"),
-                                       secret: { "secret" }, recorder: recorder)
-        return PlatformClient(region: .us, environmentId: environmentId, tokens: tokens, recorder: recorder,
-                              writeSpacing: writeSpacing, sleep: sleep, random: { 0 })
+        let tokens = JamfTokenProvider(tokenURL: JamfRegion.us.gatewayURL.appending(path: "auth/token"),
+                                       method: .apiClient(clientID: "id"), secret: { "secret" }, recorder: recorder)
+        // the Environment IDs tests use are UUIDs, so this can't throw
+        return try! JamfPlatform.Client(baseURL: JamfRegion.us.gatewayURL, scope: .environment(environmentId),
+                                        tokens: tokens, recorder: recorder,
+                                        writeSpacing: writeSpacing, sleep: sleep, random: { 0 })
     }
 
     /// A direct Jamf Pro client on a fake session, signing in at /api/oauth/token.
     static func fakeDirect(serverURL: URL = URL(string: "https://msp.jamfcloud.com")!,
-                           session: URLSession) -> PlatformClient {
+                           session: URLSession) -> JamfPlatform.Client {
         let recorder = RequestRecorder(session: session, log: nil)
         let tokens = JamfTokenProvider(tokenURL: serverURL.appending(path: "api/oauth/token"),
                                        method: .apiClient(clientID: "id"), secret: { "secret" }, recorder: recorder)
-        return PlatformClient(serverURL: serverURL, tokens: tokens, recorder: recorder,
-                              writeSpacing: .zero, sleep: { _ in }, random: { 0 })
+        return try! JamfPlatform.Client(baseURL: serverURL, scope: .organization, server: .jamfPro,
+                                        tokens: tokens, recorder: recorder, sleep: { _ in }, random: { 0 })
     }
 }

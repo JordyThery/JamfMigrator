@@ -5,17 +5,18 @@
 
 import Foundation
 import Testing
+import JTKit
 @testable import JamfMigrator
 
 /// A client against a fake gateway. `handler` answers API requests; the token
 /// endpoint is served automatically. Sleeps are recorded, not slept.
 private struct Harness {
-    let client: PlatformClient
+    let client: JamfPlatform.Client
     let apiRequests: Locked<[URLRequest]>
     let tokenRequestCount: Locked<Int>
     let sleeps: Locked<[Duration]>
 
-    init(environmentId: String = "env-1", handler: @escaping MockHTTP.Handler) {
+    init(environmentId: String = TestEnvironment.id, handler: @escaping MockHTTP.Handler) {
         let apiRequests = Locked<[URLRequest]>([])
         let tokenRequestCount = Locked(0)
         let sleeps = Locked<[Duration]>([])
@@ -28,9 +29,9 @@ private struct Harness {
             return try handler(request)
         }
         // the app's usual spacing between writes, so the throttle test sees it
-        self.client = PlatformClient.fake(environmentId: environmentId,
+        self.client = JamfPlatform.Client.fake(environmentId: environmentId,
                                           session: session,
-                                          writeSpacing: PlatformClient.defaultWriteSpacing,
+                                          writeSpacing: JamfPlatform.Client.defaultWriteSpacing,
                                           sleep: { duration in sleeps.withLock { $0.append(duration) } })
         self.apiRequests = apiRequests
         self.tokenRequestCount = tokenRequestCount
@@ -47,8 +48,18 @@ struct PlatformClientTests {
         let request = try #require(harness.apiRequests.value.first)
         #expect(request.url?.absoluteString == "https://us.api.jamfcloud.com/pro/v1/jamf-pro-version")
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer tok-1")
-        #expect(request.value(forHTTPHeaderField: "X-Environment-Id") == "env-1")
+        #expect(request.value(forHTTPHeaderField: "X-Environment-Id") == TestEnvironment.id)
         #expect(request.value(forHTTPHeaderField: "Accept") == "application/json")
+    }
+
+    /// JTKit's User-Agent, the same text the app sent itself before.
+    @Test func requestsSayWhichAppSentThem() async throws {
+        let harness = Harness { _ in MockHTTP.Reply(status: 200, data: Data("{}".utf8)) }
+        _ = try await harness.client.send(.get, "pro/v1/sites")
+
+        let request = try #require(harness.apiRequests.value.first)
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        #expect(request.value(forHTTPHeaderField: "User-Agent") == "JamfMigrator/\(version)")
     }
 
     @Test func classicRequestsSpeakXML() async throws {
@@ -82,7 +93,7 @@ struct PlatformClientTests {
         let harness = Harness { _ in MockHTTP.Reply(status: 401) }
         await #expect {
             _ = try await harness.client.send(.get, "pro/v1/sites")
-        } throws: { ($0 as? GatewayError)?.status == 401 }
+        } throws: { ($0 as? JamfPlatformError)?.status == 401 }
         // one refresh attempt, then give up
         #expect(harness.apiRequests.value.count == 2)
     }
@@ -120,7 +131,7 @@ struct PlatformClientTests {
         }
         await #expect {
             _ = try await postHarness.client.send(.post, "pro/v1/buildings", body: Data("{}".utf8))
-        } throws: { ($0 as? GatewayError)?.status == 502 }
+        } throws: { ($0 as? JamfPlatformError)?.status == 502 }
         #expect(postCalls.value == 1)
 
         // PUT replaces a whole record, so it is safe to send again
@@ -135,7 +146,9 @@ struct PlatformClientTests {
         #expect(putCalls.value == 2)
     }
 
-    @Test func redirectsAreNeverFollowed() async throws {
+    /// JTKit follows a redirect only to HTTPS on the same host; the
+    /// gateway's internal hosts are never reached.
+    @Test func redirectsToAnotherHostAreNotFollowed() async throws {
         let harness = Harness { request in
             request.url?.path == "/elsewhere"
                 ? MockHTTP.Reply(status: 200, data: Data("{}".utf8))
@@ -143,7 +156,7 @@ struct PlatformClientTests {
         }
         await #expect {
             _ = try await harness.client.send(.get, "pro/v1/sites")
-        } throws: { ($0 as? GatewayError)?.status == 302 }
+        } throws: { ($0 as? JamfPlatformError)?.status == 302 }
         #expect(harness.apiRequests.value.count == 1)
     }
 
@@ -170,9 +183,10 @@ struct PlatformClientTests {
         await #expect {
             _ = try await harness.client.send(.post, "pro/v1/buildings", body: Data("{}".utf8))
         } throws: { error in
-            guard case .response(let status, let errors, let traceId, _) = error as? GatewayError else { return false }
-            return status == 400 && traceId == "abc123"
-                && errors == [APIErrorDetail(code: "INVALID_FIELD", field: "name", description: "must not be blank")]
+            guard let error = error as? JamfPlatformError else { return false }
+            return error.status == 400 && error.traceID == "abc123"
+                && error.body?.errors == [.init(code: "INVALID_FIELD", field: "name", description: "must not be blank")]
+                && error.message().contains("INVALID_FIELD (name): must not be blank")
         }
     }
 }

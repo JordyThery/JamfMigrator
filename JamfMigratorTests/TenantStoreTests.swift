@@ -209,16 +209,39 @@ struct TenantStoreTests {
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let store = TenantStore(directory: directory, secrets: InMemorySecretStore())
-        let tenant = Tenant(name: "Demo", environmentId: "env-1", clientId: "client-1")
+        let tenant = Tenant(name: "Demo", environmentId: TestEnvironment.id, clientId: "client-1")
         try store.connections.save(tenant)
 
         let client = store.client(for: tenant)
-        #expect(client.environmentId == "env-1")
+        #expect(client.scope == .environment(TestEnvironment.id))
         await #expect {
             _ = try await client.send(.get, "pro/v1/sites")
         } throws: { error in
-            guard case .tokenFailure(_, let detail) = error as? GatewayError else { return false }
-            return detail?.contains("Settings › Connections") == true
+            error is MissingSecret && error.localizedDescription.contains("Settings › Connections")
         }
+    }
+
+    /// An Environment ID that isn't a UUID still gives the tenant a client;
+    /// its first request says what's wrong, and nothing is sent.
+    @Test func anInvalidEnvironmentIDFailsAtTheFirstRequest() async throws {
+        let directory = try makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let sent = Locked(0)
+        let session = MockHTTP.session { _ in
+            sent.withLock { $0 += 1 }
+            return MockHTTP.tokenJSON()
+        }
+
+        let store = TenantStore(directory: directory, secrets: InMemorySecretStore(), log: nil, session: session)
+        let tenant = Tenant(name: "Demo", environmentId: "env-1", clientId: "client-1")
+        try store.connections.save(tenant)
+
+        await #expect {
+            _ = try await store.client(for: tenant).send(.get, "pro/v1/sites")
+        } throws: { error in
+            guard let error = error as? JamfPlatformError, case .invalidEnvironmentID("env-1") = error.kind else { return false }
+            return error.message().contains("not a UUID")
+        }
+        #expect(sent.value == 0)
     }
 }

@@ -8,6 +8,7 @@
 
 import Foundation
 import Testing
+import JTKit
 @testable import JamfMigrator
 
 private func phase6Context() -> TransformContext {
@@ -37,7 +38,7 @@ private func phase6Context() -> TransformContext {
 private func jsonBody(_ outcome: TransformOutcome) throws -> [String: Any] {
     guard case .write(let object) = outcome else {
         Issue.record("expected .write, got \(outcome)")
-        throw GatewayError.invalidURL("blocked")
+        throw NotAWrite()
     }
     return try JSONSerialization.jsonObject(with: object.body) as! [String: Any]
 }
@@ -262,8 +263,11 @@ struct Phase6EngineTests {
         #expect(report.entries.first?.status == .unchanged(destId: "C9"))
     }
 
-    @Test func deployedBlueprintsAreDeployedOnTheDestination() async throws {
-        let gateway = FakeGateway { env, method, path, _ in
+    /// A fake destination Blueprint B7 that shows a new deployment once it
+    /// is deployed, ending as `job`.
+    private func blueprintGateway(job: String) -> FakeGateway {
+        let deployed = Locked(false)
+        return FakeGateway { env, method, path, _ in
             switch (env, method, path) {
             case ("src", "GET", "/blueprints/v1/blueprints"):
                 return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 1, "results": [["id": "B1", "name": "Baseline"]]]))
@@ -273,19 +277,40 @@ struct Phase6EngineTests {
             case ("dst", "POST", "/blueprints/v1/blueprints"):
                 return MockHTTP.Reply(status: 201, data: MockHTTP.json(["id": "B7"]))
             case ("dst", "POST", "/blueprints/v1/blueprints/B7/deploy"):
+                deployed.withLock { $0 = true }
                 return MockHTTP.Reply(status: 202)
             case ("dst", "GET", "/blueprints/v1/blueprints/B7"):
-                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["id": "B7", "deploymentState": ["state": "DEPLOYED"]]))
+                // JTKit's watch tells this deployment from an earlier one by its start time
+                let state: [String: Any] = deployed.value
+                    ? ["state": "DEPLOYED", "lastDeployment": ["started": "2026-10-26T10:00:00Z", "state": job]]
+                    : ["state": "NOT_DEPLOYED"]
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["id": "B7", "name": "Baseline", "deploymentState": state]))
+            case ("dst", "GET", "/blueprints/v1/blueprints/B7/report"):
+                return MockHTTP.Reply(status: 404)
             default:
                 return nil
             }
         }
+    }
+
+    @Test func deployedBlueprintsAreDeployedOnTheDestination() async throws {
+        let gateway = blueprintGateway(job: "SUCCEEDED")
         let engine = MigrationEngine(source: gateway.source, dest: gateway.dest, journal: makeJournal())
         let report = await engine.migrate(typeKeys: ["blueprints"])
 
         #expect(report.entries.first?.status == .created(destId: "B7"))
+        #expect(report.entries.first?.warnings == [])
         let writes = gateway.writes(to: "dst").map { "\($0.method) \($0.path)" }
         #expect(writes == ["POST /blueprints/v1/blueprints", "POST /blueprints/v1/blueprints/B7/deploy"])
+    }
+
+    @Test func aFailedBlueprintDeploymentIsAWarning() async throws {
+        let gateway = blueprintGateway(job: "FAILED")
+        let engine = MigrationEngine(source: gateway.source, dest: gateway.dest, journal: makeJournal())
+        let report = await engine.migrate(typeKeys: ["blueprints"])
+
+        #expect(report.entries.first?.status == .created(destId: "B7"))
+        #expect(report.entries.first?.warnings == ["The blueprint was created but its deployment failed on the destination; check it there."])
     }
 
     @Test func blueprintDelete500IsVerifiedWithAGet() async throws {
@@ -355,7 +380,7 @@ struct Phase6PlannerTests {
             if request.url?.path.contains("token") == true { return MockHTTP.tokenJSON() }
             return MockHTTP.Reply(status: 200, data: Data("{}".utf8))
         }
-        let direct = PlatformClient.fakeDirect(session: session)
+        let direct = JamfPlatform.Client.fakeDirect(session: session)
         let gateway = FakeGateway { _, _, _, _ in nil }
 
         let planner = MigrationPlanner(source: gateway.source, dest: direct)

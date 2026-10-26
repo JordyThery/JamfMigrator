@@ -9,11 +9,12 @@
 //
 
 import Foundation
+import JTKit
 
 actor MigrationPlanner {
 
-    private let source: PlatformClient
-    private let dest: PlatformClient
+    private let source: JamfPlatform.Client
+    private let dest: JamfPlatform.Client
     private let secrets: [String: String]
     private let mappings: TenantMappings
     private let progress: (@Sendable (String) -> Void)?
@@ -31,8 +32,8 @@ actor MigrationPlanner {
     /// The sentinel id used for references to objects this run will create.
     private static let plannedId = "(planned)"
 
-    init(source: PlatformClient,
-         dest: PlatformClient,
+    init(source: JamfPlatform.Client,
+         dest: JamfPlatform.Client,
          secrets: [String: String] = [:],
          mappings: TenantMappings = TenantMappings(),
          progress: (@Sendable (String) -> Void)? = nil) {

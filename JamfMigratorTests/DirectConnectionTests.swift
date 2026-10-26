@@ -13,8 +13,8 @@ import JTKitTestSupport
 import Testing
 @testable import JamfMigrator
 
-private func directClient(session: URLSession) -> PlatformClient {
-    PlatformClient.fakeDirect(session: session)
+private func directClient(session: URLSession) -> JamfPlatform.Client {
+    JamfPlatform.Client.fakeDirect(session: session)
 }
 
 @MainActor
@@ -50,7 +50,7 @@ struct DirectConnectionTests {
         await #expect {
             _ = try await client.send(.get, "blueprints/v1/blueprints")
         } throws: { error in
-            guard case .invalidURL(let message) = error as? GatewayError else { return false }
+            guard let error = error as? JamfPlatformError, case .invalidResponse(let message) = error.kind else { return false }
             return message.contains("Platform API gateway")
         }
     }
@@ -92,10 +92,10 @@ struct DirectConnectionTests {
             seen.value = request.value(forHTTPHeaderField: "X-Environment-Id")
             return MockHTTP.Reply(status: 200, data: Data("{}".utf8))
         }
-        let client = PlatformClient.fake(environmentId: "env-9", session: session)
+        let client = JamfPlatform.Client.fake(session: session)
         #expect(client.supportsPlatformEndpoints)
         _ = try await client.send(.get, "pro/v1/sites")
-        #expect(seen.value == "env-9")
+        #expect(seen.value == TestEnvironment.id)
     }
 
     /// tenants.json written before serverURL/username existed still decodes.
@@ -124,6 +124,25 @@ struct DirectConnectionTests {
         let client = store.client(for: tenant)
         #expect(!client.supportsPlatformEndpoints)
         #expect(client.baseURL.absoluteString == "https://msp.jamfcloud.com")
-        #expect(client.environmentId.isEmpty)
+        #expect(client.scope == .organization)
+        #expect(client.server == .jamfPro)
+    }
+
+    /// A refused request on a direct tenant points to Jamf Pro's API roles,
+    /// not to Jamf Account.
+    @Test func aMissingPrivilegePointsToJamfPro() async throws {
+        let session = MockHTTP.session { request in
+            request.url?.path == "/api/oauth/token"
+                ? MockHTTP.tokenJSON()
+                : MockHTTP.Reply(status: 403, data: MockHTTP.json(["httpStatus": 403, "errors": [["code": "INVALID_PRIVILEGE"]]]))
+        }
+        let client = directClient(session: session)
+
+        await #expect {
+            _ = try await client.send(.get, "pro/v1/sites")
+        } throws: { error in
+            let message = error.localizedDescription
+            return message.contains("Settings › API Roles and Clients") && !message.contains("Jamf Account")
+        }
     }
 }
