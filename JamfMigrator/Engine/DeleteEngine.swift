@@ -113,7 +113,7 @@ actor DeleteEngine {
 
     private func deleteObject(_ type: ObjectType, ref: ObjectRef) async -> ObjectStatus {
         do {
-            _ = try await client.send(.delete, type.api.detailPath(id: ref.id))
+            _ = try await client.send(.delete, type.api.detailPath(id: ref.id), privileges: type.access.delete)
             return .deleted
         } catch let error as JamfPlatformError {
             // a Classic DELETE sometimes reports a misleading 400 after doing
@@ -133,7 +133,8 @@ actor DeleteEngine {
     private func objectIsGone(_ type: ObjectType, ref: ObjectRef) async -> Bool {
         do {
             _ = try await client.send(.get, type.api.detailPath(id: ref.id),
-                                      accept: type.api.isClassic ? "application/xml" : "application/json")
+                                      accept: type.api.isClassic ? "application/xml" : "application/json",
+                                      privileges: type.access.read)
             return false
         } catch let error as JamfPlatformError {
             return error.status == 404

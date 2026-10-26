@@ -107,6 +107,12 @@ private struct PreflightSummary: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            ForEach(preflight.grants, id: \.tenant) { grant in
+                Text("\(grant.tenant): \(grant.text)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
             if !preflight.destinationIsEmpty {
                 Text("The destination is not empty.")
                     .font(.caption)

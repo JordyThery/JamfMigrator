@@ -127,8 +127,13 @@ actor MigrationEngine {
     }
 
     private func migrateObject(_ type: ObjectType, ref: ObjectRef, included: Set<String>) async -> (ObjectStatus, [String]) {
+        // values the server may repeat in an error, kept out of the reason
+        var secretValues = [String]()
         do {
             let payload = try await ObjectLister.detail(type, id: ref.id, on: source)
+            if case .xml(let xml) = payload {
+                secretValues = type.secretValues(in: xml)
+            }
 
             var context = TransformContext()
             context.destIdsByName = destIdsByName
@@ -211,8 +216,14 @@ actor MigrationEngine {
                 return (.created(destId: destId), warnings)
             }
         } catch {
-            return (.failed(reason: error.localizedDescription), [])
+            return (.failed(reason: Self.blankingOut(secretValues, in: error.localizedDescription)), [])
         }
+    }
+
+    /// `text` with each of `values` replaced by JTKit's placeholder, so a
+    /// reason keeps what went wrong ("Duplicate name") but not the secret.
+    static func blankingOut(_ values: [String], in text: String) -> String {
+        values.reduce(text) { $0.replacingOccurrences(of: $1, with: Redaction.placeholder) }
     }
 
     /// Creates or updates the object and returns its destination id.
@@ -221,11 +232,12 @@ actor MigrationEngine {
         // a merge-patch request still answers in plain JSON
         let accept = object.contentType == "application/merge-patch+json" ? "application/json" : object.contentType
         if case .create = action, let subscription = object.patchSubscription {
-            let destId = try await subscribe(to: subscription)
+            let destId = try await subscribe(to: subscription, privileges: type.access.create)
             _ = try await dest.send(type.updateMethod, type.updatePath(destId: destId),
                                     body: object.body,
                                     contentType: object.contentType,
-                                    accept: accept)
+                                    accept: accept,
+                                    privileges: type.access.privileges(for: type.updateMethod))
             return destId
         }
         switch action {
@@ -233,12 +245,16 @@ actor MigrationEngine {
             let path = object.createPathOverride ?? type.api.createPath
             response = try await dest.send(.post, path, body: object.body,
                                            contentType: object.contentType,
-                                           accept: accept)
+                                           accept: accept,
+                                           privileges: type.access.create,
+                                           withholdsContents: type.secretTagPrefix != nil)
         case .update(let destId):
             response = try await dest.send(type.updateMethod, type.updatePath(destId: destId),
                                            body: object.body,
                                            contentType: object.contentType,
-                                           accept: accept)
+                                           accept: accept,
+                                           privileges: type.access.privileges(for: type.updateMethod),
+                                           withholdsContents: type.secretTagPrefix != nil)
             return destId
         }
 
@@ -264,13 +280,14 @@ actor MigrationEngine {
     /// which creates its configuration, and returns the new id. The Pro
     /// create needs a softwareTitleId, which only exists once the destination
     /// is subscribed (verified live 2026-10-22).
-    private func subscribe(to subscription: PatchSubscription) async throws -> String {
+    private func subscribe(to subscription: PatchSubscription, privileges: [JamfPro.Privilege]) async throws -> String {
         let sourceId = try await patchSourceId(named: subscription.sourceName)
         let xml = "<patch_software_title><name>\(ClassicXML.escape(subscription.displayName))</name>"
             + "<name_id>\(ClassicXML.escape(subscription.nameId))</name_id>"
             + "<source_id>\(sourceId)</source_id></patch_software_title>"
         let response = try await dest.send(.post, "proclassic/patchsoftwaretitles/id/0", body: Data(xml.utf8),
-                                           contentType: "application/xml", accept: "application/xml")
+                                           contentType: "application/xml", accept: "application/xml",
+                                           privileges: privileges)
         let id = ClassicXML.value(of: "id", in: String(decoding: response.data, as: UTF8.self))
         guard !id.isEmpty else { throw JamfPlatformError(.invalidResponse("The new object’s ID is missing from the answer.")) }
         return id
@@ -280,9 +297,12 @@ actor MigrationEngine {
     /// matched by name.
     private func patchSourceId(named name: String) async throws -> String {
         if let cached = patchSourceIds[name] { return cached }
-        for (path, container) in [("proclassic/patchinternalsources", "patch_internal_sources"),
-                                  ("proclassic/patchexternalsources", "patch_external_sources")] {
-            let response = try await dest.send(.get, path, accept: "application/json")
+        let sources: [(path: String, container: String, privilege: JamfPro.Privilege)] = [
+            ("proclassic/patchinternalsources", "patch_internal_sources", .readPatchInternalSource),
+            ("proclassic/patchexternalsources", "patch_external_sources", .readPatchExternalSource),
+        ]
+        for (path, container, privilege) in sources {
+            let response = try await dest.send(.get, path, accept: "application/json", privileges: [privilege])
             let root = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]
             for entry in root[container] as? [[String: Any]] ?? [] {
                 if let id = entry["id"], let sourceName = entry["name"] as? String {
@@ -395,7 +415,8 @@ actor MigrationEngine {
     private func objectIsGone(_ type: ObjectType, id: String) async -> Bool {
         do {
             _ = try await dest.send(.get, type.api.detailPath(id: id),
-                                    accept: type.api.isClassic ? "application/xml" : "application/json")
+                                    accept: type.api.isClassic ? "application/xml" : "application/json",
+                                    privileges: type.access.read)
             return false
         } catch let error as JamfPlatformError {
             return error.status == 404 || error.status == 403

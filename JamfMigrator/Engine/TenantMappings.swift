@@ -45,21 +45,9 @@ enum MappingCatalog {
 
     /// Device groups as the platform namespaces see them: id = groupPlatformId.
     static func platformGroups(on client: JamfPlatform.Client) async throws -> [ObjectRef] {
-        var results = [ObjectRef]()
-        var page = 0
-        while true {
-            let query = [URLQueryItem(name: "page", value: "\(page)"),
-                         URLQueryItem(name: "page-size", value: "200")]
-            let response = try await client.send(.get, "pro/v2/groups", query: query)
-            let root = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]
-            let entries = root["results"] as? [[String: Any]] ?? []
-            for entry in entries {
-                guard let uuid = entry["groupPlatformId"] as? String else { continue }
-                results.append(ObjectRef(id: uuid, name: entry["groupName"] as? String ?? ""))
-            }
-            let totalCount = root["totalCount"] as? Int ?? results.count
-            if results.count >= totalCount || entries.isEmpty { return results }
-            page += 1
+        try await client.allPages("pro/v2/groups", pageSize: 200) { entry in
+            guard let uuid = entry["groupPlatformId"]?.stringValue else { return nil }
+            return ObjectRef(id: uuid, name: entry["groupName"]?.stringValue ?? "")
         }
     }
 
@@ -67,7 +55,9 @@ enum MappingCatalog {
     static func adeInstances(on client: JamfPlatform.Client) async throws -> [ObjectRef] {
         let type = ObjectType(key: "deviceenrollments", displayName: "ADE instances", step: 0,
                               api: .pro(version: 1, resource: "device-enrollments"),
-                              listShape: .proPaginated)
+                              listShape: .proPaginated,
+                              access: ObjectAccess(capability: "device-enrollment-program-instances",
+                                                   read: [.readDeviceEnrollmentProgramInstances]))
         return try await ObjectLister.list(type, on: client)
     }
 

@@ -74,7 +74,8 @@ actor IconMigrator {
         default: return
         }
         _ = try await client.send(.put, type.api.detailPath(id: destObjectId),
-                                  body: Data(xml.utf8), contentType: "application/xml", accept: "application/xml")
+                                  body: Data(xml.utf8), contentType: "application/xml", accept: "application/xml",
+                                  privileges: type.access.update)
     }
 
     private func multipartBody(fileName: String, data: Data) -> (body: Data, contentType: String) {
