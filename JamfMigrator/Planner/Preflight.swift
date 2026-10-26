@@ -31,6 +31,11 @@ struct PreflightReport: Sendable {
     /// connects directly. They aren't probed — they are Blocked by design,
     /// not missing a permission.
     var unavailableTypes: [String] = []
+    /// What to grant on each tenant for the types it may not read, in
+    /// JTKit's words: Jamf Account permissions behind the gateway, Jamf Pro
+    /// privileges on a direct connection. Nil when nothing is missing there.
+    var sourceGrant: String?
+    var destinationGrant: String?
 
     var destinationIsEmpty: Bool {
         destinationCounts.values.allSatisfy { $0 <= 0 }
@@ -82,6 +87,13 @@ struct PreflightReport: Sendable {
         !flaggedTypes.isEmpty || !destinationIsEmpty
     }
 
+    /// What to grant, per tenant that is missing something, in that order.
+    var grants: [(tenant: String, text: String)] {
+        [("Source", sourceGrant), ("Destination", destinationGrant)].compactMap { tenant, text in
+            text.map { (tenant, $0) }
+        }
+    }
+
     /// Display names for a list of registry keys, in registry order.
     static func displayNames(_ keys: [String]) -> String {
         ObjectRegistry.types.filter { keys.contains($0.key) }.map(\.displayName)
@@ -112,11 +124,8 @@ enum Preflight {
         let unavailable = directPair ? selected.filter(\.requiresGateway).map(\.key) : []
         let types = selected.filter { !unavailable.contains($0.key) }
         // the same GETs as always: each type's list, without paging
-        // parameters. The registry names no Jamf Account permissions or Jamf
-        // Pro privileges, so the report names the types.
-        let checks = types.map {
-            JamfPlatform.PermissionCheck($0.displayName, path: $0.api.listPath, query: [], permission: "")
-        }
+        // parameters, with the permission and privilege it needs
+        let checks = types.map(permissionCheck)
 
         var sourcePermissions = [String: JamfPlatform.PermissionResult]()
         var destPermissions = [String: JamfPlatform.PermissionResult]()
@@ -141,7 +150,34 @@ enum Preflight {
                                sourcePermissions: sourcePermissions,
                                destinationPermissions: destPermissions,
                                destinationCounts: destinationCounts,
-                               unavailableTypes: unavailable)
+                               unavailableTypes: unavailable,
+                               sourceGrant: grant(for: types, missing: sourcePermissions, on: source),
+                               destinationGrant: grant(for: types, missing: destPermissions, on: dest))
+    }
+
+    /// A type's list check: its Jamf Account read permission and, for a
+    /// direct connection, its first read privilege.
+    static func permissionCheck(_ type: ObjectType) -> JamfPlatform.PermissionCheck {
+        JamfPlatform.PermissionCheck(type.displayName, path: type.api.listPath, query: [],
+                                     permission: type.access.readPermission,
+                                     jamfProPrivilege: type.access.read.first?.rawValue)
+    }
+
+    /// One sentence naming what to grant for the types refused (403) on
+    /// `client`'s tenant: every read privilege of each (some types need two).
+    static func grant(for types: [ObjectType], missing results: [String: JamfPlatform.PermissionResult],
+                      on client: JamfPlatform.Client) -> String? {
+        let refused = types.filter { results[$0.key] == .missingPermission }
+        let checks = refused.flatMap { type -> [JamfPlatform.PermissionCheck] in
+            let check = permissionCheck(type)
+            guard type.access.read.count > 1 else { return [check] }
+            return type.access.read.map { privilege in
+                var each = check
+                each.jamfProPrivilege = privilege.rawValue
+                return each
+            }
+        }
+        return JamfPlatform.PermissionCheck.hint(for: checks, on: client.server, signIn: client.signIn)
     }
 
     /// Whether the tenant answers, and its Jamf Pro version. Also Settings'

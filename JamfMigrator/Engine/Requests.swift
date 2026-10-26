@@ -31,7 +31,9 @@ enum HTTPMethod: String, Sendable {
 /// its User-Agent, retries (429 for every method; server errors and network
 /// drops for reads, PUT and DELETE; one new sign-in after a 401), XML for
 /// `/proclassic` and JSON otherwise, and writes every request to the activity
-/// log. On top of that writes get `Accept-Encoding: identity`.
+/// log. On top of that writes get `Accept-Encoding: identity`. A request
+/// names the Jamf Pro privileges it needs (from its type's `ObjectAccess`), so
+/// a refusal on a direct connection says which one is missing.
 extension JamfPlatform.Client {
 
     /// The spacing between writes the app has always used.
@@ -45,7 +47,9 @@ extension JamfPlatform.Client {
               query: [URLQueryItem] = [],
               body: Data? = nil,
               contentType: String? = nil,
-              accept: String? = nil) async throws -> HTTPResponse {
+              accept: String? = nil,
+              privileges: [JamfPro.Privilege] = [],
+              withholdsContents: Bool = false) async throws -> HTTPResponse {
         try await send(HTTPRequest(method: method.rawValue,
                                    path: path,
                                    query: query,
@@ -53,6 +57,8 @@ extension JamfPlatform.Client {
                                    accept: accept,
                                    contentType: contentType,
                                    headers: method.isWrite ? ["Accept-Encoding": "identity"] : [:],
-                                   safeToRepeat: method.isIdempotent))
+                                   safeToRepeat: method.isIdempotent,
+                                   withholdsContents: withholdsContents),
+                       privileges: privileges)
     }
 }

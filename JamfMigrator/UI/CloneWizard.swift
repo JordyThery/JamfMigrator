@@ -120,6 +120,12 @@ private struct ConnectStep: View {
                             Label("Missing permission for: \(PreflightReport.displayNames(preflight.missingPermissionTypes)). These types will fail; grant the permission and test again, or leave them out.",
                                   systemImage: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.orange)
+                            ForEach(preflight.grants, id: \.tenant) { grant in
+                                Text("\(grant.tenant): \(grant.text)")
+                                    .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
+                                    .padding(.leading, 24)
+                            }
                         }
                         if !preflight.notFoundTypes.isEmpty {
                             Label("Not found: \(PreflightReport.displayNames(preflight.notFoundTypes)). A tenant doesn't have these lists, so these types will fail; leave them out.",
