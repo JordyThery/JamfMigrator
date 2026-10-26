@@ -31,9 +31,10 @@ actor IconMigrator {
         if icon.sourceId.allSatisfy(\.isNumber) {
             imageData = try await source.send(.get, "pro/v1/icon/download/\(icon.sourceId)", accept: "*/*").data
         } else if let url = URL(string: icon.uri), icon.uri.hasPrefix("https://") {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-                throw GatewayError.from(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: data)
+            // recorded in the activity log with the source tenant's requests
+            let (data, response) = try await source.recorder.send(URLRequest(url: url), category: "Icons")
+            guard response.statusCode == 200 else {
+                throw GatewayError.from(status: response.statusCode, body: data)
             }
             imageData = data
         } else {

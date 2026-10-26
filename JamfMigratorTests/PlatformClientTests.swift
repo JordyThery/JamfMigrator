@@ -27,14 +27,11 @@ private struct Harness {
             apiRequests.withLock { $0.append(request) }
             return try handler(request)
         }
-        let provider = TokenProvider(
-            credentials: { TokenProvider.Credentials(tokenURL: Region.us.tokenURL, clientId: "id", clientSecret: "secret") },
-            session: session)
-        self.client = PlatformClient(region: .us,
-                                     environmentId: environmentId,
-                                     tokenProvider: provider,
-                                     session: session,
-                                     sleep: { duration in sleeps.withLock { $0.append(duration) } })
+        // the app's usual spacing between writes, so the throttle test sees it
+        self.client = PlatformClient.fake(environmentId: environmentId,
+                                          session: session,
+                                          writeSpacing: PlatformClient.defaultWriteSpacing,
+                                          sleep: { duration in sleeps.withLock { $0.append(duration) } })
         self.apiRequests = apiRequests
         self.tokenRequestCount = tokenRequestCount
         self.sleeps = sleeps
@@ -125,6 +122,29 @@ struct PlatformClientTests {
             _ = try await postHarness.client.send(.post, "pro/v1/buildings", body: Data("{}".utf8))
         } throws: { ($0 as? GatewayError)?.status == 502 }
         #expect(postCalls.value == 1)
+
+        // PUT replaces a whole record, so it is safe to send again
+        let putCalls = Locked(0)
+        let putHarness = Harness { _ in
+            putCalls.withLock { $0 += 1 }
+            return putCalls.value < 2
+                ? MockHTTP.Reply(status: 503)
+                : MockHTTP.Reply(status: 200, data: Data("{}".utf8))
+        }
+        _ = try await putHarness.client.send(.put, "pro/v1/buildings/1", body: Data("{}".utf8))
+        #expect(putCalls.value == 2)
+    }
+
+    @Test func redirectsAreNeverFollowed() async throws {
+        let harness = Harness { request in
+            request.url?.path == "/elsewhere"
+                ? MockHTTP.Reply(status: 200, data: Data("{}".utf8))
+                : MockHTTP.Reply(status: 302, headers: ["Location": "https://internal.example/elsewhere"])
+        }
+        await #expect {
+            _ = try await harness.client.send(.get, "pro/v1/sites")
+        } throws: { ($0 as? GatewayError)?.status == 302 }
+        #expect(harness.apiRequests.value.count == 1)
     }
 
     @Test func writesAreThrottled() async throws {

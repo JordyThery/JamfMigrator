@@ -6,6 +6,7 @@
 //  results report.
 //
 
+import AppKit
 import SwiftUI
 
 struct RunView: View {
@@ -22,9 +23,22 @@ struct RunView: View {
                 if appState.isRunning {
                     Button("Stop", role: .destructive) { appState.cancel() }
                 } else {
+                    if let url = appState.reportFileURL {
+                        Button("Show Report in Finder") {
+                            NSWorkspace.shared.activateFileViewerSelecting([url])
+                        }
+                        .help("The report of this run is saved in Application Support › JamfMigrator › Run Reports.")
+                    }
                     Button("Close") { dismiss() }
                         .keyboardShortcut(.defaultAction)
                 }
+            }
+
+            if !appState.isRunning, let problem = appState.reportSaveError {
+                Label("The run report could not be saved: \(problem)", systemImage: "exclamationmark.triangle.fill")
+                    .symbolRenderingMode(.multicolor)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
 
             if appState.isRunning {

@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import JTKit
 
 /// One error entry from a gateway response body.
 struct APIErrorDetail: Equatable, Sendable {
@@ -39,7 +40,13 @@ enum GatewayError: Error, LocalizedError {
         }
     }
 
+    /// Every message goes through JTKit's redaction before it is shown or
+    /// logged: a server's answer to a failed sign-in can echo a secret.
     var errorDescription: String? {
+        Redaction.text(unredactedDescription)
+    }
+
+    private var unredactedDescription: String {
         switch self {
         case .invalidURL(let url):
             return "Invalid URL: \(url)"
@@ -64,6 +71,40 @@ enum GatewayError: Error, LocalizedError {
         case .pollTimeout(let what):
             return "Timed out waiting for \(what)"
         }
+    }
+
+    /// The app's error for a failure from JTKit's HTTP client, so the
+    /// engine's status checks (404 = already gone, 409 = exists) keep working.
+    init(_ error: HTTPError) {
+        switch error {
+        case .refused(let method, let path):
+            self = .invalidURL("Refused before sending: \(method) \(path)")
+        case .invalidURL(let message):
+            self = .invalidURL(message)
+        case .transport(_, _, let code, _):
+            self = .transport(URLError(code))
+        case .status(let response, _, _, true):
+            self = .tokenFailure(status: response.status, detail: Self.signInDetail(response))
+        case .status(let response, _, _, false):
+            self = .from(status: response.status, body: response.data)
+        case .decoding(let message):
+            self = .decoding(DecodingMessage(message: message))
+        }
+    }
+
+    /// The start of the server's answer to a refused sign-in, redacted, at
+    /// most 300 characters.
+    private static func signInDetail(_ response: HTTPResponse) -> String? {
+        guard let body = Redaction.body(response.data, contentType: response.header("Content-Type")) else { return nil }
+        let flat = body.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .joined(separator: " ")
+        return String(flat.prefix(300))
+    }
+
+    private struct DecodingMessage: LocalizedError {
+        let message: String
+        var errorDescription: String? { message }
     }
 
     /// Builds a `.response` error from a non-2xx body, decoding the three

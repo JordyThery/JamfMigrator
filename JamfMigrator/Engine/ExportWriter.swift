@@ -35,7 +35,8 @@ struct ExportWriter: Sendable {
             try payload.write(to: url, options: .atomic)
             return true
         } catch {
-            WriteToLog.shared.message("[ExportWriter] could not write \(ref.name): \(error.localizedDescription)")
+            AppActivity.record("Export: could not write \(ref.name): \(error.localizedDescription)",
+                               category: "Export", level: .warning)
             return false
         }
     }

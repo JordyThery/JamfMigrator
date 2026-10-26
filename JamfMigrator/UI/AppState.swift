@@ -77,6 +77,9 @@ final class AppState {
     var isRunning = false
     var runEvents: [ProgressEvent] = []
     var report: RunReport?
+    /// Where the last run's report was saved (Run Reports), or why it wasn't.
+    var reportFileURL: URL?
+    var reportSaveError: String?
     var lastError: String?
     /// Set by the Migration › Run menu command; ContentView turns it into the
     /// same confirmation dialog the toolbar button shows.
@@ -92,6 +95,8 @@ final class AppState {
         plan = nil
         preflight = nil
         report = nil
+        reportFileURL = nil
+        reportSaveError = nil
         verifyReport = nil
         backupResult = nil
         excludedObjectIds = [:]
@@ -147,6 +152,7 @@ final class AppState {
 
     /// Clears the selections and stored defaults of a removed tenant.
     func forgetTenant(_ id: Tenant.ID) {
+        tenantStore.forgetClient(for: id)
         let defaults = UserDefaults.standard
         if sourceTenantID == id {
             sourceTenantID = nil
@@ -298,7 +304,17 @@ final class AppState {
         isRunning = true
         runEvents = []
         report = nil
+        reportFileURL = nil
+        reportSaveError = nil
+        runWasStopped = false
         lastError = nil
+        let reportFile = RunReportFile(report: RunReport(),
+                                       mode: mode,
+                                       sourceName: mode == .copy ? sourceTenant?.name : nil,
+                                       destinationName: destTenant.name,
+                                       started: Date(),
+                                       finished: Date(),
+                                       wasStopped: false)
         let typeKeys = selectedTypeKeys
         let excluding = excludedObjectIds
         let secrets = serviceSecrets
@@ -321,19 +337,20 @@ final class AppState {
             activeMigration = engine
             runTask = Task { [weak self] in
                 let report = await engine.migrate(typeKeys: typeKeys, excluding: excluding)
-                await self?.finishRun(report: report, journal: journal)
+                await self?.finishRun(report: report, journal: journal, file: reportFile)
             }
         case .delete:
             let engine = DeleteEngine(client: dest, journal: journal, progress: progress)
             activeDelete = engine
             runTask = Task { [weak self] in
                 let report = await engine.delete(typeKeys: typeKeys, excluding: excluding)
-                await self?.finishRun(report: report, journal: journal)
+                await self?.finishRun(report: report, journal: journal, file: reportFile)
             }
         }
     }
 
     func cancel() {
+        if isRunning { runWasStopped = true }
         runTask?.cancel()
         let migration = activeMigration
         let delete = activeDelete
@@ -345,8 +362,12 @@ final class AppState {
         }
     }
 
-    private func finishRun(report: RunReport, journal: JournalStore) async {
+    /// Set by Stop, so the saved report says the run didn't finish.
+    private var runWasStopped = false
+
+    private func finishRun(report: RunReport, journal: JournalStore, file: RunReportFile) async {
         self.report = report
+        saveReport(report, file: file)
         self.isRunning = false
         self.activeMigration = nil
         self.activeDelete = nil
@@ -356,6 +377,25 @@ final class AppState {
             plan = nil
         }
         // on real failures the plan stays, so Resume run can retry
+    }
+
+    /// Saves the run's report to Run Reports. A failure is shown in the run
+    /// sheet and the activity log; the run itself is not affected.
+    private func saveReport(_ report: RunReport, file: RunReportFile) {
+        var file = file
+        file.report = report
+        file.finished = Date()
+        file.wasStopped = runWasStopped
+        do {
+            let url = try file.save()
+            reportFileURL = url
+            AppActivity.record("Run report saved: \(url.lastPathComponent)", category: "Run report",
+                               connection: file.destinationName)
+        } catch {
+            reportSaveError = error.localizedDescription
+            AppActivity.record("Could not save the run report: \(error.localizedDescription)",
+                               category: "Run report", connection: file.destinationName, level: .error)
+        }
     }
 
     // MARK: Mappings

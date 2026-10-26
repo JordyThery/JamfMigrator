@@ -14,15 +14,10 @@ import Testing
 @testable import JamfMigrator
 
 private func directClient(session: URLSession) -> PlatformClient {
-    PlatformClient(serverURL: URL(string: "https://msp.jamfcloud.com")!,
-                   tokenProvider: TokenProvider(
-                       credentials: { .init(tokenURL: URL(string: "https://msp.jamfcloud.com/api/oauth/token")!,
-                                            clientId: "id", clientSecret: "secret") },
-                       session: session),
-                   session: session,
-                   configuration: .init(writeInterval: .zero))
+    PlatformClient.fakeDirect(session: session)
 }
 
+@MainActor
 struct DirectConnectionTests {
 
     @Test func proAndClassicPathsMapOntoTheInstance() async throws {
@@ -70,13 +65,18 @@ struct DirectConnectionTests {
             }
             return MockHTTP.Reply(status: 200, data: Data("{}".utf8))
         }
-        let provider = TokenProvider(
-            credentials: { .init(tokenURL: URL(string: "https://msp.jamfcloud.com/api/v1/auth/token")!,
-                                 method: .userPassword(username: "admin", password: "hunter2")) },
-            session: session)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DirectUser-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let secrets = InMemorySecretStore()
+        let store = TenantStore(directory: directory, secrets: secrets, log: nil, session: session)
+        var tenant = Tenant(name: "MSP customer")
+        tenant.serverURL = "https://msp.jamfcloud.com"
+        tenant.username = "admin"
+        try store.connections.save(tenant)
+        _ = secrets.setSecret("hunter2", for: tenant.id.uuidString)
 
-        let token = try await provider.validToken()
-        #expect(token == "user-token")
+        _ = try await store.client(for: tenant).send(.get, "pro/v1/sites")
 
         let request = try #require(tokenRequests.value.first)
         #expect(request.httpMethod == "POST")
@@ -92,11 +92,7 @@ struct DirectConnectionTests {
             seen.value = request.value(forHTTPHeaderField: "X-Environment-Id")
             return MockHTTP.Reply(status: 200, data: Data("{}".utf8))
         }
-        let client = PlatformClient(region: .us, environmentId: "env-9",
-                                    tokenProvider: TokenProvider(
-                                        credentials: { .init(tokenURL: Region.us.tokenURL, clientId: "i", clientSecret: "s") },
-                                        session: session),
-                                    session: session)
+        let client = PlatformClient.fake(environmentId: "env-9", session: session)
         #expect(client.supportsPlatformEndpoints)
         _ = try await client.send(.get, "pro/v1/sites")
         #expect(seen.value == "env-9")
@@ -119,13 +115,13 @@ struct DirectConnectionTests {
             .appendingPathComponent("DirectTenant-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let store = await TenantStore(directory: directory, secrets: InMemorySecretStore())
+        let store = TenantStore(directory: directory, secrets: InMemorySecretStore(), log: nil)
         var tenant = Tenant(name: "MSP customer")
         tenant.serverURL = "https://msp.jamfcloud.com"
         tenant.clientId = "client-1"
-        try await store.connections.save(tenant)
+        try store.connections.save(tenant)
 
-        let client = await store.client(for: tenant)
+        let client = store.client(for: tenant)
         #expect(!client.supportsPlatformEndpoints)
         #expect(client.baseURL.absoluteString == "https://msp.jamfcloud.com")
         #expect(client.environmentId.isEmpty)

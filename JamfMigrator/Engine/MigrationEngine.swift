@@ -66,7 +66,8 @@ actor MigrationEngine {
                 try await migrateType(type, included: typeKeys,
                                       excluded: excluding[type.key] ?? [], report: &report)
             } catch {
-                WriteToLog.shared.message("[MigrationEngine] \(type.key) failed: \(error.localizedDescription)")
+                AppActivity.record("\(type.displayName) failed: \(error.localizedDescription)",
+                                   category: "Migration", level: .error)
                 report.add(type: type, ref: ObjectRef(id: "-", name: "(all objects)"),
                            status: .failed(reason: error.localizedDescription))
             }

@@ -14,6 +14,11 @@ import Observation
 /// they have always been: tenants.json in Application Support, and each
 /// tenant's client secret or password in the Keychain under service
 /// "JamfMigrator-tenant", account = the tenant's id.
+///
+/// It also keeps one JTKit client per tenant, so Source and Destination each
+/// have their own sign-in and token, reused by Preview, Run, Backup, Verify
+/// and the mappings. A tenant's client is rebuilt after the tenant is edited
+/// and dropped when it is deleted.
 @MainActor
 @Observable
 final class TenantStore {
@@ -24,21 +29,30 @@ final class TenantStore {
         KeychainSecretStore(service: "JamfMigrator-tenant",
                             accessibility: .afterFirstUnlock,
                             movesItemsFromDataProtectionKeychain: true,
-                            log: { WriteToLog.shared.message($0) })
+                            log: { AppActivity.record($0, category: "Keychain", level: .warning) })
     }
 
     let connections: ConnectionStore<Tenant>
     /// The same items `connections` uses, read directly at token time, off
     /// the main actor.
     @ObservationIgnored private let secrets: any SecretStore
+    /// Where requests are recorded; nil records nothing.
+    @ObservationIgnored private let log: ActivityLog?
+    @ObservationIgnored private let session: URLSession
+    /// Each tenant's client, with the tenant as it was when the client was made.
+    @ObservationIgnored private var clients: [Tenant.ID: (tenant: Tenant, client: PlatformClient)] = [:]
 
     init(directory: URL = URL(fileURLWithPath: AppInfo.appSupportPath, isDirectory: true),
-         secrets: any SecretStore = TenantStore.keychain()) {
+         secrets: any SecretStore = TenantStore.keychain(),
+         log: ActivityLog? = AppActivity.log,
+         session: URLSession = URLSession(configuration: .ephemeral)) {
         self.secrets = secrets
+        self.log = log
+        self.session = session
         connections = ConnectionStore(
             storage: JSONFileConnectionStorage<Tenant>(fileURL: directory.appendingPathComponent("tenants.json")),
             secrets: [.main: SecretLocation(store: secrets)],
-            log: { WriteToLog.shared.message("[TenantStore] \($0)") })
+            log: { AppActivity.record($0, category: "Tenants", level: .warning) })
     }
 
     var tenants: [Tenant] { connections.records }
@@ -49,14 +63,37 @@ final class TenantStore {
 
     // MARK: Clients
 
-    /// A client for the tenant. The secret (or password) is read from the
-    /// Keychain at token time, so it can be corrected without rebuilding the
-    /// client. `secretOverride` uses a secret typed in Settings instead, to
-    /// test values that aren't saved yet.
-    func client(for tenant: Tenant, secretOverride: String? = nil) -> PlatformClient {
+    /// The tenant's client, kept for as long as the tenant stays as it is.
+    /// The secret (or password) is read from the Keychain at sign-in, so a
+    /// corrected secret is used at the next sign-in.
+    func client(for tenant: Tenant) -> PlatformClient {
+        if let kept = clients[tenant.id], kept.tenant == tenant {
+            return kept.client
+        }
+        let client = makeClient(for: tenant, secretOverride: nil)
+        clients[tenant.id] = (tenant, client)
+        return client
+    }
+
+    /// A one-off client for Test Connection in Settings, with the values in
+    /// the editor and, if typed, a secret that isn't saved yet.
+    func testClient(for tenant: Tenant, secretOverride: String?) -> PlatformClient {
+        makeClient(for: tenant, secretOverride: secretOverride.flatMap { $0.isEmpty ? nil : $0 })
+    }
+
+    /// Drops a deleted tenant's client and its token.
+    func forgetClient(for id: Tenant.ID) {
+        clients[id] = nil
+    }
+
+    private func makeClient(for tenant: Tenant, secretOverride: String?) -> PlatformClient {
         let secrets = secrets
         let account = tenant.id.uuidString
-        let clientId = tenant.clientId
+        let connection = tenant.connection
+        let recorder = RequestRecorder(session: session,
+                                       log: log,
+                                       service: connection.service.displayName,
+                                       connection: tenant.name)
 
         @Sendable func storedSecret() throws -> String {
             guard let secret = secretOverride ?? secrets.secret(for: account), !secret.isEmpty else {
@@ -67,33 +104,28 @@ final class TenantStore {
             return secret
         }
 
-        if !tenant.usesGateway {
-            // tenant.usesGateway alone decides the connection kind; a server
-            // URL that fails to parse surfaces as an error at token time
-            // rather than silently falling back to the gateway
-            let serverURLString = tenant.serverURL ?? ""
-            let serverURL = URL(string: serverURLString)
-            let username = (tenant.username ?? "").trimmingCharacters(in: .whitespaces)
-            let provider = TokenProvider(credentials: {
-                guard let serverURL else {
-                    throw GatewayError.invalidURL(serverURLString)
-                }
-                let tokenURL = serverURL.appendingPathComponent(username.isEmpty ? "api/oauth/token" : "api/v1/auth/token")
-                let method: TokenProvider.Credentials.Method = username.isEmpty
-                    ? .oauthClient(clientId: clientId, clientSecret: try storedSecret())
-                    : .userPassword(username: username, password: try storedSecret())
-                return TokenProvider.Credentials(tokenURL: tokenURL, method: method)
-            })
-            return PlatformClient(serverURL: serverURL ?? URL(fileURLWithPath: "/dev/null"),
-                                  tokenProvider: provider)
+        let tokens: any BearerTokenSource
+        do {
+            tokens = try JamfTokenProvider(connection: connection, secret: storedSecret, recorder: recorder)
+        } catch {
+            // an unusable server URL surfaces at the first request rather
+            // than silently falling back to the gateway
+            tokens = UnusableTokens(error: (error as? HTTPError).map(GatewayError.init) ?? .transport(error))
         }
-
-        let tokenURL = tenant.region.tokenURL
-        let provider = TokenProvider(credentials: {
-            TokenProvider.Credentials(tokenURL: tokenURL, clientId: clientId, clientSecret: try storedSecret())
-        })
-        return PlatformClient(region: tenant.region,
-                              environmentId: tenant.environmentId,
-                              tokenProvider: provider)
+        if tenant.usesGateway {
+            return PlatformClient(region: tenant.region, environmentId: tenant.environmentId,
+                                  tokens: tokens, recorder: recorder)
+        }
+        return PlatformClient(serverURL: connection.jamfBaseURL ?? URL(fileURLWithPath: "/dev/null"),
+                              tokens: tokens, recorder: recorder)
     }
+}
+
+/// The tokens of a tenant whose address can't be used: every request fails
+/// with the reason.
+private struct UnusableTokens: BearerTokenSource {
+    let error: GatewayError
+
+    func token() async throws -> String { throw error }
+    func forgetToken() async {}
 }

@@ -7,6 +7,8 @@
 //
 
 import Foundation
+import JTKit
+@testable import JamfMigrator
 
 /// A tiny lock box so test state can cross @Sendable boundaries.
 final class Locked<Value>: @unchecked Sendable {
@@ -98,5 +100,31 @@ extension URLRequest {
             data.append(buffer, count: read)
         }
         return data
+    }
+}
+
+extension PlatformClient {
+    /// A gateway client on a fake session. It signs in at /auth/token with
+    /// a fixed secret, records nothing unless given a log, and records waits
+    /// instead of sleeping them; retries add no randomness.
+    static func fake(environmentId: String = "env-1",
+                     session: URLSession,
+                     writeSpacing: Duration = .zero,
+                     sleep: @escaping @Sendable (Duration) async throws -> Void = { _ in }) -> PlatformClient {
+        let recorder = RequestRecorder(session: session, log: nil)
+        let tokens = JamfTokenProvider(tokenURL: Region.us.tokenURL, method: .apiClient(clientID: "id"),
+                                       secret: { "secret" }, recorder: recorder)
+        return PlatformClient(region: .us, environmentId: environmentId, tokens: tokens, recorder: recorder,
+                              writeSpacing: writeSpacing, sleep: sleep, random: { 0 })
+    }
+
+    /// A direct Jamf Pro client on a fake session, signing in at /api/oauth/token.
+    static func fakeDirect(serverURL: URL = URL(string: "https://msp.jamfcloud.com")!,
+                           session: URLSession) -> PlatformClient {
+        let recorder = RequestRecorder(session: session, log: nil)
+        let tokens = JamfTokenProvider(tokenURL: serverURL.appending(path: "api/oauth/token"),
+                                       method: .apiClient(clientID: "id"), secret: { "secret" }, recorder: recorder)
+        return PlatformClient(serverURL: serverURL, tokens: tokens, recorder: recorder,
+                              writeSpacing: .zero, sleep: { _ in }, random: { 0 })
     }
 }
