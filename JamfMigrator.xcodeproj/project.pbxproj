@@ -12,7 +12,6 @@
 		0898866F3080ACB100ACA5EB /* PlanSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0898866E3080ACB100ACA5EB /* PlanSummaryView.swift */; };
 		08ABF3503071BA8300606B36 /* Region.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF34F3071BA8300606B36 /* Region.swift */; };
 		08ABF3523071BA9400606B36 /* GatewayError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3513071BA9400606B36 /* GatewayError.swift */; };
-		08ABF3543071BAA400606B36 /* TokenProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3533071BAA400606B36 /* TokenProvider.swift */; };
 		08ABF3563071BAC100606B36 /* PlatformClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3553071BAC100606B36 /* PlatformClient.swift */; };
 		08ABF3583071BAC800606B36 /* Poll.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3573071BAC800606B36 /* Poll.swift */; };
 		08ABF35A3071BAD600606B36 /* PermissionProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3593071BAD600606B36 /* PermissionProbe.swift */; };
@@ -70,7 +69,6 @@
 		08ABF3433071B13E00606B36 /* JamfMigratorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JamfMigratorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		08ABF34F3071BA8300606B36 /* Region.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Region.swift; sourceTree = "<group>"; };
 		08ABF3513071BA9400606B36 /* GatewayError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayError.swift; sourceTree = "<group>"; };
-		08ABF3533071BAA400606B36 /* TokenProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TokenProvider.swift; sourceTree = "<group>"; };
 		08ABF3553071BAC100606B36 /* PlatformClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformClient.swift; sourceTree = "<group>"; };
 		08ABF3573071BAC800606B36 /* Poll.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Poll.swift; sourceTree = "<group>"; };
 		08ABF3593071BAD600606B36 /* PermissionProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionProbe.swift; sourceTree = "<group>"; };
@@ -144,7 +142,6 @@
 			children = (
 				08ABF34F3071BA8300606B36 /* Region.swift */,
 				08ABF3513071BA9400606B36 /* GatewayError.swift */,
-				08ABF3533071BAA400606B36 /* TokenProvider.swift */,
 				08ABF3553071BAC100606B36 /* PlatformClient.swift */,
 				08ABF3573071BAC800606B36 /* Poll.swift */,
 				08ABF3593071BAD600606B36 /* PermissionProbe.swift */,
@@ -465,7 +462,6 @@
 				08ABF3523071BA9400606B36 /* GatewayError.swift in Sources */,
 				08ABF3C23071C39800606B36 /* PayloadDiff.swift in Sources */,
 				08ABF3CD3071C5A400606B36 /* AppState.swift in Sources */,
-				08ABF3543071BAA400606B36 /* TokenProvider.swift in Sources */,
 				08ABF3C43071C3CE00606B36 /* MigrationPlanner.swift in Sources */,
 				08ABF3E13072205D00606B36 /* Verifier.swift in Sources */,
 				08ABF3D53071C5EC00606B36 /* ObjectListView.swift in Sources */,
@@ -773,7 +769,7 @@
 			repositoryURL = "https://github.com/JordyThery/JTKit.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 0.5.2;
+				minimumVersion = 0.6.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

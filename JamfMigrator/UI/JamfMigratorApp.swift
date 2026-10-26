@@ -2,8 +2,8 @@
 //  JamfMigratorApp.swift
 //  JamfMigrator
 //
-//  The SwiftUI app entry: the main window, the About and Settings windows,
-//  and the menu commands.
+//  The SwiftUI app entry: the main window, the activity log, the About and
+//  Settings windows, and the menu commands.
 //
 
 import JTKit
@@ -15,7 +15,10 @@ struct JamfMigratorApp: App {
     @State private var appState = AppState()
     @State private var updates = UpdateChecker(
         configuration: UpdateConfiguration(owner: "JordyThery", repository: "JamfMigrator", appName: "Jamf Migrator"),
-        activity: { WriteToLog.shared.message("[UpdateChecker] \($0)") }
+        activity: { line in
+            AppActivity.record(line, category: "Updates",
+                               level: line.hasPrefix("Update check failed") ? .warning : .info)
+        }
     )
 
     var body: some Scene {
@@ -60,6 +63,13 @@ struct JamfMigratorApp: App {
                     .disabled(!appState.canRun)
             }
         }
+
+        // JTKit's shared activity log (Window › Activity Log, ⇧⌘L). It replaces
+        // jamfmigrator.log, which stays on disk and is no longer written.
+        ActivityLogWindow(
+            log: AppActivity.log,
+            emptyDescription: "Sign-ins, API calls, retries, update checks and run problems appear here as they happen."
+        )
 
         AboutWindow(configuration: .jamfMigrator)
 

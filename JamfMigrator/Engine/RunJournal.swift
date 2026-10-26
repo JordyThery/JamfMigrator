@@ -118,7 +118,8 @@ actor JournalStore {
                                                     withIntermediateDirectories: true)
             try encoder.encode(journal).write(to: fileURL, options: .atomic)
         } catch {
-            WriteToLog.shared.message("[JournalStore] could not save \(fileURL.path): \(error.localizedDescription)")
+            AppActivity.record("Could not save the run journal \(fileURL.lastPathComponent): \(error.localizedDescription)",
+                               category: "Journal", level: .warning)
         }
     }
 }

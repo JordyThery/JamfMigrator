@@ -2,10 +2,11 @@
 //  Support.swift
 //  JamfMigrator
 //
-//  App metadata, filesystem paths, and the file logger.
+//  App metadata, filesystem paths, and the app's lines in the activity log.
 //
 
 import Foundation
+import JTKit
 
 enum AppInfo {
     static let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
@@ -17,40 +18,35 @@ enum AppInfo {
         try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
         return path
     }()
-
-    /// Library/Logs/JamfMigrator (inside the sandbox container).
-    static let logPath: String = {
-        let path = NSHomeDirectory() + "/Library/Logs/JamfMigrator"
-        try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
-        return path
-    }()
 }
 
-/// Appends timestamped lines to the app's log file.
-final class WriteToLog: @unchecked Sendable {
+/// The app's activity log (Window › Activity Log, ⇧⌘L): every sign-in and
+/// request, written by JTKit, plus the app's own lines. In memory only.
+/// Earlier versions wrote these lines to Library/Logs/JamfMigrator/jamfmigrator.log;
+/// that file stays on disk and is no longer written.
+enum AppActivity {
+    enum Level: Sendable {
+        case info, warning, error
+    }
 
-    static let shared = WriteToLog()
+    @MainActor static let log = ActivityLog()
 
-    private let queue = DispatchQueue(label: "be.jordythery.jamfmigrator.log")
-    private let logURL = URL(fileURLWithPath: AppInfo.logPath + "/jamfmigrator.log")
-    private lazy var timestampFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        return formatter
-    }()
-
-    func message(_ message: String) {
-        queue.async { [self] in
-            let line = "\(timestampFormatter.string(from: Date())) \(message)\n"
-            guard let data = line.data(using: .utf8) else { return }
-            if let handle = try? FileHandle(forWritingTo: logURL) {
-                defer { try? handle.close() }
-                _ = try? handle.seekToEnd()
-                try? handle.write(contentsOf: data)
-            } else {
-                try? data.write(to: logURL, options: .atomic)
-            }
-        }
+    /// Adds one of the app's own lines, redacted, from any thread.
+    /// - Parameters:
+    ///   - category: the entry's source, e.g. "Migration".
+    ///   - connection: the tenant it concerns, if any.
+    nonisolated static func record(_ message: String,
+                                   category: String = "App",
+                                   connection: String? = nil,
+                                   level: Level = .info) {
+        let safe = Redaction.text(message)
+        let entry = ActivityLogEntry(category: category,
+                                     operation: "",
+                                     detail: safe,
+                                     failedWithoutStatus: level == .error,
+                                     isWarning: level == .warning,
+                                     connection: connection,
+                                     identifiers: IdentifierMasker.identifiers(inText: safe))
+        Task { @MainActor in log.append(entry) }
     }
 }

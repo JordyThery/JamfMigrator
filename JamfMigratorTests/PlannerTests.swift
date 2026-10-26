@@ -266,12 +266,7 @@ struct PreflightTests {
             }
             return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 0, "results": []]))
         }
-        let direct = PlatformClient(serverURL: URL(string: "https://msp.jamfcloud.com")!,
-                                    tokenProvider: TokenProvider(
-                                        credentials: { .init(tokenURL: URL(string: "https://msp.jamfcloud.com/api/oauth/token")!,
-                                                             clientId: "i", clientSecret: "s") },
-                                        session: session),
-                                    session: session)
+        let direct = PlatformClient.fakeDirect(session: session)
 
         let report = await Preflight.run(source: direct, dest: direct,
                                          typeKeys: ["categories", "blueprints", "compliancebenchmarks"])

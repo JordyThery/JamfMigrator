@@ -37,12 +37,7 @@ struct FakeGateway {
             return MockHTTP.Reply(status: 404)
         }
         let makeClient = { (env: String) in
-            PlatformClient(region: .us, environmentId: env,
-                           tokenProvider: TokenProvider(
-                               credentials: { TokenProvider.Credentials(tokenURL: Region.us.tokenURL, clientId: "id", clientSecret: "s") },
-                               session: session),
-                           session: session,
-                           configuration: .init(writeInterval: .zero))
+            PlatformClient.fake(environmentId: env, session: session)
         }
         self.source = makeClient("src")
         self.dest = makeClient("dst")

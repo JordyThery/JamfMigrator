@@ -355,12 +355,7 @@ struct Phase6PlannerTests {
             if request.url?.path.contains("token") == true { return MockHTTP.tokenJSON() }
             return MockHTTP.Reply(status: 200, data: Data("{}".utf8))
         }
-        let direct = PlatformClient(serverURL: URL(string: "https://msp.jamfcloud.com")!,
-                                    tokenProvider: TokenProvider(
-                                        credentials: { .init(tokenURL: URL(string: "https://msp.jamfcloud.com/api/oauth/token")!,
-                                                             clientId: "i", clientSecret: "s") },
-                                        session: session),
-                                    session: session)
+        let direct = PlatformClient.fakeDirect(session: session)
         let gateway = FakeGateway { _, _, _, _ in nil }
 
         let planner = MigrationPlanner(source: gateway.source, dest: direct)

@@ -46,10 +46,7 @@ struct PermissionProbeTests {
                 return MockHTTP.Reply(status: 404)
             }
         }
-        let provider = TokenProvider(
-            credentials: { TokenProvider.Credentials(tokenURL: Region.us.tokenURL, clientId: "id", clientSecret: "secret") },
-            session: session)
-        let client = PlatformClient(region: .us, environmentId: "env-1", tokenProvider: provider, session: session)
+        let client = PlatformClient.fake(session: session)
 
         let probe = PermissionProbe(client: client)
         let results = await probe.check(paths: ["pro/v1/sites", "pro/v1/engage", "pro/v1/missing"])

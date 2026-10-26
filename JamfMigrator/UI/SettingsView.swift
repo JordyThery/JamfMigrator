@@ -37,7 +37,7 @@ struct ConnectionsSettings: View {
             },
             didDelete: { tenant in appState.forgetTenant(tenant.id) },
             test: { tenant, secrets in
-                let client = appState.tenantStore.client(for: tenant, secretOverride: secrets[.main])
+                let client = appState.tenantStore.testClient(for: tenant, secretOverride: secrets[.main])
                 let check = await Preflight.check(client)
                 guard check.reachable else {
                     throw TenantTestError(message: check.error ?? "No response.")

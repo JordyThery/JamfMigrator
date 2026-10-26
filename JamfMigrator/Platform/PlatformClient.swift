@@ -2,10 +2,11 @@
 //  PlatformClient.swift
 //  JamfMigrator
 //
-//  Sends every request to the platform API gateway for one tenant.
+//  Sends every request for one tenant, through JTKit's HTTP client.
 //
 
 import Foundation
+import JTKit
 
 enum HTTPMethod: String, Sendable {
     case get    = "GET"
@@ -16,29 +17,23 @@ enum HTTPMethod: String, Sendable {
 
     var isWrite: Bool { self != .get }
 
-    /// Only idempotent methods are retried after a 5xx.
+    /// PUT replaces a whole record and DELETE removes one, so sending either
+    /// twice does no harm: JTKit retries them after a server error, as it
+    /// does reads.
     var isIdempotent: Bool { self == .get || self == .put || self == .delete }
 }
 
-/// One tenant's connection to the platform API gateway.
+/// JamfMigrator's side of JTKit's HTTP client for one tenant: the platform
+/// API gateway or a direct Jamf Pro server.
 ///
-/// Every request gets the bearer token, the `X-Environment-Id` header and the
-/// correct Accept/Content-Type (XML for `/proclassic`, JSON otherwise), plus
-/// `Accept-Encoding: identity` on writes. Redirects are never followed (the
-/// gateway's `href` values point at internal hosts). A 401 refreshes the token
-/// once; 429 honors `Retry-After`; 5xx retries only idempotent methods.
-/// Writes are throttled to one per `writeInterval`.
-actor PlatformClient {
-
-    struct Configuration: Sendable {
-        /// Total attempts for a request, including the first one.
-        var maxAttempts = 4
-        /// Base delay for retries without a Retry-After header; grows linearly per attempt.
-        var retryBaseDelay: Duration = .seconds(1)
-        /// Minimum spacing between write requests.
-        var writeInterval: Duration = .milliseconds(200)
-        var userAgent = AppInfo.userAgentHeader
-    }
+/// JTKit adds the bearer token, retries (429 for every method; server errors
+/// and network drops for reads, PUT and DELETE; one new sign-in after a 401)
+/// and writes every request to the activity log. On top of that every
+/// request gets the `X-Environment-Id` header (gateway only), XML for
+/// `/proclassic` and JSON otherwise, and `Accept-Encoding: identity` on
+/// writes. Redirects are never followed (the gateway's `href` values point at
+/// internal hosts). Writes start at least `writeSpacing` apart.
+struct PlatformClient: Sendable {
 
     struct Response: Sendable {
         let status: Int
@@ -62,47 +57,65 @@ actor PlatformClient {
         case direct
     }
 
-    nonisolated let baseURL: URL
-    nonisolated let environmentId: String
-    nonisolated let connection: Connection
-    /// Blueprints and Compliance Benchmarks exist only behind the gateway.
-    nonisolated var supportsPlatformEndpoints: Bool { connection == .gateway }
-    private let tokenProvider: TokenProvider
-    private let session: URLSession
-    private let configuration: Configuration
-    /// Injectable so the retry and throttle tests don't actually wait.
-    private let sleep: @Sendable (Duration) async throws -> Void
-    private var lastWrite: ContinuousClock.Instant?
-    private let redirectBlocker = RedirectBlocker()
+    /// The spacing between writes the app has always used.
+    static let defaultWriteSpacing: Duration = .milliseconds(200)
 
+    let http: HTTPClient
+    let environmentId: String
+    let connection: Connection
+    var baseURL: URL { http.baseURL }
+    /// The recorder under the client, for the few requests that don't go to
+    /// the tenant's API (Self Service icons on Jamf's icon server).
+    var recorder: RequestRecorder { http.recorder }
+    /// Blueprints and Compliance Benchmarks exist only behind the gateway.
+    var supportsPlatformEndpoints: Bool { connection == .gateway }
+
+    /// A tenant behind the platform API gateway of `region`.
     init(region: Region,
          environmentId: String,
-         tokenProvider: TokenProvider,
-         session: URLSession = URLSession(configuration: .ephemeral),
-         configuration: Configuration = Configuration(),
-         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
-        self.baseURL = region.gatewayURL
-        self.environmentId = environmentId
-        self.connection = .gateway
-        self.tokenProvider = tokenProvider
-        self.session = session
-        self.configuration = configuration
-        self.sleep = sleep
+         tokens: any BearerTokenSource,
+         recorder: RequestRecorder,
+         writeSpacing: Duration = PlatformClient.defaultWriteSpacing,
+         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+         random: @escaping @Sendable () -> Double = { Double.random(in: 0...1) }) {
+        self.init(baseURL: region.gatewayURL, environmentId: environmentId, connection: .gateway,
+                  tokens: tokens, recorder: recorder, writeSpacing: writeSpacing, sleep: sleep, random: random)
     }
 
     /// A direct Jamf Pro connection, for tenants without Platform API access.
     init(serverURL: URL,
-         tokenProvider: TokenProvider,
-         session: URLSession = URLSession(configuration: .ephemeral),
-         configuration: Configuration = Configuration(),
-         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
-        self.baseURL = serverURL
-        self.environmentId = ""
-        self.connection = .direct
-        self.tokenProvider = tokenProvider
-        self.session = session
-        self.configuration = configuration
-        self.sleep = sleep
+         tokens: any BearerTokenSource,
+         recorder: RequestRecorder,
+         writeSpacing: Duration = PlatformClient.defaultWriteSpacing,
+         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+         random: @escaping @Sendable () -> Double = { Double.random(in: 0...1) }) {
+        self.init(baseURL: serverURL, environmentId: "", connection: .direct,
+                  tokens: tokens, recorder: recorder, writeSpacing: writeSpacing, sleep: sleep, random: random)
+    }
+
+    private init(baseURL: URL,
+                 environmentId: String,
+                 connection: Connection,
+                 tokens: any BearerTokenSource,
+                 recorder: RequestRecorder,
+                 writeSpacing: Duration,
+                 sleep: @escaping @Sendable (Duration) async throws -> Void,
+                 random: @escaping @Sendable () -> Double) {
+        var headers = ["User-Agent": AppInfo.userAgentHeader]
+        if !environmentId.isEmpty {
+            headers["X-Environment-Id"] = environmentId
+        }
+        self.http = HTTPClient(baseURL: baseURL,
+                               tokens: tokens,
+                               recorder: recorder,
+                               headers: headers,
+                               pathMapping: connection == .direct ? .jamfProDirect : .none,
+                               redirects: .refuse,
+                               writeSpacing: writeSpacing,
+                               sleep: sleep,
+                               random: random)
+        self.environmentId = environmentId
+        self.connection = connection
     }
 
     // MARK: Requests
@@ -113,141 +126,24 @@ actor PlatformClient {
               body: Data? = nil,
               contentType: String? = nil,
               accept: String? = nil) async throws -> Response {
-        let request = try makeRequest(method, path, query: query, body: body,
-                                      contentType: contentType, accept: accept)
-        var attempt = 0
-        var didRetryAuth = false
-        while true {
-            attempt += 1
-            if method.isWrite {
-                try await throttleWrite()
-            }
-            var attemptRequest = request
-            attemptRequest.setValue("Bearer \(try await tokenProvider.validToken())",
-                                    forHTTPHeaderField: "Authorization")
-
-            let data: Data
-            let urlResponse: URLResponse
-            do {
-                (data, urlResponse) = try await session.data(for: attemptRequest, delegate: redirectBlocker)
-            } catch {
-                if error is CancellationError || (error as? URLError)?.code == .cancelled {
-                    throw CancellationError()
-                }
-                throw GatewayError.transport(error)
-            }
-            guard let http = urlResponse as? HTTPURLResponse else {
-                throw GatewayError.transport(URLError(.badServerResponse))
-            }
-
-            switch http.statusCode {
-            case 200...299:
-                return Response(status: http.statusCode, data: data)
-            case 401 where !didRetryAuth:
-                didRetryAuth = true
-                await tokenProvider.invalidate()
-            case 429 where attempt < configuration.maxAttempts:
-                try await sleep(retryDelay(for: http, attempt: attempt))
-            case 500... where method.isIdempotent && attempt < configuration.maxAttempts:
-                try await sleep(configuration.retryBaseDelay * attempt)
-            default:
-                throw GatewayError.from(status: http.statusCode, body: data)
-            }
+        let request = HTTPRequest(method: method.rawValue,
+                                  path: path,
+                                  query: query,
+                                  body: body,
+                                  accept: accept,
+                                  contentType: contentType,
+                                  headers: method.isWrite ? ["Accept-Encoding": "identity"] : [:],
+                                  safeToRepeat: method.isIdempotent)
+        do {
+            let response = try await http.send(request)
+            return Response(status: response.status, data: response.data)
+        } catch let error as HTTPError {
+            throw GatewayError(error)
         }
     }
 
     /// GET and decode a JSON response.
     func get<T: Decodable>(_ type: T.Type = T.self, _ path: String, query: [URLQueryItem] = []) async throws -> T {
         try await send(.get, path, query: query).decoded(type)
-    }
-
-    // MARK: Request construction
-
-    private func makeRequest(_ method: HTTPMethod,
-                             _ path: String,
-                             query: [URLQueryItem],
-                             body: Data?,
-                             contentType: String?,
-                             accept: String?) throws -> URLRequest {
-        let trimmedPath = path.hasPrefix("/") ? String(path.dropFirst()) : path
-        let mappedPath = try map(trimmedPath)
-        guard var components = URLComponents(url: baseURL.appendingPathComponent(mappedPath),
-                                             resolvingAgainstBaseURL: false) else {
-            throw GatewayError.invalidURL("\(baseURL)/\(mappedPath)")
-        }
-        if !query.isEmpty {
-            components.queryItems = query
-        }
-        guard let url = components.url else {
-            throw GatewayError.invalidURL("\(baseURL)/\(mappedPath)?\(query)")
-        }
-
-        // the Classic namespace speaks XML, everything else JSON
-        let isClassic = trimmedPath.hasPrefix("proclassic")
-        let defaultType = isClassic ? "application/xml" : "application/json"
-
-        var request = URLRequest(url: url)
-        request.httpMethod = method.rawValue
-        if !environmentId.isEmpty {
-            request.setValue(environmentId, forHTTPHeaderField: "X-Environment-Id")
-        }
-        request.setValue(accept ?? defaultType, forHTTPHeaderField: "Accept")
-        request.setValue(configuration.userAgent, forHTTPHeaderField: "User-Agent")
-        if let body {
-            request.httpBody = body
-            request.setValue(contentType ?? defaultType, forHTTPHeaderField: "Content-Type")
-        }
-        if method.isWrite {
-            request.setValue("identity", forHTTPHeaderField: "Accept-Encoding")
-        }
-        return request
-    }
-
-    /// Maps a canonical gateway-form path onto this connection.
-    private func map(_ path: String) throws -> String {
-        switch connection {
-        case .gateway:
-            return path
-        case .direct:
-            if path.hasPrefix("pro/") {
-                return "api/" + path.dropFirst("pro/".count)
-            }
-            if path.hasPrefix("proclassic/") {
-                return "JSSResource/" + path.dropFirst("proclassic/".count)
-            }
-            throw GatewayError.invalidURL("\(path) requires the Jamf Platform API gateway; this tenant connects directly to Jamf Pro")
-        }
-    }
-
-    // MARK: Retry and throttle
-
-    private func retryDelay(for response: HTTPURLResponse, attempt: Int) -> Duration {
-        if let header = response.value(forHTTPHeaderField: "Retry-After"),
-           let seconds = Double(header.trimmingCharacters(in: .whitespaces)), seconds >= 0 {
-            return .seconds(seconds)
-        }
-        return configuration.retryBaseDelay * attempt
-    }
-
-    private func throttleWrite() async throws {
-        // claim the next write slot before suspending, so concurrent writers
-        // queue behind each other instead of waking together
-        let now = ContinuousClock.now
-        let slot = max(lastWrite.map { $0 + configuration.writeInterval } ?? now, now)
-        lastWrite = slot
-        if slot > now {
-            try await sleep(slot - now)
-        }
-    }
-}
-
-/// Refuses every redirect: the gateway's Location/href values point at
-/// internal hosts that are not reachable (and would drop our headers).
-private final class RedirectBlocker: NSObject, URLSessionTaskDelegate {
-    func urlSession(_ session: URLSession,
-                    task: URLSessionTask,
-                    willPerformHTTPRedirection response: HTTPURLResponse,
-                    newRequest request: URLRequest) async -> URLRequest? {
-        nil
     }
 }
