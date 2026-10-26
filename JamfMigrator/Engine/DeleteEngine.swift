@@ -8,10 +8,11 @@
 //
 
 import Foundation
+import JTKit
 
 actor DeleteEngine {
 
-    private let client: PlatformClient
+    private let client: JamfPlatform.Client
     private let journal: JournalStore
     private let progress: (@Sendable (ProgressEvent) -> Void)?
     private var isCancelled = false
@@ -22,7 +23,7 @@ actor DeleteEngine {
         "smartmobiledevicegroups": ["All Managed iPads", "All Managed iPhones", "All Managed iPod touches"],
     ]
 
-    init(client: PlatformClient,
+    init(client: JamfPlatform.Client,
          journal: JournalStore,
          progress: (@Sendable (ProgressEvent) -> Void)? = nil) {
         self.client = client
@@ -114,7 +115,7 @@ actor DeleteEngine {
         do {
             _ = try await client.send(.delete, type.api.detailPath(id: ref.id))
             return .deleted
-        } catch let error as GatewayError {
+        } catch let error as JamfPlatformError {
             // a Classic DELETE sometimes reports a misleading 400 after doing
             // the work, and a Blueprint DELETE a misleading 500; a follow-up
             // GET decides
@@ -134,7 +135,7 @@ actor DeleteEngine {
             _ = try await client.send(.get, type.api.detailPath(id: ref.id),
                                       accept: type.api.isClassic ? "application/xml" : "application/json")
             return false
-        } catch let error as GatewayError {
+        } catch let error as JamfPlatformError {
             return error.status == 404
         } catch {
             return false

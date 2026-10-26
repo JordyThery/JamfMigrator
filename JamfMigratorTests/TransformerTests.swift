@@ -5,6 +5,7 @@
 
 import Foundation
 import Testing
+import JTKit
 @testable import JamfMigrator
 
 private func context(action: TransformAction = .create) -> TransformContext {
@@ -28,10 +29,13 @@ private func context(action: TransformAction = .create) -> TransformContext {
     return context
 }
 
+/// Thrown when a transform didn't produce a write.
+struct NotAWrite: Error {}
+
 private func xmlBody(_ outcome: TransformOutcome) throws -> String {
     guard case .write(let object) = outcome else {
         Issue.record("expected .write, got \(outcome)")
-        throw GatewayError.invalidURL("blocked")
+        throw NotAWrite()
     }
     return String(decoding: object.body, as: UTF8.self)
 }
@@ -39,7 +43,7 @@ private func xmlBody(_ outcome: TransformOutcome) throws -> String {
 private func jsonBody(_ outcome: TransformOutcome) throws -> [String: Any] {
     guard case .write(let object) = outcome else {
         Issue.record("expected .write, got \(outcome)")
-        throw GatewayError.invalidURL("blocked")
+        throw NotAWrite()
     }
     return try JSONSerialization.jsonObject(with: object.body) as! [String: Any]
 }

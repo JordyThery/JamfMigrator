@@ -45,8 +45,12 @@ struct SignInTests {
             self.signIns = signIns
         }
 
+        /// Each test client's Environment ID.
+        static let environments = ["prod": "a0000000-0000-4000-8000-00000000000a",
+                                   "test": "b0000000-0000-4000-8000-00000000000b"]
+
         func add(_ name: String, clientId: String, secret: String = "s3cr3t-value") throws -> Tenant {
-            let tenant = Tenant(name: name, environmentId: "env-\(clientId)", clientId: clientId)
+            let tenant = Tenant(name: name, environmentId: Harness.environments[clientId] ?? TestEnvironment.id, clientId: clientId)
             try store.connections.save(tenant)
             _ = secrets.setSecret(secret, for: tenant.id.uuidString)
             return tenant
@@ -77,8 +81,8 @@ struct SignInTests {
         _ = try await sourceClient.send(.get, "pro/v1/sites")
 
         #expect(harness.signIns.value == ["prod", "test"])
-        #expect(sourceClient.environmentId == "env-prod")
-        #expect(destinationClient.environmentId == "env-test")
+        #expect(sourceClient.scope == .environment(Harness.environments["prod"]!))
+        #expect(destinationClient.scope == .environment(Harness.environments["test"]!))
     }
 
     @Test func anEditedTenantGetsANewClient() async throws {
@@ -145,10 +149,10 @@ struct SignInTests {
         await #expect {
             _ = try await harness.store.client(for: tenant).send(.get, "pro/v1/sites")
         } throws: { error in
-            guard case .tokenFailure(let status, _) = error as? GatewayError,
-                  let message = (error as? GatewayError)?.errorDescription else { return false }
+            guard let error = error as? JamfPlatformError, case .signIn(let status, _, _) = error.kind else { return false }
+            let message = error.message()
             return status == 401
-                && message.hasPrefix("Authentication failed (401)")
+                && message.hasPrefix("Sign-in failed: HTTP 401")
                 && message.contains("invalid_client")
                 && !message.contains("s3cr3t-value")
                 && !message.contains("abc.def.ghi")
@@ -156,8 +160,8 @@ struct SignInTests {
     }
 
     @Test func everyErrorMessageIsRedacted() {
-        let error = GatewayError.response(status: 400, errors: [], traceId: nil,
-                                          body: Data(#"<password>hunter2</password> token=abc123"#.utf8))
+        let answer = HTTPResponse(status: 400, data: Data(#"<password>hunter2</password> token=abc123"#.utf8))
+        let error = JamfPlatformError(HTTPError.status(answer, method: "GET", path: "/pro/v1/sites", duringSignIn: false))
         let message = error.errorDescription ?? ""
         #expect(message.hasPrefix("HTTP 400"))
         #expect(!message.contains("hunter2"))
@@ -172,7 +176,7 @@ struct SignInTests {
         await #expect {
             _ = try await harness.store.client(for: tenant).send(.get, "pro/v1/sites")
         } throws: { error in
-            (error as? GatewayError)?.errorDescription?.contains("Settings › Connections") == true
+            error is MissingSecret && error.localizedDescription.contains("Settings › Connections")
         }
         #expect(harness.signIns.value.isEmpty)
     }

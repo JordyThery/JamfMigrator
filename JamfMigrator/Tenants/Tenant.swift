@@ -12,11 +12,12 @@ import JTKit
 /// it lives in the Keychain, keyed by `id` (see `TenantStore`).
 ///
 /// The Codable keys are the property names and must stay as they are: they
-/// are what tenants.json has always contained.
+/// are what tenants.json has always contained. `region` is saved as "us",
+/// "eu" or "apac", the raw values of JTKit's `JamfRegion`.
 struct Tenant: Identifiable, Codable, Hashable, Sendable {
     var id = UUID()
     var name: String
-    var region: Region = .us
+    var region: JamfRegion = .us
     /// The environment UUID sent as X-Environment-Id.
     var environmentId: String = ""
     /// The API integration's client ID.
@@ -55,7 +56,7 @@ extension Tenant: ConnectionRecord {
                        service: usesGateway ? .jamfPlatform : .jamfPro,
                        signIn: !usesGateway && !(username ?? "").isEmpty ? .usernamePassword : .apiClient,
                        serverURL: serverURL ?? "",
-                       region: JamfRegion(rawValue: region.rawValue) ?? .us,
+                       region: region,
                        environmentID: environmentId,
                        clientID: clientId,
                        username: username ?? "")
@@ -64,7 +65,7 @@ extension Tenant: ConnectionRecord {
             // Only fields that changed are written, so setting back what was
             // read leaves the tenant exactly as it was.
             if name != newValue.name { name = newValue.name }
-            if let newRegion = Region(rawValue: newValue.region.rawValue), newRegion != region { region = newRegion }
+            if region != newValue.region { region = newValue.region }
             if environmentId != newValue.environmentID { environmentId = newValue.environmentID }
             if clientId != newValue.clientID { clientId = newValue.clientID }
             switch newValue.service {

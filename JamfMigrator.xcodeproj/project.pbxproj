@@ -10,11 +10,7 @@
 		087B3C98308E70B400D0CB8A /* AboutInfo.swift in Sources */ = {isa = PBXBuildFile; fileRef = 087B3C97308E70B400D0CB8A /* AboutInfo.swift */; };
 		087B3DD8308E802B00D0CB8A /* JTKitTestSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 087B3DD7308E802B00D0CB8A /* JTKitTestSupport */; };
 		0898866F3080ACB100ACA5EB /* PlanSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0898866E3080ACB100ACA5EB /* PlanSummaryView.swift */; };
-		08ABF3503071BA8300606B36 /* Region.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF34F3071BA8300606B36 /* Region.swift */; };
-		08ABF3523071BA9400606B36 /* GatewayError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3513071BA9400606B36 /* GatewayError.swift */; };
-		08ABF3563071BAC100606B36 /* PlatformClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3553071BAC100606B36 /* PlatformClient.swift */; };
-		08ABF3583071BAC800606B36 /* Poll.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3573071BAC800606B36 /* Poll.swift */; };
-		08ABF35A3071BAD600606B36 /* PermissionProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3593071BAD600606B36 /* PermissionProbe.swift */; };
+		08ABF3563071BAC100606B36 /* Requests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3553071BAC100606B36 /* Requests.swift */; };
 		08ABF35D3071BADD00606B36 /* Tenant.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF35C3071BADD00606B36 /* Tenant.swift */; };
 		08ABF3613071BAF800606B36 /* TenantStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF3603071BAF800606B36 /* TenantStore.swift */; };
 		08ABF39F3071C0A600606B36 /* ObjectType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08ABF39E3071C0A600606B36 /* ObjectType.swift */; };
@@ -67,11 +63,7 @@
 		087B3C97308E70B400D0CB8A /* AboutInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutInfo.swift; sourceTree = "<group>"; };
 		0898866E3080ACB100ACA5EB /* PlanSummaryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanSummaryView.swift; sourceTree = "<group>"; };
 		08ABF3433071B13E00606B36 /* JamfMigratorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = JamfMigratorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		08ABF34F3071BA8300606B36 /* Region.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Region.swift; sourceTree = "<group>"; };
-		08ABF3513071BA9400606B36 /* GatewayError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayError.swift; sourceTree = "<group>"; };
-		08ABF3553071BAC100606B36 /* PlatformClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlatformClient.swift; sourceTree = "<group>"; };
-		08ABF3573071BAC800606B36 /* Poll.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Poll.swift; sourceTree = "<group>"; };
-		08ABF3593071BAD600606B36 /* PermissionProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PermissionProbe.swift; sourceTree = "<group>"; };
+		08ABF3553071BAC100606B36 /* Requests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Requests.swift; sourceTree = "<group>"; };
 		08ABF35C3071BADD00606B36 /* Tenant.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tenant.swift; sourceTree = "<group>"; };
 		08ABF3603071BAF800606B36 /* TenantStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TenantStore.swift; sourceTree = "<group>"; };
 		08ABF39E3071C0A600606B36 /* ObjectType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObjectType.swift; sourceTree = "<group>"; };
@@ -137,18 +129,6 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		08ABF34E3071BA8300606B36 /* Platform */ = {
-			isa = PBXGroup;
-			children = (
-				08ABF34F3071BA8300606B36 /* Region.swift */,
-				08ABF3513071BA9400606B36 /* GatewayError.swift */,
-				08ABF3553071BAC100606B36 /* PlatformClient.swift */,
-				08ABF3573071BAC800606B36 /* Poll.swift */,
-				08ABF3593071BAD600606B36 /* PermissionProbe.swift */,
-			);
-			path = Platform;
-			sourceTree = "<group>";
-		};
 		08ABF35B3071BADD00606B36 /* Tenants */ = {
 			isa = PBXGroup;
 			children = (
@@ -190,6 +170,7 @@
 				08ABF3DC3072203F00606B36 /* TenantMappings.swift */,
 				08ABF3DE3072205000606B36 /* TenantExporter.swift */,
 				08ABF3E03072205D00606B36 /* Verifier.swift */,
+				08ABF3553071BAC100606B36 /* Requests.swift */,
 			);
 			path = Engine;
 			sourceTree = "<group>";
@@ -258,7 +239,6 @@
 				B562410D215151C4007F8144 /* JamfMigrator.entitlements */,
 				9BC01C631DFB0C07007E634E /* Assets.xcassets */,
 				9BC01C681DFB0C07007E634E /* Info.plist */,
-				08ABF34E3071BA8300606B36 /* Platform */,
 				08ABF35B3071BADD00606B36 /* Tenants */,
 				08ABF39D3071C0A600606B36 /* Objects */,
 				08ABF3A23071C10F00606B36 /* Transform */,
@@ -430,7 +410,7 @@
 			files = (
 				08ABF39F3071C0A600606B36 /* ObjectType.swift in Sources */,
 				08ABF3DD3072203F00606B36 /* TenantMappings.swift in Sources */,
-				08ABF3563071BAC100606B36 /* PlatformClient.swift in Sources */,
+				08ABF3563071BAC100606B36 /* Requests.swift in Sources */,
 				08ABF3A63071C11C00606B36 /* Transformer.swift in Sources */,
 				08ABF3E5307220C600606B36 /* WipeWizard.swift in Sources */,
 				08ABF35D3071BADD00606B36 /* Tenant.swift in Sources */,
@@ -442,13 +422,10 @@
 				08ABF3D13071C5BF00606B36 /* ContentView.swift in Sources */,
 				08ABF3CF3071C5AD00606B36 /* JamfMigratorApp.swift in Sources */,
 				087B3C98308E70B400D0CB8A /* AboutInfo.swift in Sources */,
-				08ABF3583071BAC800606B36 /* Poll.swift in Sources */,
 				08ABF3DF3072205000606B36 /* TenantExporter.swift in Sources */,
 				08ABF3A83071C14500606B36 /* ClassicTransformer.swift in Sources */,
 				08ABF3D73071C5FA00606B36 /* InspectorView.swift in Sources */,
 				08ABF3BB3071C26600606B36 /* DeleteEngine.swift in Sources */,
-				08ABF3503071BA8300606B36 /* Region.swift in Sources */,
-				08ABF35A3071BAD600606B36 /* PermissionProbe.swift in Sources */,
 				08ABF3B53071C22600606B36 /* RunReport.swift in Sources */,
 				08ABF3EE3072392700606B36 /* Support.swift in Sources */,
 				0898866F3080ACB100ACA5EB /* PlanSummaryView.swift in Sources */,
@@ -459,7 +436,6 @@
 				08ABF3B73071C23400606B36 /* IconMigrator.swift in Sources */,
 				08ABF3E3307220AB00606B36 /* CloneWizard.swift in Sources */,
 				08ABF3D93071C61000606B36 /* RunView.swift in Sources */,
-				08ABF3523071BA9400606B36 /* GatewayError.swift in Sources */,
 				08ABF3C23071C39800606B36 /* PayloadDiff.swift in Sources */,
 				08ABF3CD3071C5A400606B36 /* AppState.swift in Sources */,
 				08ABF3C43071C3CE00606B36 /* MigrationPlanner.swift in Sources */,
@@ -769,7 +745,7 @@
 			repositoryURL = "https://github.com/JordyThery/JTKit.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 0.6.4;
+				minimumVersion = 0.7.1;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

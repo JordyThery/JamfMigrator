@@ -3,17 +3,19 @@
 //  JamfMigratorTests
 //
 //  A fake two-tenant gateway for engine and planner tests. The handler
-//  routes source vs destination tenant by the X-Environment-Id header.
+//  routes source vs destination tenant by the X-Environment-Id header,
+//  passing it to handlers as "src" or "dst".
 //
 
 import Foundation
+import JTKit
 @testable import JamfMigrator
 
 /// A fake two-tenant gateway. Unhandled list paths return empty lists so the
 /// engine's dependency lookups always succeed.
 struct FakeGateway {
-    let source: PlatformClient
-    let dest: PlatformClient
+    let source: JamfPlatform.Client
+    let dest: JamfPlatform.Client
     let requests: Locked<[(env: String, method: String, path: String, body: Data?)]>
 
     init(handler: @escaping @Sendable (_ env: String, _ method: String, _ path: String, _ body: Data?) -> MockHTTP.Reply?) {
@@ -21,7 +23,11 @@ struct FakeGateway {
         let session = MockHTTP.session { request in
             let path = request.url?.path ?? ""
             if path == "/auth/token" { return MockHTTP.tokenJSON() }
-            let env = request.value(forHTTPHeaderField: "X-Environment-Id") ?? ""
+            let env = switch request.value(forHTTPHeaderField: "X-Environment-Id") {
+            case TestEnvironment.source?: "src"
+            case TestEnvironment.destination?: "dst"
+            default: ""
+            }
             let method = request.httpMethod ?? ""
             let body = request.bodyData
             requests.withLock { $0.append((env, method, path, body)) }
@@ -36,11 +42,8 @@ struct FakeGateway {
             }
             return MockHTTP.Reply(status: 404)
         }
-        let makeClient = { (env: String) in
-            PlatformClient.fake(environmentId: env, session: session)
-        }
-        self.source = makeClient("src")
-        self.dest = makeClient("dst")
+        self.source = JamfPlatform.Client.fake(environmentId: TestEnvironment.source, session: session)
+        self.dest = JamfPlatform.Client.fake(environmentId: TestEnvironment.destination, session: session)
         self.requests = requests
     }
 

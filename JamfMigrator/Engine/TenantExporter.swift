@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import JTKit
 
 struct BackupResult: Sendable, Equatable {
     var objectCounts: [String: Int] = [:]
@@ -20,11 +21,11 @@ struct BackupResult: Sendable, Equatable {
 
 actor TenantExporter {
 
-    private let client: PlatformClient
+    private let client: JamfPlatform.Client
     private let progress: (@Sendable (String) -> Void)?
     private var isCancelled = false
 
-    init(client: PlatformClient, progress: (@Sendable (String) -> Void)? = nil) {
+    init(client: JamfPlatform.Client, progress: (@Sendable (String) -> Void)? = nil) {
         self.client = client
         self.progress = progress
     }

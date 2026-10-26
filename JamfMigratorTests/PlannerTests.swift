@@ -5,6 +5,7 @@
 
 import Foundation
 import Testing
+import JTKit
 @testable import JamfMigrator
 
 struct PayloadDiffTests {
@@ -245,8 +246,9 @@ struct PreflightTests {
         #expect(report.source.version == "11.32.0")
         #expect(report.destination.version == "11.33.0")
         #expect(report.sourcePermissions["categories"] == .allowed)
-        #expect(report.destinationPermissions["policies"] == .denied)
-        #expect(report.deniedTypes == ["policies"])
+        #expect(report.destinationPermissions["policies"] == .missingPermission)
+        #expect(report.missingPermissionTypes == ["policies"])
+        #expect(report.notFoundTypes.isEmpty && report.uncheckedTypes.isEmpty)
         // a missing permission is a warning the user can continue past
         #expect(report.isReady)
         #expect(report.hasWarnings)
@@ -266,14 +268,14 @@ struct PreflightTests {
             }
             return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 0, "results": []]))
         }
-        let direct = PlatformClient.fakeDirect(session: session)
+        let direct = JamfPlatform.Client.fakeDirect(session: session)
 
         let report = await Preflight.run(source: direct, dest: direct,
                                          typeKeys: ["categories", "blueprints", "compliancebenchmarks"])
 
         // not probed, so not reported as missing permissions
         #expect(report.unavailableTypes == ["blueprints", "compliancebenchmarks"])
-        #expect(report.deniedTypes.isEmpty)
+        #expect(report.flaggedTypes.isEmpty)
         #expect(report.isReady)
         #expect(!probed.value.contains { $0.contains("blueprints") || $0.contains("benchmarks") })
     }

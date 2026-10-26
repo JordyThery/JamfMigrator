@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import JTKit
 
 struct VerifyReport: Sendable {
 
@@ -35,8 +36,8 @@ enum Verifier {
 
     /// Plans source → destination again and reports everything that is not
     /// Unchanged. A clean verify means a second run would write nothing.
-    static func verify(source: PlatformClient,
-                       dest: PlatformClient,
+    static func verify(source: JamfPlatform.Client,
+                       dest: JamfPlatform.Client,
                        typeKeys: Set<String>,
                        excluding: [String: Set<String>] = [:],
                        secrets: [String: String] = [:],

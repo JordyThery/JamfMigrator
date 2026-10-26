@@ -40,7 +40,7 @@ final class TenantStore {
     @ObservationIgnored private let log: ActivityLog?
     @ObservationIgnored private let session: URLSession
     /// Each tenant's client, with the tenant as it was when the client was made.
-    @ObservationIgnored private var clients: [Tenant.ID: (tenant: Tenant, client: PlatformClient)] = [:]
+    @ObservationIgnored private var clients: [Tenant.ID: (tenant: Tenant, client: JamfPlatform.Client)] = [:]
 
     init(directory: URL = URL(fileURLWithPath: AppInfo.appSupportPath, isDirectory: true),
          secrets: any SecretStore = TenantStore.keychain(),
@@ -66,7 +66,7 @@ final class TenantStore {
     /// The tenant's client, kept for as long as the tenant stays as it is.
     /// The secret (or password) is read from the Keychain at sign-in, so a
     /// corrected secret is used at the next sign-in.
-    func client(for tenant: Tenant) -> PlatformClient {
+    func client(for tenant: Tenant) -> JamfPlatform.Client {
         if let kept = clients[tenant.id], kept.tenant == tenant {
             return kept.client
         }
@@ -77,7 +77,7 @@ final class TenantStore {
 
     /// A one-off client for Test Connection in Settings, with the values in
     /// the editor and, if typed, a secret that isn't saved yet.
-    func testClient(for tenant: Tenant, secretOverride: String?) -> PlatformClient {
+    func testClient(for tenant: Tenant, secretOverride: String?) -> JamfPlatform.Client {
         makeClient(for: tenant, secretOverride: secretOverride.flatMap { $0.isEmpty ? nil : $0 })
     }
 
@@ -86,7 +86,7 @@ final class TenantStore {
         clients[id] = nil
     }
 
-    private func makeClient(for tenant: Tenant, secretOverride: String?) -> PlatformClient {
+    private func makeClient(for tenant: Tenant, secretOverride: String?) -> JamfPlatform.Client {
         let secrets = secrets
         let account = tenant.id.uuidString
         let connection = tenant.connection
@@ -97,34 +97,39 @@ final class TenantStore {
 
         @Sendable func storedSecret() throws -> String {
             guard let secret = secretOverride ?? secrets.secret(for: account), !secret.isEmpty else {
-                throw GatewayError.tokenFailure(
-                    status: 0,
-                    detail: "No client secret or password is stored for this tenant. Enter it in Settings › Connections.")
+                throw MissingSecret()
             }
             return secret
         }
 
-        let tokens: any BearerTokenSource
         do {
-            tokens = try JamfTokenProvider(connection: connection, secret: storedSecret, recorder: recorder)
+            return try JamfPlatform.Client(connection: connection, secret: storedSecret, recorder: recorder,
+                                           writeSpacing: JamfPlatform.Client.defaultWriteSpacing)
         } catch {
-            // an unusable server URL surfaces at the first request rather
-            // than silently falling back to the gateway
-            tokens = UnusableTokens(error: (error as? HTTPError).map(GatewayError.init) ?? .transport(error))
+            // an unusable server URL or Environment ID surfaces at the first
+            // request rather than silently falling back to the gateway
+            let reason = error as? JamfPlatformError ?? JamfPlatformError(.invalidResponse(error.localizedDescription))
+            // organization scope has no Environment ID to check, so this can't throw
+            return try! JamfPlatform.Client(baseURL: connection.jamfBaseURL ?? tenant.region.gatewayURL,
+                                            scope: .organization,
+                                            server: tenant.usesGateway ? .platformAPI : .jamfPro,
+                                            tokens: UnusableTokens(error: reason),
+                                            recorder: recorder)
         }
-        if tenant.usesGateway {
-            return PlatformClient(region: tenant.region, environmentId: tenant.environmentId,
-                                  tokens: tokens, recorder: recorder)
-        }
-        return PlatformClient(serverURL: connection.jamfBaseURL ?? URL(fileURLWithPath: "/dev/null"),
-                              tokens: tokens, recorder: recorder)
+    }
+}
+
+/// No client secret or password is saved for the tenant.
+struct MissingSecret: LocalizedError {
+    var errorDescription: String? {
+        "No client secret or password is stored for this tenant. Enter it in Settings › Connections."
     }
 }
 
 /// The tokens of a tenant whose address can't be used: every request fails
 /// with the reason.
 private struct UnusableTokens: BearerTokenSource {
-    let error: GatewayError
+    let error: JamfPlatformError
 
     func token() async throws -> String { throw error }
     func forgetToken() async {}

@@ -96,12 +96,14 @@ private struct PreflightSummary: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            let ok = preflight.isReady && preflight.deniedTypes.isEmpty
+            let ok = preflight.isReady && preflight.flaggedTypes.isEmpty
             Label("\(preflight.source.version ?? "?") → \(preflight.destination.version ?? "?")",
                   systemImage: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                 .foregroundStyle(ok ? .green : .orange)
-            if !preflight.deniedTypes.isEmpty {
-                Text("No permission: \(PreflightReport.displayNames(preflight.deniedTypes))")
+            ForEach([("No permission", preflight.missingPermissionTypes),
+                     ("Not found", preflight.notFoundTypes),
+                     ("Couldn't check", preflight.uncheckedTypes)].filter { !$0.1.isEmpty }, id: \.0) { title, keys in
+                Text("\(title): \(PreflightReport.displayNames(keys))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

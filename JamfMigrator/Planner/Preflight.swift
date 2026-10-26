@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import JTKit
 
 struct PreflightReport: Sendable {
 
@@ -20,9 +21,9 @@ struct PreflightReport: Sendable {
 
     let source: TenantCheck
     let destination: TenantCheck
-    /// Probe results per registry key.
-    let sourcePermissions: [String: ProbeResult]
-    let destinationPermissions: [String: ProbeResult]
+    /// Permission check results per registry key.
+    let sourcePermissions: [String: JamfPlatform.PermissionResult]
+    let destinationPermissions: [String: JamfPlatform.PermissionResult]
     /// Objects already on the destination, per registry key; -1 = the list
     /// failed.
     let destinationCounts: [String: Int]
@@ -35,12 +36,39 @@ struct PreflightReport: Sendable {
         destinationCounts.values.allSatisfy { $0 <= 0 }
     }
 
-    /// Registry keys either integration lacks permission for.
-    var deniedTypes: [String] {
-        let denied = sourcePermissions.merging(destinationPermissions) { a, b in
-            a == .allowed ? b : a
-        }
-        return denied.filter { $0.value != .allowed }.map(\.key).sorted()
+    /// Registry keys either integration lacks permission for (HTTP 403).
+    var missingPermissionTypes: [String] {
+        types { $0 == .missingPermission }
+    }
+
+    /// Registry keys whose list isn't on a tenant (HTTP 404), and no
+    /// permission is missing for.
+    var notFoundTypes: [String] {
+        types { $0 == .notFound }.filter { !missingPermissionTypes.contains($0) }
+    }
+
+    /// Registry keys that couldn't be checked (another status, or no answer)
+    /// and aren't in either list above.
+    var uncheckedTypes: [String] {
+        let flagged = Set(missingPermissionTypes + notFoundTypes)
+        return types {
+            switch $0 {
+            case .failed, .unreachable: true
+            default: false
+            }
+        }.filter { !flagged.contains($0) }
+    }
+
+    /// Every type in one of the three lists.
+    var flaggedTypes: [String] {
+        missingPermissionTypes + notFoundTypes + uncheckedTypes
+    }
+
+    /// Keys with a result matching `match` on either tenant.
+    private func types(where match: (JamfPlatform.PermissionResult) -> Bool) -> [String] {
+        let keys = Set(sourcePermissions.filter { match($0.value) }.keys)
+            .union(destinationPermissions.filter { match($0.value) }.keys)
+        return keys.sorted()
     }
 
     /// Only an unreachable tenant stops a clone. Missing permissions and a
@@ -51,7 +79,7 @@ struct PreflightReport: Sendable {
     }
 
     var hasWarnings: Bool {
-        !deniedTypes.isEmpty || !destinationIsEmpty
+        !flaggedTypes.isEmpty || !destinationIsEmpty
     }
 
     /// Display names for a list of registry keys, in registry order.
@@ -73,7 +101,7 @@ struct PreflightReport: Sendable {
 
 enum Preflight {
 
-    static func run(source: PlatformClient, dest: PlatformClient, typeKeys: Set<String>) async -> PreflightReport {
+    static func run(source: JamfPlatform.Client, dest: JamfPlatform.Client, typeKeys: Set<String>) async -> PreflightReport {
         let sourceCheck = await check(source)
         let destCheck = await check(dest)
 
@@ -83,17 +111,20 @@ enum Preflight {
         let selected = ObjectRegistry.types.filter { typeKeys.contains($0.key) }
         let unavailable = directPair ? selected.filter(\.requiresGateway).map(\.key) : []
         let types = selected.filter { !unavailable.contains($0.key) }
-        let pathsByType = Dictionary(uniqueKeysWithValues: types.map { ($0.key, $0.api.listPath) })
+        // the same GETs as always: each type's list, without paging
+        // parameters. The registry names no Jamf Account permissions or Jamf
+        // Pro privileges, so the report names the types.
+        let checks = types.map {
+            JamfPlatform.PermissionCheck($0.displayName, path: $0.api.listPath, query: [], permission: "")
+        }
 
-        var sourcePermissions = [String: ProbeResult]()
-        var destPermissions = [String: ProbeResult]()
+        var sourcePermissions = [String: JamfPlatform.PermissionResult]()
+        var destPermissions = [String: JamfPlatform.PermissionResult]()
         if sourceCheck.reachable {
-            sourcePermissions = keyed(await PermissionProbe(client: source).check(paths: Array(pathsByType.values)),
-                                      by: pathsByType)
+            sourcePermissions = keyed(await source.checkPermissions(checks), types: types)
         }
         if destCheck.reachable {
-            destPermissions = keyed(await PermissionProbe(client: dest).check(paths: Array(pathsByType.values)),
-                                    by: pathsByType)
+            destPermissions = keyed(await dest.checkPermissions(checks), types: types)
         }
 
         // counts only where the destination integration can actually list
@@ -115,7 +146,7 @@ enum Preflight {
 
     /// Whether the tenant answers, and its Jamf Pro version. Also Settings'
     /// Test Connection.
-    static func check(_ client: PlatformClient) async -> PreflightReport.TenantCheck {
+    static func check(_ client: JamfPlatform.Client) async -> PreflightReport.TenantCheck {
         struct Version: Decodable { let version: String }
         do {
             let version = try await client.get(Version.self, "pro/v1/jamf-pro-version")
@@ -125,11 +156,9 @@ enum Preflight {
         }
     }
 
-    private static func keyed(_ results: [String: ProbeResult], by pathsByType: [String: String]) -> [String: ProbeResult] {
-        var byType = [String: ProbeResult]()
-        for (typeKey, path) in pathsByType {
-            byType[typeKey] = results[path] ?? .unreachable("not probed")
-        }
-        return byType
+    /// The results by registry key; they come back in the order of `types`.
+    private static func keyed(_ results: [(check: JamfPlatform.PermissionCheck, result: JamfPlatform.PermissionResult)],
+                              types: [ObjectType]) -> [String: JamfPlatform.PermissionResult] {
+        Dictionary(zip(types, results).map { ($0.key, $1.result) }, uniquingKeysWith: { first, _ in first })
     }
 }
