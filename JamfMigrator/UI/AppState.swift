@@ -4,12 +4,14 @@
 //
 //  The app's observable state: tenant selection, the sticky delete mode
 //  (memory only — the app always starts in Copy), the current plan and the
-//  running engine.
+//  running engine. In demo mode the tenants are JTKit's two demo tenants,
+//  and nothing the app saves goes into its real files or settings.
 //
 
 import Foundation
 import JTKit
 import Observation
+import SwiftUI
 
 @MainActor
 @Observable
@@ -17,6 +19,77 @@ final class AppState {
 
     let tenantStore: TenantStore
     private let secretStore: any SecretStore
+    /// The app's settings: the real ones, or a sandbox run's (`-JTKitSandbox`).
+    private let defaults: UserDefaults
+
+    // MARK: Demo mode
+
+    /// JTKit's demo mode, saved under "demoMode". While it's on, Source and
+    /// Destination are "Contoso Source (Demo)" and "Contoso Destination
+    /// (Demo)", the saved choices are left as they were, and run reports,
+    /// journals, backups and exports go to demo mode's temporary folder.
+    let demo: DemoMode
+    /// The demo tenants each role can choose; Source starts on Contoso
+    /// Source, Destination (and delete mode's Tenant) on Contoso Destination.
+    let sourceDemo: DemoConnectionChoice
+    let destDemo: DemoConnectionChoice
+
+    /// The roles of the sidebar pickers, the Connection menu and Settings ›
+    /// Connections: Source and Destination, or delete mode's Tenant (which
+    /// uses Destination's choice), each with both demo tenants.
+    var sourceRole: ConnectionRole {
+        ConnectionRole("Source", selection: binding(\.sourceTenantID), demo: sourceDemo)
+    }
+
+    var destinationRole: ConnectionRole {
+        ConnectionRole(mode == .copy ? "Destination" : "Tenant", selection: binding(\.destTenantID), demo: destDemo)
+    }
+
+    var connectionRoles: [ConnectionRole] {
+        mode == .copy ? [sourceRole, destinationRole] : [destinationRole]
+    }
+
+    private func binding(_ keyPath: ReferenceWritableKeyPath<AppState, Tenant.ID?>) -> Binding<Tenant.ID?> {
+        Binding(get: { self[keyPath: keyPath] }, set: { self[keyPath: keyPath] = $0 })
+    }
+
+    /// The two demo tenants, in the pickers' order.
+    static let demoTenants: [Connection] = [.demoJamfProSource, .demoJamfProDestination]
+
+    /// The app for this launch: a sandbox run (`-JTKitSandbox YES`, UI tests)
+    /// keeps tenants, secrets and settings in memory.
+    static func forLaunch() -> AppState {
+        let demo = DemoMode(key: "demoMode")
+        guard demo.isSandbox else { return AppState(demo: demo) }
+        let secrets = SandboxSecretStore()
+        let store = TenantStore(secrets: secrets, demo: demo, storage: InMemoryConnectionStorage<Tenant>())
+        return AppState(tenantStore: store, secretStore: secrets, demo: demo, defaults: DemoMode.sandboxDefaults())
+    }
+
+    /// Where the app keeps journals, backups, exports and run reports:
+    /// Application Support, or demo mode's temporary folder.
+    var dataDirectory: URL {
+        demo.isOn ? demo.scratchDirectory : URL(fileURLWithPath: AppInfo.appSupportPath, isDirectory: true)
+    }
+
+    /// Identifies the tenants in use and the mode, so a change of either
+    /// (demo mode on or off included) clears the plan.
+    var tenantPairKey: String {
+        "\(mode.rawValue)-\(demo.isOn)-\(sourceTenant?.id.uuidString ?? "")-\(destTenant?.id.uuidString ?? "")"
+    }
+
+    /// Demo mode was turned on or off, or another demo tenant chosen: the
+    /// plan goes, and the selection and mappings are the ones of the new
+    /// tenants (demo mode's stay in memory).
+    func tenantsChanged(demoSwitched: Bool) {
+        invalidateDerivedState()
+        if demoSwitched, !demo.isOn, let stored = defaults.stringArray(forKey: "selectedTypeKeys") {
+            selectedTypeKeys = Set(stored)
+        }
+        savesMappings = false
+        mappings = storedMappings() ?? TenantMappings()
+        savesMappings = true
+    }
 
     // MARK: Mode and selection
 
@@ -35,7 +108,7 @@ final class AppState {
     var sourceTenantID: Tenant.ID? {
         didSet {
             if let sourceTenantID {
-                UserDefaults.standard.set(sourceTenantID.uuidString, forKey: "sourceTenantID")
+                defaults.set(sourceTenantID.uuidString, forKey: "sourceTenantID")
                 if oldValue != nil && oldValue != sourceTenantID { invalidateDerivedState() }
             }
         }
@@ -43,14 +116,15 @@ final class AppState {
     var destTenantID: Tenant.ID? {
         didSet {
             if let destTenantID {
-                UserDefaults.standard.set(destTenantID.uuidString, forKey: "destTenantID")
+                defaults.set(destTenantID.uuidString, forKey: "destTenantID")
                 if oldValue != nil && oldValue != destTenantID { invalidateDerivedState() }
             }
         }
     }
 
     var selectedTypeKeys: Set<String> {
-        didSet { UserDefaults.standard.set(Array(selectedTypeKeys), forKey: "selectedTypeKeys") }
+        // demo mode's choice is kept in memory only
+        didSet { if !demo.isOn { defaults.set(Array(selectedTypeKeys), forKey: "selectedTypeKeys") } }
     }
     /// Source object ids the user unchecked, per registry key.
     var excludedObjectIds: [String: Set<String>] = [:]
@@ -115,8 +189,10 @@ final class AppState {
 
     /// ADE and distribution-point mappings for the current tenant pair.
     var mappings = TenantMappings() {
-        didSet { saveMappings() }
+        didSet { if savesMappings { saveMappings() } }
     }
+    /// Off while mappings are swapped for another tenant pair's.
+    @ObservationIgnored private var savesMappings = true
     var sourceADEInstances: [ObjectRef] = []
     var destADEInstances: [ObjectRef] = []
     var sourceDistributionPoints: [ObjectRef] = []
@@ -134,10 +210,16 @@ final class AppState {
     private var activeMigration: MigrationEngine?
     private var activeDelete: DeleteEngine?
 
-    init(tenantStore: TenantStore? = nil, secretStore: any SecretStore = TenantStore.keychain()) {
-        self.tenantStore = tenantStore ?? TenantStore()
+    init(tenantStore: TenantStore? = nil, secretStore: any SecretStore = TenantStore.keychain(),
+         demo: DemoMode? = nil, defaults: UserDefaults = .standard) {
+        let demo = demo ?? DemoMode(key: "demoMode", defaults: defaults)
+        self.demo = demo
+        self.tenantStore = tenantStore ?? TenantStore(demo: demo)
         self.secretStore = secretStore
-        let defaults = UserDefaults.standard
+        self.defaults = defaults
+        sourceDemo = DemoConnectionChoice(mode: demo, connections: Self.demoTenants)
+        destDemo = DemoConnectionChoice(mode: demo, connections: Self.demoTenants)
+        destDemo.selectedID = Connection.demoJamfProDestination.id
         self.sourceTenantID = (defaults.string(forKey: "sourceTenantID")).flatMap(UUID.init)
         self.destTenantID = (defaults.string(forKey: "destTenantID")).flatMap(UUID.init)
         if let stored = defaults.stringArray(forKey: "selectedTypeKeys") {
@@ -147,13 +229,19 @@ final class AppState {
         }
     }
 
-    var sourceTenant: Tenant? { sourceTenantID.flatMap(tenantStore.tenant(id:)) }
-    var destTenant: Tenant? { destTenantID.flatMap(tenantStore.tenant(id:)) }
+    var sourceTenant: Tenant? {
+        if demo.isOn { return sourceDemo.selected.map(Tenant.init(connection:)) }
+        return sourceTenantID.flatMap(tenantStore.tenant(id:))
+    }
+
+    var destTenant: Tenant? {
+        if demo.isOn { return destDemo.selected.map(Tenant.init(connection:)) }
+        return destTenantID.flatMap(tenantStore.tenant(id:))
+    }
 
     /// Clears the selections and stored defaults of a removed tenant.
     func forgetTenant(_ id: Tenant.ID) {
         tenantStore.forgetClient(for: id)
-        let defaults = UserDefaults.standard
         if sourceTenantID == id {
             sourceTenantID = nil
             defaults.removeObject(forKey: "sourceTenantID")
@@ -183,7 +271,7 @@ final class AppState {
               destTenant != nil, !selectedTypeKeys.isEmpty else { return false }
         if mode == .delete { return true }
         // copying a tenant onto itself is never meaningful
-        return sourceTenant != nil && sourceTenantID != destTenantID
+        return sourceTenant != nil && sourceTenant?.id != destTenant?.id
     }
 
     var canRun: Bool {
@@ -234,7 +322,10 @@ final class AppState {
         secretStore.setSecret(value.isEmpty ? nil : value, for: "service-\(key)")
     }
 
+    /// Settings › Secrets; demo runs never read them (the Keychain), so
+    /// they write the placeholder.
     private var serviceSecrets: [String: String] {
+        guard !demo.isOn else { return [:] }
         var secrets = [String: String]()
         for (key, _) in Self.serviceSecretKeys {
             let value = serviceSecret(key)
@@ -308,6 +399,8 @@ final class AppState {
         reportSaveError = nil
         runWasStopped = false
         lastError = nil
+        // decided now: switching demo mode during the run doesn't move its report
+        runReportsFolder = dataDirectory.appendingPathComponent("Run Reports", isDirectory: true)
         let reportFile = RunReportFile(report: RunReport(),
                                        mode: mode,
                                        sourceName: mode == .copy ? sourceTenant?.name : nil,
@@ -321,7 +414,7 @@ final class AppState {
         let mappings = mappings
         let journal = JournalStore(url: journalURL(destTenant: destTenant),
                                    mode: mode,
-                                   sourceTenantId: mode == .copy ? sourceTenantID : nil,
+                                   sourceTenantId: mode == .copy ? sourceTenant?.id : nil,
                                    destTenantId: destTenant.id)
         let progress: @Sendable (ProgressEvent) -> Void = { event in
             Task { @MainActor [weak self] in self?.runEvents.append(event) }
@@ -349,6 +442,33 @@ final class AppState {
         }
     }
 
+    /// The run confirmation's title and message, naming the tenant (the demo
+    /// one in demo mode) and what the run will do.
+    var runConfirmationTitle: String {
+        let tenant = destTenant?.name ?? "the destination"
+        return mode == .delete
+            ? "Delete objects from \(tenant)?"
+            : "Copy to \(tenant)?"
+    }
+
+    var runConfirmationMessage: String {
+        guard let planCounts = plan?.counts else { return "" }
+        let effective = effectiveCounts
+        if mode == .delete {
+            return "\(effective.delete) objects will be deleted from \(destTenant?.name ?? "the destination"); \(planCounts.keep) built-ins are kept. This cannot be undone."
+        }
+        var message = "\(effective.create) to create, \(effective.update) to update, \(planCounts.unchanged) unchanged, \(planCounts.blocked) blocked."
+        let planChangeCount = planCounts.create + planCounts.update + planCounts.replace + planCounts.delete
+        let unchecked = planChangeCount - effectiveChangeCount
+        if unchecked > 0 {
+            message += " \(unchecked) unchecked objects are left out."
+        }
+        if effective.replace > 0 {
+            message += " \(effective.replace) Compliance Benchmarks will be deleted and recreated — they can’t be updated in place."
+        }
+        return message
+    }
+
     func cancel() {
         if isRunning { runWasStopped = true }
         runTask?.cancel()
@@ -361,6 +481,9 @@ final class AppState {
             await exporter?.cancel()
         }
     }
+
+    /// Where the running run's report goes: Run Reports, or demo mode's folder.
+    private var runReportsFolder: URL?
 
     /// Set by Stop, so the saved report says the run didn't finish.
     private var runWasStopped = false
@@ -387,7 +510,7 @@ final class AppState {
         file.finished = Date()
         file.wasStopped = runWasStopped
         do {
-            let url = try file.save()
+            let url = try file.save(in: runReportsFolder ?? dataDirectory.appendingPathComponent("Run Reports", isDirectory: true))
             reportFileURL = url
             AppActivity.record("Run report saved: \(url.lastPathComponent)", category: "Run report",
                                connection: file.destinationName)
@@ -400,16 +523,20 @@ final class AppState {
 
     // MARK: Mappings
 
+    /// The pair's saved mappings; demo mode's are kept in memory only.
     private var mappingsKey: String? {
-        guard let source = sourceTenantID, let dest = destTenantID else { return nil }
+        guard !demo.isOn, let source = sourceTenant?.id, let dest = destTenant?.id else { return nil }
         return "mappings-\(source.uuidString)-\(dest.uuidString)"
+    }
+
+    private func storedMappings() -> TenantMappings? {
+        guard let key = mappingsKey, let data = defaults.data(forKey: key) else { return nil }
+        return try? JSONDecoder().decode(TenantMappings.self, from: data)
     }
 
     func loadMappingCandidates() {
         guard let sourceTenant, let destTenant else { return }
-        if let key = mappingsKey,
-           let data = UserDefaults.standard.data(forKey: key),
-           let stored = try? JSONDecoder().decode(TenantMappings.self, from: data) {
+        if let stored = storedMappings() {
             mappings = stored
         } else if !mappings.isEmpty {
             // nothing stored for this pair: don't carry the previous pair's ids
@@ -438,7 +565,7 @@ final class AppState {
 
     private func saveMappings() {
         guard let key = mappingsKey, let data = try? JSONEncoder().encode(mappings) else { return }
-        UserDefaults.standard.set(data, forKey: key)
+        defaults.set(data, forKey: key)
     }
 
     // MARK: Backup and verify
@@ -450,7 +577,7 @@ final class AppState {
         backupResult = nil
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
-        let root = URL(fileURLWithPath: AppInfo.appSupportPath, isDirectory: true)
+        let root = dataDirectory
             .appendingPathComponent("backups", isDirectory: true)
             .appendingPathComponent("\(destTenant.name)-\(formatter.string(from: Date()))", isDirectory: true)
         let exporter = TenantExporter(client: tenantStore.client(for: destTenant)) { name in
@@ -495,16 +622,16 @@ final class AppState {
     // MARK: Paths
 
     private func journalURL(destTenant: Tenant) -> URL {
-        URL(fileURLWithPath: AppInfo.appSupportPath, isDirectory: true)
+        dataDirectory
             .appendingPathComponent("journals", isDirectory: true)
             .appendingPathComponent("\(destTenant.id.uuidString)-\(mode.rawValue).json")
     }
 
     private func exportWriterIfEnabled() -> ExportWriter? {
-        guard UserDefaults.standard.bool(forKey: "exportOnRun") else { return nil }
+        guard defaults.bool(forKey: "exportOnRun") else { return nil }
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
-        let root = URL(fileURLWithPath: AppInfo.appSupportPath, isDirectory: true)
+        let root = dataDirectory
             .appendingPathComponent("exports", isDirectory: true)
             .appendingPathComponent(formatter.string(from: Date()), isDirectory: true)
         return ExportWriter(root: root)

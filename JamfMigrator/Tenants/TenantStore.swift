@@ -19,6 +19,11 @@ import Observation
 /// have their own sign-in and token, reused by Preview, Run, Backup, Verify
 /// and the mappings. A tenant's client is rebuilt after the tenant is edited
 /// and dropped when it is deleted.
+///
+/// Demo mode's two tenants ("Contoso Source (Demo)", "Contoso Destination
+/// (Demo)") get their client here too, from JTKit's demo: its private
+/// network and a fake secret, never the Keychain or the real network. A
+/// saved tenant always gets the real ones, Test Connection included.
 @MainActor
 @Observable
 final class TenantStore {
@@ -39,18 +44,23 @@ final class TenantStore {
     /// Where requests are recorded; nil records nothing.
     @ObservationIgnored private let log: ActivityLog?
     @ObservationIgnored private let session: URLSession
+    /// Answers demo mode's tenants; nil in tests that don't need it.
+    @ObservationIgnored private let demo: DemoMode?
     /// Each tenant's client, with the tenant as it was when the client was made.
     @ObservationIgnored private var clients: [Tenant.ID: (tenant: Tenant, client: JamfPlatform.Client)] = [:]
 
     init(directory: URL = URL(fileURLWithPath: AppInfo.appSupportPath, isDirectory: true),
          secrets: any SecretStore = TenantStore.keychain(),
          log: ActivityLog? = AppActivity.log,
-         session: URLSession = URLSession(configuration: .ephemeral)) {
+         session: URLSession = URLSession(configuration: .ephemeral),
+         demo: DemoMode? = nil,
+         storage: (any ConnectionStorage<Tenant>)? = nil) {
         self.secrets = secrets
         self.log = log
         self.session = session
+        self.demo = demo
         connections = ConnectionStore(
-            storage: JSONFileConnectionStorage<Tenant>(fileURL: directory.appendingPathComponent("tenants.json")),
+            storage: storage ?? JSONFileConnectionStorage<Tenant>(fileURL: directory.appendingPathComponent("tenants.json")),
             secrets: [.main: SecretLocation(store: secrets)],
             log: { AppActivity.record($0, category: "Tenants", level: .warning) })
     }
@@ -77,8 +87,9 @@ final class TenantStore {
 
     /// A one-off client for Test Connection in Settings, with the values in
     /// the editor and, if typed, a secret that isn't saved yet.
+    /// It always uses the real network, also while demo mode is on.
     func testClient(for tenant: Tenant, secretOverride: String?) -> JamfPlatform.Client {
-        makeClient(for: tenant, secretOverride: secretOverride.flatMap { $0.isEmpty ? nil : $0 })
+        makeClient(for: tenant, secretOverride: secretOverride.flatMap { $0.isEmpty ? nil : $0 }, usesDemo: false)
     }
 
     /// Drops a deleted tenant's client and its token.
@@ -86,11 +97,11 @@ final class TenantStore {
         clients[id] = nil
     }
 
-    private func makeClient(for tenant: Tenant, secretOverride: String?) -> JamfPlatform.Client {
+    private func makeClient(for tenant: Tenant, secretOverride: String?, usesDemo: Bool = true) -> JamfPlatform.Client {
         let secrets = secrets
         let account = tenant.id.uuidString
-        let connection = tenant.connection
-        let recorder = RequestRecorder(session: session,
+        var connection = tenant.connection
+        var recorder = RequestRecorder(session: session,
                                        log: log,
                                        service: connection.service.displayName,
                                        connection: tenant.name)
@@ -101,9 +112,20 @@ final class TenantStore {
             }
             return secret
         }
+        var secret: @Sendable () throws -> String = storedSecret
+
+        // a demo tenant: JTKit's demo network and fake secret, never the
+        // Keychain; a saved tenant never gets a demo source, so it can't
+        // reach the demo, nor a demo tenant the real network
+        if usesDemo, let source = demo?.source(for: connection) {
+            connection = source.connection
+            secret = source.secret
+            recorder = RequestRecorder(session: source.session, log: log,
+                                       service: connection.service.displayName, connection: connection.name)
+        }
 
         do {
-            return try JamfPlatform.Client(connection: connection, secret: storedSecret, recorder: recorder,
+            return try JamfPlatform.Client(connection: connection, secret: secret, recorder: recorder,
                                            writeSpacing: JamfPlatform.Client.defaultWriteSpacing)
         } catch {
             // an unusable server URL or Environment ID surfaces at the first

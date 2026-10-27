@@ -12,7 +12,7 @@ import SwiftUI
 @main
 struct JamfMigratorApp: App {
 
-    @State private var appState = AppState()
+    @State private var appState = AppState.forLaunch()
     @State private var updates = UpdateChecker(
         configuration: UpdateConfiguration(owner: "JordyThery", repository: "JamfMigrator", appName: "Jamf Migrator"),
         activity: { line in
@@ -26,20 +26,21 @@ struct JamfMigratorApp: App {
             ContentView()
                 .environment(appState)
                 .environment(updates)
-                .task { await updates.checkAutomatically() }
+                .environment(appState.demo)
+                // a sandbox run (UI tests) makes no update check
+                .task { if !appState.demo.isSandbox { await updates.checkAutomatically() } }
         }
         .commands {
             AppInfoCommands(appName: "Jamf Migrator") { updates.checkManually() }
 
             // JTKit's Connection menu, with the same choices as the sidebar:
-            // Source and Destination, or only the tenant in delete mode.
-            ConnectionCommands(
-                store: appState.tenantStore.connections,
-                roles: appState.mode == .copy
-                    ? [ConnectionRole("Source", selection: $appState.sourceTenantID),
-                       ConnectionRole("Destination", selection: $appState.destTenantID)]
-                    : [ConnectionRole("Tenant", selection: $appState.destTenantID)]
-            )
+            // Source and Destination, or only the tenant in delete mode, and
+            // Demo Mode below them.
+            ConnectionCommands(store: appState.tenantStore.connections, roles: appState.connectionRoles,
+                               editTitle: "Edit Tenants…") {
+                DemoModeToggle(demo: appState.demo)
+                    .disabled(appState.isRunning || appState.isPlanning)
+            }
 
             CommandGroup(after: .help) {
                 Button("Guided Tour") { appState.tour.start() }
@@ -83,6 +84,7 @@ struct JamfMigratorApp: App {
                 ExportSettings()
             }
             .environment(appState)
+            .environment(appState.demo)
         }
     }
 }
