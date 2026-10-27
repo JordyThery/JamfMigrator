@@ -376,7 +376,7 @@ reference must resolve through the source id→name lookups.
   Benchmark compared Unchanged on re-run. One Jamf-side bug to report: the
   demo (beta) tenant silently deletes newly created benchmarks ~3 minutes
   after creation (reproduced 3×; the same payload survives on the sandbox).
-- **Direct connections validated live**: scripts cloned lab9 → lab9probeta
+- **Direct connections validated live**: scripts cloned from one Jamf Pro test server to another
   over user/password auth (33 created in 16 s), verify clean, 33/33 deleted.
 - **GUI smoke test passed**: selective migration through the app (Uncheck
   all → Scripts → Preview 33 creates → confirm sheet → Run, 33 created,
