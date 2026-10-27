@@ -16,7 +16,7 @@ Shared code and the standards for every app: see JTKit's CLAUDE.md and ROADMAP.m
 - Build releases from the app's own project. Never have the app open in both at once.
 - Only change JTKit or other apps when Jordy asks for them.
 - After merging into main, push main to origin straight away (keep GitHub in sync).
-- The project uses filesystem-synchronized groups. Don't edit `project.pbxproj` by hand; Jordy changes package references in Xcode.
+- The project uses filesystem-synchronized groups. Don't edit `project.pbxproj` by hand for files or targets. The JTKit package version (minimum and `Package.resolved`) Claude updates itself, as in the other apps, resolved from the app's own project against the published JTKit (decided by Jordy on 2026-10-27); other package references Jordy changes in Xcode.
 - macOS 26 only (Liquid Glass), sandboxed, Swift 5 language mode, async/await. No storyboards, no Combine.
 
 ## Rules decided by Jordy
@@ -45,13 +45,13 @@ From JTKit: `JamfPlatform.Client` (gateway and direct Jamf Pro, retries, write s
 
 Stays in the app: the registry and transforms, Classic XML payloads, the delete engine and its retries, journal, run reports, mappings, the wizards. Extend JTKit instead of adding another copy of anything it has.
 
-Still open (ROADMAP "Standards for every app"): the sidebar's own `TenantPicker` is to be replaced by JTKit's `ConnectionPicker` on the next JTKit update.
+Demo mode (JTKit step 10): `AppState.demo` (JTKit `DemoMode`, key `demoMode`) with two demo tenants from JTKit, "Contoso Source (Demo)" and "Contoso Destination (Demo)", direct Jamf Pro, so Blueprints and Benchmarks are Blocked. `TenantStore.makeClient` is the only place that gives a demo tenant JTKit's demo network and fake secret; Test Connection (`testClient`) always uses the real network. While demo mode is on: journals, backups, exports and run reports go to `DemoMode.scratchDirectory` (`AppState.dataDirectory`), never Application Support; the type selection and mappings stay in memory; Settings › Secrets are not read (placeholders are written); the saved Source and Destination are left as they were. `-JTKitSandbox YES` keeps tenants, secrets and settings in memory and makes no update check. The sidebar pickers and the Connection menu are JTKit's `ConnectionPicker` and `ConnectionCommands` with Demo Mode below the tenants; both demo tenants are offered for every role, delete mode's Tenant included.
 
 ## Stored data (keep these names)
 
 - Tenants: `tenants.json` in Application Support/JamfMigrator (inside the sandbox container), keys `id, name, region, environmentId, clientId, serverURL, username, isProtected`. Region raw values `us`, `eu`, `apac`.
 - Keychain service `JamfMigrator-tenant`: account = tenant UUID for the client secret or password; `service-<key>` for the Settings › Secrets values. "After first unlock", moving items from the data-protection keychain on read (builds before 1.0.1 wrote there).
-- UserDefaults: `sourceTenantID`, `destTenantID`, `selectedTypeKeys`, `exportOnRun`, `mappings-<source>-<destination>`.
+- UserDefaults: `sourceTenantID`, `destTenantID`, `selectedTypeKeys`, `exportOnRun`, `mappings-<source>-<destination>`, `demoMode`.
 - Application Support/JamfMigrator: `journals/`, `backups/`, `exports/`, `Run Reports/`. Every run, also a stopped one, saves a redacted report.
 - The old text log `jamfmigrator.log` is retired: its lines go to the activity log; the file stays on disk untouched.
 

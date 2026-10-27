@@ -80,6 +80,9 @@ struct ContentView: View {
                 .disabled(!appState.canRun)
             }
         }
+        // demo mode on or off, or another tenant: the plan is for other tenants
+        .onChange(of: appState.demo.isOn) { appState.tenantsChanged(demoSwitched: true) }
+        .onChange(of: appState.tenantPairKey) { appState.tenantsChanged(demoSwitched: false) }
         .onChange(of: appState.runRequested) { _, requested in
             if requested {
                 appState.runRequested = false
@@ -122,30 +125,9 @@ struct ContentView: View {
         }
     }
 
-    private var runConfirmationTitle: String {
-        let tenant = appState.destTenant?.name ?? "the destination"
-        return appState.mode == .delete
-            ? "Delete objects from \(tenant)?"
-            : "Copy to \(tenant)?"
-    }
+    private var runConfirmationTitle: String { appState.runConfirmationTitle }
 
-    private var runConfirmationMessage: String {
-        guard let planCounts = appState.plan?.counts else { return "" }
-        let effective = appState.effectiveCounts
-        if appState.mode == .delete {
-            return "\(effective.delete) objects will be deleted from \(appState.destTenant?.name ?? "the destination"); \(planCounts.keep) built-ins are kept. This cannot be undone."
-        }
-        var message = "\(effective.create) to create, \(effective.update) to update, \(planCounts.unchanged) unchanged, \(planCounts.blocked) blocked."
-        let planChangeCount = planCounts.create + planCounts.update + planCounts.replace + planCounts.delete
-        let unchecked = planChangeCount - appState.effectiveChangeCount
-        if unchecked > 0 {
-            message += " \(unchecked) unchecked objects are left out."
-        }
-        if effective.replace > 0 {
-            message += " \(effective.replace) Compliance Benchmarks will be deleted and recreated — they can’t be updated in place."
-        }
-        return message
-    }
+    private var runConfirmationMessage: String { appState.runConfirmationMessage }
 }
 
 struct DeleteModeBanner: View {

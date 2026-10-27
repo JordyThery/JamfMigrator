@@ -19,13 +19,17 @@ struct SidebarView: View {
         List(selection: $appState.selectedTypeKey) {
             Section("Tenants") {
                 if appState.mode == .copy {
-                    TenantPicker(title: "Source", selection: $appState.sourceTenantID)
+                    TenantPicker(title: "Source", role: appState.sourceRole)
                 }
-                TenantPicker(title: appState.mode == .copy ? "Destination" : "Tenant",
-                             selection: $appState.destTenantID)
+                TenantPicker(title: appState.mode == .copy ? "Destination" : "Tenant", role: appState.destinationRole)
                 if appState.tenantStore.tenants.isEmpty {
                     SettingsTabLink(SettingsTabName.connections) { Text("Add tenants in Settings…") }
                         .buttonStyle(.link)
+                    if !appState.demo.isOn {
+                        Button("Try Demo Mode") { appState.demo.requestSwitch(to: true) }
+                            .buttonStyle(.link)
+                            .help(DemoMode.helpText)
+                    }
                 }
                 if let preflight = appState.preflight, appState.mode == .copy {
                     PreflightSummary(preflight: preflight)
@@ -76,17 +80,22 @@ struct SidebarView: View {
     }
 }
 
+/// One role's tenant: JTKit's connection picker (the same items as the
+/// Connection menu), with Demo Mode below the tenants.
 private struct TenantPicker: View {
     @Environment(AppState.self) private var appState
     let title: String
-    @Binding var selection: Tenant.ID?
+    let role: ConnectionRole
 
     var body: some View {
-        Picker(title, selection: $selection) {
-            Text("None").tag(Tenant.ID?.none)
-            ForEach(appState.tenantStore.tenants) { tenant in
-                Text(tenant.name).tag(Tenant.ID?.some(tenant.id))
+        LabeledContent(title) {
+            ConnectionPicker(store: appState.tenantStore.connections, role: role, editTitle: "Edit Tenants…") {
+                DemoModeToggle(demo: appState.demo)
+                    .disabled(appState.isRunning || appState.isPlanning)
             }
+            // long names ("Contoso Destination (Demo)") shorten in a narrow sidebar
+            .lineLimit(1)
+            .truncationMode(.middle)
         }
     }
 }

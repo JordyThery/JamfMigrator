@@ -29,14 +29,15 @@ struct ConnectionsSettings: View {
         ConnectionsSettingsTab(
             store: appState.tenantStore.connections,
             services: [.jamfPlatform, .jamfPro],
-            roles: [ConnectionRole("Source", selection: $appState.sourceTenantID),
-                    ConnectionRole("Destination", selection: $appState.destTenantID)],
+            roles: [appState.sourceRole,
+                    ConnectionRole("Destination", selection: $appState.destTenantID, demo: appState.destDemo)],
             height: tabHeight,
             newRecord: { service in
                 Tenant(connection: Connection(name: "New tenant", service: service))
             },
             didDelete: { tenant in appState.forgetTenant(tenant.id) },
             test: { tenant, secrets in
+                // always the real tenant on the real network, also in demo mode
                 let client = appState.tenantStore.testClient(for: tenant, secretOverride: secrets[.main])
                 let check = await Preflight.check(client)
                 guard check.reachable else {
@@ -75,6 +76,12 @@ struct SecretsSettings: View {
 
     var body: some View {
         Form {
+            if appState.demo.isOn {
+                Label("Demo Mode is on. These are your real passwords; demo runs write the placeholder instead.",
+                      systemImage: "testtube.2")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
             Text("The API never returns these passwords. When set here, runs write them to the destination instead of the \"\(placeholderSecret)\" placeholder.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
