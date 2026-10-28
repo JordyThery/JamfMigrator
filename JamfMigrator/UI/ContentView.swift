@@ -42,6 +42,17 @@ struct ContentView: View {
                 DeleteModeBanner()
             }
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            // why Run is off although there is a plan
+            if !appState.isRunning, !appState.isPlanning, let reason = appState.runBlockedReason {
+                Label(reason, systemImage: "exclamationmark.triangle.fill")
+                    .symbolRenderingMode(.multicolor)
+                    .font(.callout)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.bar)
+            }
+        }
         .toolbar {
             ToolbarItemGroup {
                 Picker("Mode", selection: $appState.mode) {
@@ -78,6 +89,7 @@ struct ContentView: View {
                 .tint(appState.mode == .delete ? .red : nil)
                 .buttonStyle(.borderedProminent)
                 .disabled(!appState.canRun)
+                .help(appState.runBlockedReason ?? "Carries out the plan Preview showed: the ticked objects only.")
             }
         }
         // demo mode on or off, or another tenant: the plan is for other tenants

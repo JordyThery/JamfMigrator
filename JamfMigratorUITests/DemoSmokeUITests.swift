@@ -18,6 +18,11 @@ final class DemoSmokeUITests: JTKitUITestCase {
         // the guided tour opens on a first launch
         let skip = app.buttons["Skip Tour"].firstMatch
         if skip.waitForExistence(timeout: 3) { skip.click() }
+        // room for the sidebar's types and the object list
+        if app.windows.firstMatch.frame.height < 700 {
+            let zoom = app.menuBars.menuItems["Zoom"].firstMatch
+            if zoom.exists { zoom.click() }
+        }
     }
 
     func test1Launch() {
@@ -93,7 +98,55 @@ final class DemoSmokeUITests: JTKitUITestCase {
         checkDemoTitles()
     }
 
+    /// Ticks are what Run carries out: Preview Categories, untick every
+    /// object, tick one, and Run offers exactly that one change.
+    func test8RunTakesOnlyTickedObjects() {
+        previewCategoriesOnly()
+        // show the Categories objects (the row, not its checkbox)
+        let row = app.outlines["Sidebar"].outlineRows.containing(.checkBox, identifier: "Categories").firstMatch
+        let categoriesRow = row.exists ? row
+            : app.outlines["Sidebar"].outlineRows.containing(NSPredicate(format: "label == 'Categories'")).firstMatch
+        XCTAssertTrue(categoriesRow.waitForExistence(timeout: 10), "No Categories row")
+        categoriesRow.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).click()
+        tap(app.toolbars.menuButtons["Select"].firstMatch, timeout: 10)
+        tap(app.menuItems["Uncheck all"].firstMatch, timeout: 5)
+        let runButton = toolbarButton("Run")
+        XCTAssertTrue(runButton.waitForExistence(timeout: 5))
+        XCTAssertFalse(runButton.isEnabled, "Run is on with nothing ticked")
+        // the first object row that can be ticked
+        let objectRow = app.checkBoxes.matching(NSPredicate(format: "label == '' AND isEnabled == true")).firstMatch
+        tap(objectRow, timeout: 10)
+        tap(runButton, timeout: 10)
+        let copyOne = dialogButton("Copy 1 changes")
+        XCTAssertTrue(copyOne.waitForExistence(timeout: 10), "The confirmation doesn't offer exactly the one ticked change")
+        copyOne.click()
+        XCTAssertTrue(anyContaining("Results").waitForExistence(timeout: 60), "The run didn't finish")
+        tap(app.buttons["Close"].firstMatch, timeout: 10)
+    }
+
+    /// Changing the selected types after Preview turns Run off until a new Preview.
+    func test9SelectionChangeNeedsNewPreview() {
+        previewCategoriesOnly()
+        let scripts = app.checkBoxes["Scripts"].firstMatch
+        scrollIntoView(scripts)
+        tap(scripts, timeout: 10)
+        XCTAssertFalse(toolbarButton("Run").isEnabled, "Run is still on after the selection changed")
+        XCTAssertTrue(anyContaining("The selected types changed since Preview").waitForExistence(timeout: 5),
+                      "The window doesn't say why Run is off")
+    }
+
     // MARK: Helpers
+
+    /// Only Categories selected, then Preview until Run can be clicked.
+    private func previewCategoriesOnly() {
+        tap(app.links["Uncheck all"].firstMatch, timeout: 20)
+        let categories = app.checkBoxes["Categories"].firstMatch
+        scrollIntoView(categories)
+        tap(categories, timeout: 10)
+        tap(toolbarButton("Preview"), timeout: 10)
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == true"), object: toolbarButton("Run"))
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 120), .completed, "Preview found nothing to copy in Categories")
+    }
 
     private func toolbarButton(_ label: String) -> XCUIElement {
         app.toolbars.buttons[label].firstMatch

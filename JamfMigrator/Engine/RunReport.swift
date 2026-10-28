@@ -18,6 +18,10 @@ struct RunReportEntry: Codable, Sendable, Equatable {
 
 struct RunReport: Codable, Sendable {
     var entries: [RunReportEntry] = []
+    /// Set when the run stopped because something changed since Preview (an
+    /// object, or Settings › Secrets, or the mappings): what, in words. Never
+    /// a secret's value.
+    var stopReason: String? = nil
 
     mutating func add(type: ObjectType, ref: ObjectRef, status: ObjectStatus, warnings: [String] = []) {
         entries.append(RunReportEntry(type: type.key, objectId: ref.id, objectName: ref.name,
@@ -81,7 +85,7 @@ struct RunReportFile {
 
     /// Writes the report into `folder` and returns where. A second run in
     /// the same second gets a numbered name instead of replacing the first.
-    func save(in folder: URL = RunReportFile.folder) throws -> URL {
+    func save(in folder: URL) throws -> URL {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let base = (fileName as NSString).deletingPathExtension
         var url = folder.appendingPathComponent(fileName)
@@ -105,7 +109,9 @@ struct RunReportFile {
         let end = Self.formatted(finished, day == Self.formatted(finished, "yyyy-MM-dd") ? "HH:mm:ss" : "yyyy-MM-dd HH:mm:ss")
         lines.append("Started \(Self.formatted(started, "yyyy-MM-dd HH:mm:ss")) · "
                      + "\(wasStopped ? "Stopped" : "Finished") \(end) · Jamf Migrator \(appVersion)")
-        if wasStopped {
+        if let reason = report.stopReason {
+            lines.append("Stopped: \(reason) Objects after that point were not touched.")
+        } else if wasStopped {
             lines.append("The run was stopped before the end; objects after that point were not touched.")
         }
 

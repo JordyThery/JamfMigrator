@@ -246,9 +246,10 @@ struct Phase6EngineTests {
                 return MockHTTP.Reply(status: 200, data: MockHTTP.json(["id": "C1", "title": "CIS Level 1", "baselineId": "cis-l1"]))
             case ("dst", "GET", "/compliance-benchmarks/v1/benchmarks"):
                 listCalls.withLock { $0 += 1 }
-                // first list: empty (no match, so the engine creates); the
-                // re-list after the 409 shows the benchmark that appeared
-                if listCalls.value == 1 {
+                // Preview's and Run's lists: empty (no match, so the engine
+                // creates); the re-list after the 409 shows the benchmark
+                // that appeared
+                if listCalls.value <= 2 {
                     return MockHTTP.Reply(status: 200, data: MockHTTP.json(["benchmarks": []]))
                 }
                 return MockHTTP.Reply(status: 200, data: MockHTTP.json(["benchmarks": [["id": "C9", "title": "CIS Level 1"]]]))

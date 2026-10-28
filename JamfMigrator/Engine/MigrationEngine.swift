@@ -12,20 +12,29 @@ import JTKit
 
 actor MigrationEngine {
 
-    private let source: JamfPlatform.Client
-    private let dest: JamfPlatform.Client
+    let source: JamfPlatform.Client
+    let dest: JamfPlatform.Client
     private let journal: JournalStore
     private let export: ExportWriter?
-    private let secrets: [String: String]
-    private let mappings: TenantMappings
+    let secrets: [String: String]
+    let mappings: TenantMappings
     private let progress: (@Sendable (ProgressEvent) -> Void)?
     private let icons: IconMigrator
 
     private var isCancelled = false
-    /// Destination ids by name and source names by id, per registry key.
+    /// Destination ids by name (and names by id, and names used more than
+    /// once) and source names by id, per registry key.
     /// Filled per type as the run proceeds and reused by later transforms.
     private var destIdsByName = [String: [String: String]]()
+    private var destNamesById = [String: [String: String]]()
+    private var destDuplicateNames = [String: Set<String>]()
     private var sourceNamesById = [String: [String: String]]()
+    /// Stops the run before writing `ref`, because it changed since Preview.
+    private func stop(_ type: ObjectType, _ ref: ObjectRef, _ change: String) {
+        stopReason = "\(type.displayName) › \"\(ref.name)\": \(change). The run stopped before writing it; Preview again."
+        AppActivity.record(stopReason ?? "", category: "Migration", level: .warning)
+    }
+
     /// Destination patch source ids by name, loaded on the first patch title create.
     private var patchSourceIds = [String: String]()
 
@@ -50,25 +59,39 @@ actor MigrationEngine {
         isCancelled = true
     }
 
-    /// Migrates the selected types in registry order and returns the report.
-    /// `excluding` holds per-type source object ids that were unchecked;
-    /// `only` is a test-only limit to named source objects (see
-    /// `OnlyObjects`), which the app itself never passes.
-    func migrate(typeKeys: Set<String>, excluding: [String: Set<String>] = [:],
-                 only: OnlyObjects? = nil) async -> RunReport {
+    /// Carries out exactly the plan Preview showed: the ticked Create,
+    /// Update and Replace rows, in step order; Unchanged and Blocked rows are
+    /// never touched, and nothing that wasn't in the plan is.
+    ///
+    /// Right before each write the object is compared again exactly as
+    /// Preview compared it. If the source object, the destination object or
+    /// the destination's use of the name changed since Preview, the run stops
+    /// before writing it and the report says why (`stopReason`).
+    ///
+    /// - Parameter including: the ticked source object ids per registry key.
+    func run(_ plan: MigrationPlan, including: [String: Set<String>]) async -> RunReport {
         var report = RunReport()
-        let types = ObjectRegistry.types.filter { typeKeys.contains($0.key) }
+        stopReason = nil
+        // the names Preview treated as "will exist" when it compared each object:
+        // the planned creates before it, in plan order
+        var precedingCreates = [String: Set<String>]()
 
-        for type in types {
-            guard !isCancelled else { break }
+        for type in ObjectRegistry.types where plan.typeKeys.contains(type.key) {
+            guard !isCancelled, stopReason == nil else { break }
+            let entries = plan.entries(for: type.key)
+            let ticked = entries.filter { $0.change.isRunnable && including[type.key]?.contains($0.objectId) == true }
+            defer {
+                for entry in entries { if case .create = entry.change { precedingCreates[type.key, default: []].insert(entry.name) } }
+            }
+            guard !ticked.isEmpty else { continue }
             if type.requiresGateway && !(source.supportsPlatformEndpoints && dest.supportsPlatformEndpoints) {
                 report.add(type: type, ref: ObjectRef(id: "-", name: "(all objects)"),
                            status: .blocked(reason: "\(type.displayName) require the Jamf Platform API gateway"))
                 continue
             }
             do {
-                try await migrateType(type, included: typeKeys,
-                                      excluded: excluding[type.key] ?? [], only: only, report: &report)
+                try await runType(type, entries: entries, ticked: Set(ticked.map(\.objectId)), plan: plan,
+                                  precedingCreates: precedingCreates, report: &report)
             } catch {
                 AppActivity.record("\(type.displayName) failed: \(error.localizedDescription)",
                                    category: "Migration", level: .error)
@@ -76,61 +99,94 @@ actor MigrationEngine {
                            status: .failed(reason: error.localizedDescription))
             }
         }
+        report.stopReason = stopReason
         return report
     }
 
-    private func migrateType(_ type: ObjectType, included: Set<String>, excluded: Set<String>, only: OnlyObjects?,
-                             report: inout RunReport) async throws {
+    /// Why the run stopped before the end because something changed since
+    /// Preview; nil otherwise.
+    private var stopReason: String?
+
+    private func runType(_ type: ObjectType, entries: [ObjectPlan], ticked: Set<String>, plan: MigrationPlan,
+                         precedingCreates: [String: Set<String>], report: inout RunReport) async throws {
         // lookups the transform needs, even when those types aren't being migrated
         for dependency in type.dependencies + ["sites"] {
             try await loadLookups(for: dependency, destination: true, source: true)
         }
-
         if ["blueprints", "compliancebenchmarks"].contains(type.key) {
             try await loadPlatformGroupLookups()
         }
-        let sourceRefs = try await ObjectLister.list(type, on: source)
-        sourceNamesById[type.key] = Dictionary(sourceRefs.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
-        try await loadLookups(for: type.key, destination: true, source: false)
+        // the destination as it is now, also for names Preview planned
+        try await loadLookups(for: type.key, destination: true, source: true, refresh: true)
 
+        var creates = precedingCreates
         var completed = 0
-        var seenNames = Set<String>()
-        let includedRefs = sourceRefs.limited(to: only, typeKey: type.key).filter { !excluded.contains($0.id) }
-        for ref in includedRefs {
-            guard !isCancelled else { return }
+        for entry in entries {
+            defer { if case .create = entry.change { creates[type.key, default: []].insert(entry.name) } }
+            guard ticked.contains(entry.objectId) else { continue }
+            guard !isCancelled, stopReason == nil else { return }
             completed += 1
-
-            // name matching can't tell same-named source objects apart; only
-            // the first one migrates
-            if !seenNames.insert(ref.name).inserted {
-                let status = ObjectStatus.blocked(reason: "Duplicate name on the source; rename one of the two objects to migrate both")
-                await journal.record(type: type.key, objectId: ref.id, status: status)
-                report.add(type: type, ref: ref, status: status)
-                progress?(ProgressEvent(type: type.key, objectName: ref.name,
-                                        completed: completed, total: includedRefs.count, status: status))
-                continue
-            }
+            let ref = ObjectRef(id: entry.objectId, name: entry.name)
 
             // resume: skip objects an interrupted run already finished
             if let previous = await journal.status(type: type.key, objectId: ref.id), previous.isDone {
                 report.add(type: type, ref: ref, status: previous)
                 progress?(ProgressEvent(type: type.key, objectName: ref.name,
-                                        completed: completed, total: includedRefs.count, status: previous))
+                                        completed: completed, total: ticked.count, status: previous))
                 continue
             }
 
-            let (status, warnings) = await migrateObject(type, ref: ref, included: included)
+            let (status, warnings) = await runObject(type, entry: entry, plan: plan, plannedCreates: creates)
+            if stopReason != nil {
+                // nothing was written for this object; it stays as it is
+                return
+            }
             await journal.record(type: type.key, objectId: ref.id, status: status)
             if let destId = status.destId {
                 destIdsByName[type.key, default: [:]][ref.name] = destId
+                destNamesById[type.key, default: [:]][destId] = ref.name
             }
             report.add(type: type, ref: ref, status: status, warnings: warnings)
             progress?(ProgressEvent(type: type.key, objectName: ref.name,
-                                    completed: completed, total: includedRefs.count, status: status))
+                                    completed: completed, total: ticked.count, status: status))
         }
     }
 
-    private func migrateObject(_ type: ObjectType, ref: ObjectRef, included: Set<String>) async -> (ObjectStatus, [String]) {
+    /// What the object's check before writing found that differs from
+    /// Preview, in words; nil when it is exactly what Preview saw.
+    static func changeSincePreview(planned: ObjectPlan, now: ObjectPlan) -> String? {
+        switch (planned.change, now.change) {
+        case (.create, .create):
+            break
+        case (.create, .update), (.create, .replace), (.create, .unchanged):
+            return "an object with this name now exists on the destination"
+        case (.update(let was), .update(let id)), (.replace(let was), .replace(let id)):
+            if was != id { return "the destination object with this name is now another one" }
+        case (.update, .unchanged), (.replace, .unchanged):
+            return "changed on the destination since Preview"
+        case (.update, .create), (.replace, .create):
+            return "no longer on the destination"
+        case (_, .blocked(let reason)):
+            return "can no longer be migrated: \(reason)"
+        default:
+            return "is no longer what Preview showed"
+        }
+        if planned.sourceDigest != now.sourceDigest { return "changed on the source since Preview" }
+        if planned.destDigest != now.destDigest { return "changed on the destination since Preview" }
+        return nil
+    }
+
+    private func runObject(_ type: ObjectType, entry: ObjectPlan, plan: MigrationPlan,
+                           plannedCreates: [String: Set<String>]) async -> (ObjectStatus, [String]) {
+        let ref = ObjectRef(id: entry.objectId, name: entry.name)
+        // an object this one needs from the same run must exist now: if its
+        // create failed, this row isn't written with a missing reference
+        // (it fails, so Resume run retries it once the other is there)
+        let missing = entry.plannedDependencies.filter { destIdsByName[$0.typeKey]?[$0.name] == nil }
+        if !missing.isEmpty {
+            let names = missing.map { "\(ObjectRegistry.type($0.typeKey)?.displayName ?? $0.typeKey) › \"\($0.name)\"" }
+            return (.failed(reason: "Not written: it needs \(names.joined(separator: ", ")), which this run didn't create"), [])
+        }
         // values the server may repeat in an error, kept out of the reason
         var secretValues = [String]()
         do {
@@ -139,30 +195,53 @@ actor MigrationEngine {
                 secretValues = type.secretValues(in: xml)
             }
 
+            // the check before writing: the same comparison as Preview, with
+            // what this run created counted as "will exist", as Preview did
+            if destDuplicateNames[type.key]?.contains(ref.name) == true {
+                stop(type, ref, "more than one destination object is now named \"\(ref.name)\"")
+                return (.failed(reason: "Not written"), [])
+            }
+            let existingDestId = destIdsByName[type.key]?[ref.name]
+            var destPayload: ObjectPayload? = nil
+            if let existingDestId {
+                destPayload = try await ObjectLister.detail(type, id: existingDestId, on: dest)
+            }
+            // Preview saw the objects it planned to create as "will exist";
+            // so does this check, whether they were created by this run, by
+            // an interrupted earlier run of the same plan, or not yet
+            var asPreviewSaw = destIdsByName
+            for (typeKey, names) in plannedCreates {
+                for name in names { asPreviewSaw[typeKey]?[name] = nil }
+            }
+            let now = MigrationPlanner.compare(
+                type, ref: ref, sourcePayload: payload, destId: existingDestId, destPayload: destPayload,
+                inputs: MigrationPlanner.ComparisonInputs(destIdsByName: asPreviewSaw, destNamesById: destNamesById,
+                                                          sourceNamesById: sourceNamesById, plannedCreates: plannedCreates,
+                                                          secrets: secrets, included: plan.typeKeys, mappings: mappings))
+            if let change = Self.changeSincePreview(planned: entry, now: now) {
+                stop(type, ref, change)
+                return (.failed(reason: "Not written"), [])
+            }
+
             var context = TransformContext()
             context.destIdsByName = destIdsByName
             context.sourceNamesById = sourceNamesById
             context.secrets = secrets
-            context.includedTypes = included
+            context.includedTypes = plan.typeKeys
             context.mappings = mappings
 
-            let existingDestId = destIdsByName[type.key]?[ref.name]
             if let existingDestId {
                 context.action = .update(destId: existingDestId)
                 // profile updates keep the destination's payload UUID
-                if ["osxconfigurationprofiles", "mobiledeviceconfigurationprofiles"].contains(type.key) {
-                    let destXml = try await ObjectLister.detail(type, id: existingDestId, on: dest)
-                    if case .xml(let xml) = destXml {
-                        context.destProfileUUID = ClassicXML.value(of: "uuid", in: ClassicXML.value(of: "general", in: xml))
-                    }
+                if ["osxconfigurationprofiles", "mobiledeviceconfigurationprofiles"].contains(type.key),
+                   case .xml(let xml)? = destPayload {
+                    context.destProfileUUID = ClassicXML.value(of: "uuid", in: ClassicXML.value(of: "general", in: xml))
                 }
                 // PreStage PUTs must echo the destination's versionLocks
-                if ["computerprestages", "mobiledeviceprestages"].contains(type.key) {
-                    let destDetail = try await ObjectLister.detail(type, id: existingDestId, on: dest)
-                    if case .json(let destJson) = destDetail {
-                        context.destVersionLocks = MigrationPlanner.versionLocks(in: destJson)
-                        context.destPreStageIds = MigrationPlanner.nestedIds(in: destJson)
-                    }
+                if ["computerprestages", "mobiledeviceprestages"].contains(type.key),
+                   case .json(let destJson)? = destPayload {
+                    context.destVersionLocks = MigrationPlanner.versionLocks(in: destJson)
+                    context.destPreStageIds = MigrationPlanner.nestedIds(in: destJson)
                 }
             }
 
@@ -434,6 +513,7 @@ actor MigrationEngine {
         guard destIdsByName[platformGroupsKey] == nil else { return }
         let destGroups = try await MappingCatalog.platformGroups(on: dest)
         destIdsByName[platformGroupsKey] = Dictionary(destGroups.map { ($0.name, $0.id) }, uniquingKeysWith: { first, _ in first })
+        destNamesById[platformGroupsKey] = Dictionary(destGroups.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
         let sourceGroups = try await MappingCatalog.platformGroups(on: source)
         sourceNamesById[platformGroupsKey] = Dictionary(sourceGroups.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
     }
@@ -450,11 +530,15 @@ actor MigrationEngine {
 
     /// Lists a type on the destination and/or source purely to fill the
     /// lookup maps used by transforms.
-    private func loadLookups(for typeKey: String, destination: Bool, source wantSource: Bool) async throws {
+    private func loadLookups(for typeKey: String, destination: Bool, source wantSource: Bool,
+                             refresh: Bool = false) async throws {
         guard let type = ObjectRegistry.type(typeKey) else { return }
-        if destination && destIdsByName[typeKey] == nil {
+        if destination && (refresh || destIdsByName[typeKey] == nil) {
             let refs = try await ObjectLister.list(type, on: dest)
             destIdsByName[typeKey] = Dictionary(refs.map { ($0.name, $0.id) }, uniquingKeysWith: { first, _ in first })
+            destNamesById[typeKey] = Dictionary(refs.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+            let counts = Dictionary(refs.map { ($0.name, 1) }, uniquingKeysWith: +)
+            destDuplicateNames[typeKey] = Set(counts.filter { $0.value > 1 }.keys)
         }
         if wantSource && sourceNamesById[typeKey] == nil {
             let refs = try await ObjectLister.list(type, on: source)

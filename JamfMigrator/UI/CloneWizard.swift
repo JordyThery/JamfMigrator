@@ -345,6 +345,9 @@ private struct RunStep: View {
                 Text("\(appState.runEvents.count) objects processed")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+            } else if let report = appState.report, let reason = report.stopReason {
+                Label(reason, systemImage: "exclamationmark.octagon.fill")
+                    .symbolRenderingMode(.multicolor)
             } else if let report = appState.report {
                 let failures = report.retryableFailures
                 Label(failures.isEmpty
@@ -397,7 +400,9 @@ private struct VerifyStep: View {
             } else if let report = appState.verifyReport {
                 Label(report.isClean
                       ? "Verified: a second run would write nothing."
-                      : "\(report.discrepancyCount) objects differ or are missing.",
+                      : report.notCheckedCount > 0
+                        ? "\(report.notCheckedCount) types could not be checked\(report.discrepancyCount > 0 ? "; \(report.discrepancyCount) objects differ or are missing" : "")."
+                        : "\(report.discrepancyCount) objects differ or are missing.",
                       systemImage: report.isClean ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
                     .foregroundStyle(report.isClean ? .green : .orange)
                     .font(.headline)
@@ -406,9 +411,14 @@ private struct VerifyStep: View {
                         HStack {
                             Text(ObjectRegistry.type(result.typeKey)?.displayName ?? result.typeKey)
                             Spacer()
-                            Text("\(result.sourceCount) source / \(result.destCount) destination")
+                            Text("\(result.sourceCount) source / \(result.destCount.map(String.init) ?? "?") destination")
                                 .font(.caption.monospacedDigit())
                                 .foregroundStyle(.secondary)
+                        }
+                        if let reason = result.notChecked {
+                            Label("Not checked: \(reason)", systemImage: "questionmark.circle")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
                         }
                         ForEach(result.discrepancies, id: \.self) { item in
                             Label(item, systemImage: "xmark.circle")
@@ -450,7 +460,8 @@ private struct VerifyStep: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         var lines = ["Clone verification — \(Date().formatted())", ""]
         for result in report.types {
-            lines.append("\(result.typeKey): \(result.sourceCount) source / \(result.destCount) destination")
+            lines.append("\(result.typeKey): \(result.sourceCount) source / \(result.destCount.map(String.init) ?? "?") destination")
+            if let reason = result.notChecked { lines.append("  NOT CHECKED \(reason)") }
             lines.append(contentsOf: result.discrepancies.map { "  DIFFERS \($0)" })
             lines.append(contentsOf: result.blocked.map { "  BLOCKED \($0)" })
         }

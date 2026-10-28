@@ -61,7 +61,9 @@ struct MigrationEngineTests {
                 return MockHTTP.Reply(status: 200, data: MockHTTP.json(
                     ["totalCount": 1, "results": [["id": "70", "name": "Utilities"]]]))
             case ("src", "GET", "/pro/v1/categories/5"):
-                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["id": "5", "name": "Utilities"]))
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["id": "5", "name": "Utilities", "priority": 9]))
+            case ("dst", "GET", "/pro/v1/categories/70"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["id": "70", "name": "Utilities", "priority": 1]))
             case ("dst", "PUT", "/pro/v1/categories/70"):
                 return MockHTTP.Reply(status: 200, data: MockHTTP.json(["id": "70"]))
             default:
@@ -177,15 +179,16 @@ struct MigrationEngineTests {
             }
         }
 
-        let journal = makeJournal()
-        let engine = MigrationEngine(source: gateway.source, dest: gateway.dest, journal: journal)
-        let report = await engine.migrate(typeKeys: ["classes"])
-
-        guard case .blocked(let reason)? = report.entries.first?.status else {
-            Issue.record("expected .blocked, got \(String(describing: report.entries.first))")
+        // Preview shows it Blocked; Run never touches a Blocked row
+        let plan = await MigrationPlanner(source: gateway.source, dest: gateway.dest).plan(typeKeys: ["classes"])
+        guard case .blocked(let reason)? = plan.entries.first?.change else {
+            Issue.record("expected .blocked, got \(String(describing: plan.entries.first))")
             return
         }
         #expect(reason.contains("Apple School Manager"))
+        let report = await MigrationEngine(source: gateway.source, dest: gateway.dest, journal: makeJournal())
+            .run(plan, including: ["classes": ["3"]])
+        #expect(report.entries.isEmpty)
         #expect(gateway.writes(to: "dst").isEmpty)
     }
 
@@ -258,14 +261,13 @@ struct DeleteEngineTests {
         let report = await engine.delete(typeKeys: ["policies", "smartcomputergroups"])
 
         // policies (step 8) delete before groups (step 6); the built-in group
-        // is reported as kept, never touched; the held group succeeds on retry
+        // is kept by Preview and never touched; the held group succeeds on retry
         let deletes = gateway.requests.value.filter { $0.method == "DELETE" }.map(\.path)
         #expect(deletes == ["/proclassic/policies/id/31",
                             "/pro/v3/computer-groups/smart-groups/12",
                             "/pro/v3/computer-groups/smart-groups/12"])
         #expect(report.entries.filter { $0.status == .deleted }.count == 2)
-        #expect(report.entries.contains { $0.status == .blocked(reason: "Built-in object") })
-        #expect(report.entries.count == 3)
+        #expect(report.entries.count == 2)
     }
 
     @Test func classicMisleading400IsVerifiedWithAGet() async throws {

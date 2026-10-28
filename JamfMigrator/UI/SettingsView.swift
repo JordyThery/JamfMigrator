@@ -125,11 +125,13 @@ private struct ServiceSecretField: View {
 
 struct ExportSettings: View {
 
-    @AppStorage("exportOnRun") private var exportOnRun = false
+    @Environment(AppState.self) private var appState
 
     var body: some View {
+        @Bindable var appState = appState
         Form {
-            Toggle("Save payloads during runs", isOn: $exportOnRun)
+            // the app's own settings, so a sandbox run never changes the real one
+            Toggle("Save payloads during runs", isOn: $appState.exportOnRun)
             Text("Each run writes the raw source payloads and the trimmed payloads that were sent, per object, under Application Support › JamfMigrator › exports.")
                 .font(.callout)
                 .foregroundStyle(.secondary)

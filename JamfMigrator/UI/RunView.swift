@@ -27,11 +27,17 @@ struct RunView: View {
                         Button("Show Report in Finder") {
                             NSWorkspace.shared.activateFileViewerSelecting([url])
                         }
-                        .help("The report of this run is saved in Application Support › JamfMigrator › Run Reports.")
+                        .help("The report of this run is saved in \(appState.runReportsLocation).")
                     }
                     Button("Close") { dismiss() }
                         .keyboardShortcut(.defaultAction)
                 }
+            }
+
+            if !appState.isRunning, let reason = appState.report?.stopReason {
+                Label(reason, systemImage: "exclamationmark.octagon.fill")
+                    .symbolRenderingMode(.multicolor)
+                    .font(.callout)
             }
 
             if !appState.isRunning, let problem = appState.reportSaveError {

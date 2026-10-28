@@ -1,5 +1,33 @@
 # Change log
 
+## Unreleased
+- Run now carries out exactly the plan Preview showed: only the ticked
+  objects that Preview marked to create, update or delete. Unchanged
+  objects are skipped, objects added after Preview are left alone, and
+  changing the selected types after Preview turns Run off until you
+  preview again.
+- Run stops before writing an object that changed on the source or the
+  destination since Preview, or when Settings › Secrets or the mappings
+  changed, and asks for a new Preview. The run report says what changed
+  (for Secrets only that they changed, never a value).
+- Objects with the same name on the source are all blocked, as are
+  duplicates on the destination; Run never picks one of them.
+- Unticking an object that a ticked object needs (for example a script's
+  new category) turns Run off and says which object needs it.
+- If creating an object fails during Run, the objects that need it are not
+  written with a missing reference; they are reported as not written, and
+  Resume run retries them.
+- Delete mode deletes only the objects Preview listed, and stops if one
+  changed since Preview.
+- Verify marks a type it couldn't read as "Not checked" instead of
+  passing it.
+- Fixed: new static computer groups failed to copy (Jamf answered with
+  an error); they are now created empty as intended.
+- Blueprints and Compliance Benchmarks are left out of Preview while a
+  tenant connects directly to Jamf Pro, instead of showing as blocked.
+- The run window's help names where run reports are saved, also in demo
+  mode.
+
 ## v1.0.5
 - Fixed: patch management titles were never copied — the type always
   appeared empty, and patch policies were blocked as a result. Titles are

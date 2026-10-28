@@ -73,7 +73,29 @@ final class AppState {
     /// Where the app keeps journals, backups, exports and run reports:
     /// Application Support, or demo mode's temporary folder.
     var dataDirectory: URL {
-        demo.isOn ? demo.scratchDirectory : URL(fileURLWithPath: AppInfo.appSupportPath, isDirectory: true)
+        if demo.isOn { return demo.scratchDirectory }
+        // a sandbox run (UI tests) never writes into the real folder
+        if demo.isSandbox { return Self.sandboxDirectory }
+        return URL(fileURLWithPath: AppInfo.appSupportPath, isDirectory: true)
+    }
+
+    /// A sandbox run's folder for journals, backups, exports and run reports,
+    /// one per launch, in the temporary folder.
+    private static let sandboxDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("JamfMigrator-sandbox-\(UUID().uuidString)", isDirectory: true)
+
+    /// Where run reports go, in words, for the run sheet's help.
+    var runReportsLocation: String {
+        if demo.isOn { return "demo mode's temporary folder (Run Reports)" }
+        if demo.isSandbox { return "this sandbox run's temporary folder (Run Reports)" }
+        return "Application Support › JamfMigrator › Run Reports"
+    }
+
+    /// Settings › Export: "Save payloads during runs", in the app's own
+    /// settings (a sandbox run's are in memory).
+    var exportOnRun: Bool {
+        get { access(keyPath: \.exportOnRun); return defaults.bool(forKey: "exportOnRun") }
+        set { withMutation(keyPath: \.exportOnRun) { defaults.set(newValue, forKey: "exportOnRun") } }
     }
 
     /// Identifies the tenants in use and the mode, so a change of either
@@ -130,8 +152,53 @@ final class AppState {
         // demo mode's choice is kept in memory only
         didSet { if !demo.isOn { defaults.set(Array(selectedTypeKeys), forKey: "selectedTypeKeys") } }
     }
-    /// Source object ids the user unchecked, per registry key.
-    var excludedObjectIds: [String: Set<String>] = [:]
+    /// The ticked rows, per registry key: what Run carries out. After a
+    /// Preview every Create, Update, Replace and Delete row starts ticked;
+    /// anything else (Unchanged, Blocked, objects that appear later) is never
+    /// in it.
+    var includedObjectIds: [String: Set<String>] = [:]
+
+    func isIncluded(_ entry: ObjectPlan) -> Bool {
+        includedObjectIds[entry.typeKey]?.contains(entry.objectId) == true
+    }
+
+    func setIncluded(_ included: Bool, _ entry: ObjectPlan) {
+        guard entry.change.isRunnable else { return }
+        if included {
+            includedObjectIds[entry.typeKey, default: []].insert(entry.objectId)
+        } else {
+            includedObjectIds[entry.typeKey]?.remove(entry.objectId)
+        }
+    }
+
+    /// Check all / Uncheck all for one type.
+    func setAllIncluded(_ included: Bool, typeKey: String) {
+        let runnable = plan?.entries(for: typeKey).filter(\.change.isRunnable).map(\.objectId) ?? []
+        includedObjectIds[typeKey] = included ? Set(runnable) : []
+    }
+
+    /// What Preview read besides the tenants, to tell at Run whether it
+    /// changed: the mappings, and a SHA-256 of each Settings › Secrets value
+    /// (in memory only; a value itself is never kept in the plan, a journal
+    /// or a run report).
+    private struct PlanInputs {
+        var mappings: TenantMappings
+        var secretDigests: [String: String]
+    }
+    private var planInputs: PlanInputs?
+
+    /// Set when a run stopped because something changed since Preview: Run
+    /// stays off until the next Preview.
+    var planIsStale = false
+
+    /// The types a Preview plans: the selection without the gateway-only
+    /// types the tenants can't reach (they stay selected for when both
+    /// tenants use the gateway again).
+    var previewTypeKeys: Set<String> {
+        selectedTypeKeys.filter { key in
+            !(ObjectRegistry.type(key)?.requiresGateway ?? false) || gatewayAvailable
+        }
+    }
 
     /// Sidebar and list selection.
     var selectedTypeKey: String?
@@ -177,7 +244,9 @@ final class AppState {
         reportSaveError = nil
         verifyReport = nil
         backupResult = nil
-        excludedObjectIds = [:]
+        includedObjectIds = [:]
+        planInputs = nil
+        planIsStale = false
         selectedObjectID = nil
         searchText = ""
     }
@@ -282,7 +351,46 @@ final class AppState {
         // the plan must match the current mode — a stale plan from before a
         // mode switch must never drive a run
         plan?.mode == mode && !isRunning && !isPlanning && tour.index == nil
-            && effectiveChangeCount > 0
+            && effectiveChangeCount > 0 && runBlockedReason == nil
+    }
+
+    /// Why Run is off although there is a plan with ticked changes.
+    var runBlockedReason: String? {
+        guard let plan else { return nil }
+        if planIsStale {
+            return "Something changed since Preview. Preview again before running."
+        }
+        if previewTypeKeys != plan.typeKeys {
+            return "The selected types changed since Preview. Preview again."
+        }
+        if let (entry, needs) = untickedDependency {
+            let type = ObjectRegistry.type(needs.typeKey)?.displayName ?? needs.typeKey
+            return "\"\(entry.name)\" needs \(type) › \"\(needs.name)\", which this run would create but is unticked. Tick it, or untick \"\(entry.name)\"."
+        }
+        return nil
+    }
+
+    /// A ticked row that refers to an object this run would create, while
+    /// that object is unticked.
+    var untickedDependency: (entry: ObjectPlan, needs: PlannedDependency)? {
+        guard let plan else { return nil }
+        var creates = [PlannedDependency: ObjectPlan]()
+        for entry in plan.entries {
+            if case .create = entry.change { creates[PlannedDependency(typeKey: entry.typeKey, name: entry.name)] = entry }
+        }
+        for entry in plan.entries where isIncluded(entry) {
+            for needs in entry.plannedDependencies {
+                if let dependency = creates[needs], !isIncluded(dependency) { return (entry, needs) }
+            }
+        }
+        return nil
+    }
+
+    /// The rows of `plan` that need `entry`'s object, when it is unticked.
+    func waitingOn(_ entry: ObjectPlan) -> [ObjectPlan] {
+        guard let plan, case .create = entry.change, !isIncluded(entry) else { return [] }
+        let me = PlannedDependency(typeKey: entry.typeKey, name: entry.name)
+        return plan.entries.filter { isIncluded($0) && $0.plannedDependencies.contains(me) }
     }
 
     /// The plan's actionable changes minus the unchecked objects — what a run
@@ -290,7 +398,7 @@ final class AppState {
     var effectiveCounts: (create: Int, update: Int, replace: Int, delete: Int) {
         guard let plan else { return (0, 0, 0, 0) }
         var create = 0, update = 0, replace = 0, delete = 0
-        for entry in plan.entries where !(excludedObjectIds[entry.typeKey]?.contains(entry.objectId) ?? false) {
+        for entry in plan.entries where isIncluded(entry) {
             switch entry.change {
             case .create: create += 1
             case .update: update += 1
@@ -338,6 +446,21 @@ final class AppState {
         return secrets
     }
 
+    /// A SHA-256 of each Settings › Secrets value, to tell at Run whether
+    /// one changed since Preview without keeping the value.
+    static func digests(of secrets: [String: String]) -> [String: String] {
+        secrets.mapValues { MigrationPlanner.digest(["value": $0]) }
+    }
+
+    /// Whether Settings › Secrets or the mappings changed since Preview, in
+    /// words. Only digests are compared; the words never name a value.
+    static func inputChange(secrets: [String: String], mappings: TenantMappings, mode: RunMode,
+                            previewDigests: [String: String], previewMappings: TenantMappings) -> String? {
+        if digests(of: secrets) != previewDigests { return "Secrets changed since Preview." }
+        if mode == .copy && mappings != previewMappings { return "Mappings changed since Preview." }
+        return nil
+    }
+
     // MARK: Preview
 
     func preview() {
@@ -349,9 +472,12 @@ final class AppState {
         report = nil
         lastError = nil
         let mode = mode
-        let typeKeys = selectedTypeKeys
+        let typeKeys = previewTypeKeys
         let secrets = serviceSecrets
         let mappings = mappings
+        planInputs = PlanInputs(mappings: mappings, secretDigests: Self.digests(of: secrets))
+        includedObjectIds = [:]
+        planIsStale = false
         planningStep = 0
         planningTotal = ObjectRegistry.types.filter { typeKeys.contains($0.key) }.count
         planningStatus = mode == .copy ? "Checking both tenants" : "Listing the tenant"
@@ -369,7 +495,7 @@ final class AppState {
                 let planner = MigrationPlanner(source: dest, dest: dest, secrets: secrets, mappings: mappings, progress: progress)
                 let plan = await planner.planDeletion(typeKeys: typeKeys)
                 guard !Task.isCancelled, self.mode == mode else { return }
-                self.plan = plan
+                self.adopt(plan)
             } else if let sourceTenant {
                 let source = tenantStore.client(for: sourceTenant)
                 let preflight = await Preflight.run(source: source, dest: dest, typeKeys: typeKeys)
@@ -377,7 +503,7 @@ final class AppState {
                 let plan = await planner.plan(typeKeys: typeKeys)
                 guard !Task.isCancelled, self.mode == mode else { return }
                 self.preflight = preflight
-                self.plan = plan
+                self.adopt(plan)
             }
             self.isPlanning = false
             // land on the overview, not on whichever type happened to be
@@ -387,10 +513,21 @@ final class AppState {
         }
     }
 
+    /// A finished Preview: every actionable row starts ticked.
+    private func adopt(_ plan: MigrationPlan) {
+        includedObjectIds = plan.runnableIds
+        self.plan = plan
+    }
+
     // MARK: Run
 
+    /// What the run carried out, for Verify afterwards: the types, and the
+    /// rows of the plan that were left unticked.
+    private var lastRunTypeKeys: Set<String>?
+    private var lastRunExcluded: [String: Set<String>] = [:]
+
     func run() {
-        guard canRun, let destTenant else { return }
+        guard canRun, let destTenant, let plan, let planInputs else { return }
         guard mode == .copy || !destTenant.isProtected else {
             lastError = "\(destTenant.name) is protected; switch protection off in Settings before deleting from it."
             return
@@ -412,10 +549,24 @@ final class AppState {
                                        started: Date(),
                                        finished: Date(),
                                        wasStopped: false)
-        let typeKeys = selectedTypeKeys
-        let excluding = excludedObjectIds
+        let including = includedObjectIds
         let secrets = serviceSecrets
         let mappings = mappings
+        lastRunTypeKeys = plan.typeKeys
+        lastRunExcluded = Dictionary(grouping: plan.entries.filter { $0.change.isRunnable && !isIncluded($0) },
+                                     by: \.typeKey).mapValues { Set($0.map(\.objectId)) }
+        // Settings › Secrets and the mappings must be what Preview used
+        if let changedInput = Self.inputChange(secrets: secrets, mappings: mappings, mode: mode,
+                                               previewDigests: planInputs.secretDigests,
+                                               previewMappings: planInputs.mappings) {
+            var stopped = RunReport()
+            stopped.stopReason = changedInput + " Nothing was written; Preview again."
+            AppActivity.record(stopped.stopReason ?? "", category: "Migration", level: .warning)
+            Task { [weak self] in
+                await self?.finishRun(report: stopped, journal: nil, file: reportFile)
+            }
+            return
+        }
         let journal = JournalStore(url: journalURL(destTenant: destTenant),
                                    mode: mode,
                                    sourceTenantId: mode == .copy ? sourceTenant?.id : nil,
@@ -433,14 +584,14 @@ final class AppState {
                                          export: export, secrets: secrets, mappings: mappings, progress: progress)
             activeMigration = engine
             runTask = Task { [weak self] in
-                let report = await engine.migrate(typeKeys: typeKeys, excluding: excluding)
+                let report = await engine.run(plan, including: including)
                 await self?.finishRun(report: report, journal: journal, file: reportFile)
             }
         case .delete:
             let engine = DeleteEngine(client: dest, journal: journal, progress: progress)
             activeDelete = engine
             runTask = Task { [weak self] in
-                let report = await engine.delete(typeKeys: typeKeys, excluding: excluding)
+                let report = await engine.run(plan, including: including)
                 await self?.finishRun(report: report, journal: journal, file: reportFile)
             }
         }
@@ -492,12 +643,19 @@ final class AppState {
     /// Set by Stop, so the saved report says the run didn't finish.
     private var runWasStopped = false
 
-    private func finishRun(report: RunReport, journal: JournalStore, file: RunReportFile) async {
+    private func finishRun(report: RunReport, journal: JournalStore?, file: RunReportFile) async {
         self.report = report
         saveReport(report, file: file)
         self.isRunning = false
         self.activeMigration = nil
         self.activeDelete = nil
+        if report.stopReason != nil {
+            // something changed since Preview: Run stays off until the next
+            // Preview; the journal keeps what was done for it
+            planIsStale = true
+            return
+        }
+        guard let journal else { return }
         if report.retryableFailures.isEmpty {
             // done: remove the journal and discard the now-stale plan
             await journal.finish()
@@ -605,8 +763,9 @@ final class AppState {
         verifyReport = nil
         let source = tenantStore.client(for: sourceTenant)
         let dest = tenantStore.client(for: destTenant)
-        let typeKeys = selectedTypeKeys
-        let excluding = excludedObjectIds
+        // after a run: what it carried out; otherwise the selection
+        let typeKeys = lastRunTypeKeys ?? previewTypeKeys
+        let excluding = lastRunTypeKeys == nil ? [:] : lastRunExcluded
         let secrets = serviceSecrets
         let mappings = mappings
         let progress: @Sendable (String) -> Void = { [weak self] name in
@@ -632,7 +791,7 @@ final class AppState {
     }
 
     private func exportWriterIfEnabled() -> ExportWriter? {
-        guard defaults.bool(forKey: "exportOnRun") else { return nil }
+        guard exportOnRun else { return nil }
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         let root = dataDirectory
