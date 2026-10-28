@@ -36,15 +36,17 @@ enum Verifier {
 
     /// Plans source → destination again and reports everything that is not
     /// Unchanged. A clean verify means a second run would write nothing.
+    /// `only` is a test-only limit to named source objects (see `OnlyObjects`).
     static func verify(source: JamfPlatform.Client,
                        dest: JamfPlatform.Client,
                        typeKeys: Set<String>,
                        excluding: [String: Set<String>] = [:],
+                       only: OnlyObjects? = nil,
                        secrets: [String: String] = [:],
                        mappings: TenantMappings = TenantMappings(),
                        progress: (@Sendable (String) -> Void)? = nil) async -> VerifyReport {
         let planner = MigrationPlanner(source: source, dest: dest, secrets: secrets, mappings: mappings, progress: progress)
-        let plan = await planner.plan(typeKeys: typeKeys)
+        let plan = await planner.plan(typeKeys: typeKeys, only: only)
 
         var report = VerifyReport()
         for type in ObjectRegistry.types where typeKeys.contains(type.key) {

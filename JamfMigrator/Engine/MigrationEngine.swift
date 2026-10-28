@@ -51,8 +51,11 @@ actor MigrationEngine {
     }
 
     /// Migrates the selected types in registry order and returns the report.
-    /// `excluding` holds per-type source object ids that were unchecked.
-    func migrate(typeKeys: Set<String>, excluding: [String: Set<String>] = [:]) async -> RunReport {
+    /// `excluding` holds per-type source object ids that were unchecked;
+    /// `only` is a test-only limit to named source objects (see
+    /// `OnlyObjects`), which the app itself never passes.
+    func migrate(typeKeys: Set<String>, excluding: [String: Set<String>] = [:],
+                 only: OnlyObjects? = nil) async -> RunReport {
         var report = RunReport()
         let types = ObjectRegistry.types.filter { typeKeys.contains($0.key) }
 
@@ -65,7 +68,7 @@ actor MigrationEngine {
             }
             do {
                 try await migrateType(type, included: typeKeys,
-                                      excluded: excluding[type.key] ?? [], report: &report)
+                                      excluded: excluding[type.key] ?? [], only: only, report: &report)
             } catch {
                 AppActivity.record("\(type.displayName) failed: \(error.localizedDescription)",
                                    category: "Migration", level: .error)
@@ -76,7 +79,8 @@ actor MigrationEngine {
         return report
     }
 
-    private func migrateType(_ type: ObjectType, included: Set<String>, excluded: Set<String>, report: inout RunReport) async throws {
+    private func migrateType(_ type: ObjectType, included: Set<String>, excluded: Set<String>, only: OnlyObjects?,
+                             report: inout RunReport) async throws {
         // lookups the transform needs, even when those types aren't being migrated
         for dependency in type.dependencies + ["sites"] {
             try await loadLookups(for: dependency, destination: true, source: true)
@@ -91,7 +95,7 @@ actor MigrationEngine {
 
         var completed = 0
         var seenNames = Set<String>()
-        let includedRefs = sourceRefs.filter { !excluded.contains($0.id) }
+        let includedRefs = sourceRefs.limited(to: only, typeKey: type.key).filter { !excluded.contains($0.id) }
         for ref in includedRefs {
             guard !isCancelled else { return }
             completed += 1
@@ -456,5 +460,53 @@ actor MigrationEngine {
             let refs = try await ObjectLister.list(type, on: source)
             sourceNamesById[typeKey] = Dictionary(refs.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
         }
+    }
+}
+
+// MARK: - Only these objects (tests only)
+//
+// A test-only limit on Preview, Run and Verify: only the named source
+// objects take part; everything else on the source is left out, also
+// objects that appear later. The release check's live checks use it, so a
+// live run never relies on unchecking everything else.
+//
+// Only test code can make one. Its only way in exists in Debug builds and
+// refuses outside tests; the app's screens, settings and launch arguments
+// never create or read one.
+
+struct OnlyObjects: Sendable, Equatable {
+
+    /// Source object ids per registry key.
+    let idsByType: [String: Set<String>]
+
+    private init(unchecked idsByType: [String: Set<String>]) {
+        self.idsByType = idsByType
+    }
+
+    /// The registry keys that have objects in the limit.
+    var typeKeys: Set<String> {
+        Set(idsByType.filter { !$0.value.isEmpty }.keys)
+    }
+
+    func includes(typeKey: String, id: String) -> Bool {
+        idsByType[typeKey]?.contains(id) == true
+    }
+}
+
+#if DEBUG
+extension OnlyObjects {
+    /// For tests only: stops the app when it isn't running under tests.
+    init(testing idsByType: [String: Set<String>]) {
+        precondition(UnderTest.isActive, "OnlyObjects is for tests only")
+        self.init(unchecked: idsByType)
+    }
+}
+#endif
+
+extension Array where Element == ObjectRef {
+    /// The objects `only` lets through, or all of them without a limit.
+    func limited(to only: OnlyObjects?, typeKey: String) -> [ObjectRef] {
+        guard let only else { return self }
+        return filter { only.includes(typeKey: typeKey, id: $0.id) }
     }
 }
