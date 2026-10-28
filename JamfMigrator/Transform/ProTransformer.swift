@@ -81,6 +81,12 @@ enum ProTransformer {
             for field in ["assignments", "computerIds", "mobileDeviceIds", "assignedIds"] {
                 out[field] = nil
             }
+            // Jamf answers 500 to a computer static group create without a
+            // member list (seen 2026-10-28), so a new group gets an empty one.
+            // Never on an update: that would empty the destination's members.
+            if type.key == "staticcomputergroups", case .create = context.action {
+                out["assignments"] = [String]()
+            }
             warnings.append("Static group members are inventory records and are not copied; the group is created empty.")
 
         case "advancedmobiledevicesearches":

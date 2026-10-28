@@ -46,12 +46,14 @@ actor MigrationPlanner {
 
     // MARK: Copy plan
 
-    func plan(typeKeys: Set<String>) async -> MigrationPlan {
+    /// - Parameter only: a test-only limit to named source objects (see
+    ///   `OnlyObjects`); the app itself never passes one.
+    func plan(typeKeys: Set<String>, only: OnlyObjects? = nil) async -> MigrationPlan {
         var plan = MigrationPlan(mode: .copy)
         for type in ObjectRegistry.types where typeKeys.contains(type.key) {
             progress?(type.displayName)
             do {
-                try await planType(type, included: typeKeys, into: &plan)
+                try await planType(type, included: typeKeys, only: only, into: &plan)
             } catch {
                 plan.entries.append(ObjectPlan(typeKey: type.key, objectId: "-", name: "(all objects)",
                                                change: .blocked(reason: error.localizedDescription)))
@@ -60,7 +62,8 @@ actor MigrationPlanner {
         return plan
     }
 
-    private func planType(_ type: ObjectType, included: Set<String>, into plan: inout MigrationPlan) async throws {
+    private func planType(_ type: ObjectType, included: Set<String>, only: OnlyObjects?,
+                          into plan: inout MigrationPlan) async throws {
         if type.requiresGateway && !(source.supportsPlatformEndpoints && dest.supportsPlatformEndpoints) {
             plan.entries.append(ObjectPlan(typeKey: type.key, objectId: "-", name: "(all objects)",
                                            change: .blocked(reason: "\(type.displayName) require the Jamf Platform API gateway; one of the selected tenants connects directly to Jamf Pro")))
@@ -78,7 +81,7 @@ actor MigrationPlanner {
         sourceNamesById[type.key] = Dictionary(sourceRefs.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
 
         var seenNames = Set<String>()
-        for ref in sourceRefs {
+        for ref in sourceRefs.limited(to: only, typeKey: type.key) {
             if !seenNames.insert(ref.name).inserted {
                 plan.entries.append(ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
                                                change: .blocked(reason: "Duplicate name on the source; rename one of the two objects to migrate both")))

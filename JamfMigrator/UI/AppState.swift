@@ -57,9 +57,13 @@ final class AppState {
     static let demoTenants: [Connection] = [.demoJamfProSource, .demoJamfProDestination]
 
     /// The app for this launch: a sandbox run (`-JTKitSandbox YES`, UI tests)
-    /// keeps tenants, secrets and settings in memory.
+    /// keeps tenants, secrets and settings in memory. So does the unit tests'
+    /// host: under tests the saved tenants aren't even loaded.
     static func forLaunch() -> AppState {
-        let demo = DemoMode(key: "demoMode")
+        let isUnitTestHost = UnderTest.isActive && !UnderTest.isSandboxRun(ProcessInfo.processInfo.arguments)
+        let demo = isUnitTestHost
+            ? DemoMode(key: "demoMode", arguments: ProcessInfo.processInfo.arguments + ["-JTKitSandbox", "YES"])
+            : DemoMode(key: "demoMode")
         guard demo.isSandbox else { return AppState(demo: demo) }
         let secrets = SandboxSecretStore()
         let store = TenantStore(secrets: secrets, demo: demo, storage: InMemoryConnectionStorage<Tenant>())

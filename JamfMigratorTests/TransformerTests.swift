@@ -292,8 +292,18 @@ struct ProTransformerTests {
         let out = try jsonBody(outcome)
         #expect(out["computerIds"] == nil)
         #expect(out["siteId"] as? String == "9")
+        // Jamf refuses a create without a member list: an empty one is sent
+        #expect(out["assignments"] as? [String] == [])
         guard case .write(let object) = outcome else { return }
         #expect(object.warnings.contains { $0.contains("inventory") })
+    }
+
+    /// An update never sends a member list, so the destination's members stay.
+    @Test func staticGroupUpdatesLeaveMembersAlone() throws {
+        let json: [String: Any] = ["id": "3", "name": "Lab Macs", "siteId": "2", "assignments": ["1", "2"]]
+        let out = try jsonBody(ProTransformer.transform(type: ObjectRegistry.type("staticcomputergroups")!, json: json,
+                                                        context: context(action: .update(destId: "40"))))
+        #expect(out["assignments"] == nil)
     }
 
     /// The fields as Jamf Pro 11.32 returns them (verified live 2026-10-22).
