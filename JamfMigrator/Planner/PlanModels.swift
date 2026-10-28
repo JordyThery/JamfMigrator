@@ -43,13 +43,52 @@ struct ObjectPlan: Sendable, Equatable, Codable, Identifiable {
     let change: PlannedChange
     var warnings: [String] = []
     var diff: [DiffEntry] = []
+    /// What Preview saw, as a SHA-256 of the object as it was compared: the
+    /// source object, and for an update the destination object. Run makes the
+    /// same comparison right before writing and stops if either differs.
+    var sourceDigest: String? = nil
+    var destDigest: String? = nil
+    /// Objects this object refers to that the run will create first
+    /// (registry key and name), e.g. a script's new category. Unticking one
+    /// of them blocks Run while this object stays ticked.
+    var plannedDependencies: [PlannedDependency] = []
+    /// The object (or the whole type, for "(all objects)") couldn't be read:
+    /// Verify reports such a type as not checked, never as passed.
+    var isReadFailure = false
 
     var id: String { "\(typeKey)/\(objectId)" }
+}
+
+/// A reference to an object the same run creates.
+struct PlannedDependency: Sendable, Hashable, Codable {
+    let typeKey: String
+    let name: String
 }
 
 struct MigrationPlan: Sendable, Codable {
     var mode: RunMode = .copy
     var entries: [ObjectPlan] = []
+    /// The types Preview planned; Run carries out these, never the current
+    /// selection.
+    var typeKeys: Set<String> = []
+
+    /// The planned creates, by registry key: the names Preview treated as
+    /// "will exist" when comparing references.
+    var plannedCreateNames: [String: Set<String>] {
+        var names = [String: Set<String>]()
+        for entry in entries {
+            if case .create = entry.change { names[entry.typeKey, default: []].insert(entry.name) }
+        }
+        return names
+    }
+
+    /// Every Create, Update, Replace and Delete row, per registry key: the
+    /// ticks right after Preview.
+    var runnableIds: [String: Set<String>] {
+        var ids = [String: Set<String>]()
+        for entry in entries where entry.change.isRunnable { ids[entry.typeKey, default: []].insert(entry.objectId) }
+        return ids
+    }
 
     func entries(for typeKey: String) -> [ObjectPlan] {
         entries.filter { $0.typeKey == typeKey }

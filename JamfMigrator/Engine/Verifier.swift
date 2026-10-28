@@ -14,21 +14,31 @@ struct VerifyReport: Sendable {
 
     struct TypeResult: Sendable, Equatable {
         let typeKey: String
+        /// The objects Verify covered on the source (left-out ones not counted).
         let sourceCount: Int
-        let destCount: Int
+        /// The type's objects on the destination; nil when they couldn't be listed.
+        let destCount: Int?
         /// Objects that are not Unchanged after the run: name and why.
         var discrepancies: [String] = []
         var blocked: [String] = []
+        /// Why the type couldn't be checked (a list or detail that couldn't
+        /// be read); nil when it was. A type that wasn't checked never passes.
+        var notChecked: String? = nil
     }
 
     var types: [TypeResult] = []
 
+    /// A second run would write nothing, and every type was checked.
     var isClean: Bool {
-        types.allSatisfy { $0.discrepancies.isEmpty }
+        types.allSatisfy { $0.discrepancies.isEmpty && $0.notChecked == nil }
     }
 
     var discrepancyCount: Int {
         types.reduce(0) { $0 + $1.discrepancies.count }
+    }
+
+    var notCheckedCount: Int {
+        types.filter { $0.notChecked != nil }.count
     }
 }
 
@@ -50,12 +60,21 @@ enum Verifier {
 
         var report = VerifyReport()
         for type in ObjectRegistry.types where typeKeys.contains(type.key) {
-            let entries = plan.entries(for: type.key)
+            // Blueprints and Benchmarks aren't checked (or planned) when a
+            // tenant connects directly to Jamf Pro
+            if type.requiresGateway && !(source.supportsPlatformEndpoints && dest.supportsPlatformEndpoints) { continue }
             let excluded = excluding[type.key] ?? []
+            let entries = plan.entries(for: type.key).filter { !excluded.contains($0.objectId) }
+            let destCount = try? await ObjectLister.list(type, on: dest).count
             var result = VerifyReport.TypeResult(typeKey: type.key,
-                                                 sourceCount: entries.count,
-                                                 destCount: (try? await ObjectLister.list(type, on: dest).count) ?? 0)
-            for entry in entries where !excluded.contains(entry.objectId) {
+                                                 sourceCount: entries.filter { $0.objectId != "-" }.count,
+                                                 destCount: destCount)
+            if let unread = entries.first(where: \.isReadFailure) {
+                if case .blocked(let reason) = unread.change { result.notChecked = reason }
+            } else if destCount == nil {
+                result.notChecked = "The destination's list couldn't be read."
+            }
+            for entry in entries where !entry.isReadFailure {
                 switch entry.change {
                 case .unchanged, .keep:
                     break

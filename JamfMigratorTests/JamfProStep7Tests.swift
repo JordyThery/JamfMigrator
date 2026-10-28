@@ -408,8 +408,11 @@ struct LicenceSerialTests {
             switch (tenant, method, path) {
             case ("src", "GET", "/JSSResource/licensedsoftware"), ("dst", "GET", "/JSSResource/licensedsoftware") where tenant == "src" || destinationHasIt:
                 MockHTTP.Reply(status: 200, data: MockHTTP.json(["licensed_software": [["id": 3, "name": "Office"]]]))
-            case ("src", "GET", "/JSSResource/licensedsoftware/id/3"), ("dst", "GET", "/JSSResource/licensedsoftware/id/3"):
+            case ("src", "GET", "/JSSResource/licensedsoftware/id/3"):
                 MockHTTP.Reply(status: 200, data: Data(licensedSoftware.utf8))
+            case ("dst", "GET", "/JSSResource/licensedsoftware/id/3"):
+                // an older copy (another licence size), so Preview plans an update
+                MockHTTP.Reply(status: 200, data: Data(licensedSoftware.replacingOccurrences(of: "<size>10</size>", with: "<size>5</size>").utf8))
             case ("dst", "POST", "/JSSResource/licensedsoftware/id/0"), ("dst", "PUT", "/JSSResource/licensedsoftware/id/3"):
                 destinationAnswer
             default: nil

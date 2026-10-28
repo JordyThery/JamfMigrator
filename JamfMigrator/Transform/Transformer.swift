@@ -42,9 +42,14 @@ struct TransformContext: Sendable {
     /// are regenerated on every write (Blueprint payload identifiers) use a
     /// stable placeholder instead, so identical objects compare as unchanged.
     var isForComparison = false
+    /// Set by the comparison: notes each reference that resolves to an
+    /// object the run will create (Preview's "will exist").
+    var plannedReferences: PlannedReferenceRecorder? = nil
 
     func destId(_ typeKey: String, named name: String) -> String? {
-        destIdsByName[typeKey]?[name]
+        let id = destIdsByName[typeKey]?[name]
+        if id == MigrationPlanner.plannedId { plannedReferences?.add(PlannedDependency(typeKey: typeKey, name: name)) }
+        return id
     }
 
     func sourceName(_ typeKey: String, id: String) -> String? {
@@ -97,3 +102,12 @@ enum TransformOutcome: Sendable {
 /// The placeholder written where the API won't return a secret and Settings
 /// holds no replacement.
 let placeholderSecret = "changeM3!"
+
+/// The references a comparison resolved to planned objects.
+final class PlannedReferenceRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var references = Set<PlannedDependency>()
+
+    func add(_ reference: PlannedDependency) { lock.withLock { _ = references.insert(reference) } }
+    var all: Set<PlannedDependency> { lock.withLock { references } }
+}

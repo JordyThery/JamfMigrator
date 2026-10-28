@@ -156,6 +156,12 @@ final class DestinationFence: @unchecked Sendable {
 
     var refusals: [String] { lock.withLock { refused } }
 
+    /// The writes let through (creates), sign-ins not counted.
+    var writes: Int { lock.withLock { written } }
+    private var written = 0
+
+    func countWrite() { lock.withLock { written += 1 } }
+
     /// What to do on a refusal: stop the engine.
     func onRefusal(_ stop: @escaping @Sendable () -> Void) {
         lock.withLock { self.stop = stop }
@@ -211,6 +217,9 @@ private final class FenceProtocol: URLProtocol, @unchecked Sendable {
             fence.refuse("\(method) \(path)")
             client?.urlProtocol(self, didFailWithError: LiveFailure("The fence refused \(method) \(path): the migration may only create on the destination"))
             return
+        }
+        if method.uppercased() != "GET", method.uppercased() != "HEAD", !DestinationFence.signInPaths.contains(path) {
+            fence.countWrite()
         }
         let client = client
         forwarding = Task { [self] in
@@ -597,44 +606,80 @@ struct LiveMigrationTests {
             let existing = try await ObjectLister.list(type, on: destination.app).filter { $0.name == name }
             try require("\(type.displayName): the name isn't on the destination", existing.isEmpty, note: name)
         }
-        let plan = await MigrationPlanner(source: source.app, dest: destination.app).plan(typeKeys: only.typeKeys, only: only)
-        let allCreates = plan.entries.allSatisfy { if case .create = $0.change { true } else { false } }
-        let planned = Set(plan.entries.map { "\($0.typeKey) \($0.objectId)" })
         let wanted = Set(limit.flatMap { key, ids in ids.map { "\(key) \($0)" } })
-        try require("Preview plans only the test objects, all as Create", allCreates && planned == wanted && plan.entries.count == wanted.count,
-                    note: plan.entries.map { "\($0.typeKey) \($0.name): \($0.change)" }.joined(separator: "; "))
+        func preview() async -> MigrationPlan {
+            await MigrationPlanner(source: source.app, dest: destination.app).plan(typeKeys: only.typeKeys, only: only)
+        }
+        func describePlan(_ plan: MigrationPlan) -> String {
+            plan.entries.map { "\($0.typeKey) \($0.name): \($0.change)" }.joined(separator: "; ")
+        }
+        let isCreate = { (entry: ObjectPlan) -> Bool in if case .create = entry.change { true } else { false } }
+        let plan = await preview()
+        try require("Preview plans only the test objects, all as Create",
+                    plan.entries.allSatisfy(isCreate) && Set(plan.entries.map { "\($0.typeKey) \($0.objectId)" }) == wanted
+                        && plan.entries.count == wanted.count,
+                    note: describePlan(plan))
 
-        // 3. Migrate with the app's own engine; its journal in this run's folder, no export.
+        // The app's own engine; its journal in this run's folder, no export.
         let engine = MigrationEngine(source: source.app, dest: destination.app,
                                      journal: JournalStore(url: folder.appending(path: "journal.json"), mode: .copy))
         fence.onRefusal { Task { await engine.cancel() } }
-        let report = await engine.migrate(typeKeys: only.typeKeys, only: only)
+        var report = RunReport()
+        var scriptContents = Self.scriptContents
+
+        if let scriptID = sourceIDs[.script], let scriptName = names[.script], let categoryID = sourceIDs[.category] {
+            // 3a. Run stops when the source changed since Preview: the test
+            //     code edits the source script after Preview; Run must create
+            //     what comes before it (the category) and stop before the script.
+            scriptContents = Self.scriptContents + "# edited after Preview\n"
+            _ = try await attempt("edit the source script after Preview") {
+                try await source.api.send(HTTPRequest(method: "PUT", path: "pro/v1/scripts/\(scriptID)",
+                                                      body: try JSONSerialization.data(withJSONObject: [
+                                                          "name": scriptName, "categoryId": categoryID, "priority": "AFTER",
+                                                          "scriptContents": scriptContents,
+                                                      ]),
+                                                      contentType: "application/json"),
+                                          privilege: .updateScripts)
+            }
+            let stopped = await engine.run(plan, including: plan.runnableIds)
+            let scriptOnDestination = try await ObjectLister.list(try #require(ObjectRegistry.type("scripts")), on: destination.app)
+                .contains { $0.name == scriptName }
+            let stoppedAtScript = stopped.stopReason?.contains("Scripts › \"\(scriptName)\": changed on the source since Preview") == true
+            let onlyCategory = stopped.entries.map(\.type) == ["categories"]
+                && stopped.entries.allSatisfy { if case .created = $0.status { true } else { false } }
+            try require("Run stops when the source changed since Preview",
+                        stoppedAtScript && onlyCategory && !scriptOnDestination && fence.refusals.isEmpty,
+                        note: "\(stopped.stopReason ?? "no stop"); written: \(stopped.entries.map { "\($0.type) \($0.objectName): \($0.status)" })")
+            report.entries += stopped.entries
+
+            // 3b. A new Preview: the category is Unchanged now, the rest still Create.
+            let again = await preview()
+            let asExpected = again.entries.allSatisfy { entry in
+                entry.typeKey == "categories" ? { if case .unchanged = entry.change { true } else { false } }() : isCreate(entry)
+            } && again.entries.count == wanted.count
+            try require("a new Preview shows the category Unchanged and the rest as Create", asExpected, note: describePlan(again))
+            let rest = await engine.run(again, including: again.runnableIds)
+            report.entries += rest.entries
+            report.stopReason = rest.stopReason
+        } else {
+            // 3. Run exactly the plan Preview showed.
+            report = await engine.run(plan, including: plan.runnableIds)
+        }
         var destIDs: [TestKind: String] = [:]
         for entry in report.entries {
             if let kind = typeKeys.first(where: { $0.value == entry.type })?.key, case .created(let id) = entry.status {
                 destIDs[kind] = id
             }
         }
-        let onlyCreates = report.entries.count == wanted.count
+        let onlyCreates = report.stopReason == nil && Set(report.entries.map { "\($0.type) \($0.objectId)" }) == wanted
+            && report.entries.count == wanted.count
             && report.entries.allSatisfy { if case .created = $0.status { true } else { false } }
-        // On a failed write: the fields the app sent (names only), to tell a
-        // Jamf hiccup from a payload Jamf refuses.
-        var sentFields: [String] = []
-        for entry in report.entries {
-            guard case .failed = entry.status, let type = ObjectRegistry.type(entry.type),
-                  case .json(let json)? = try? await ObjectLister.detail(type, id: entry.objectId, on: source.app) else { continue }
-            var context = TransformContext()
-            context.action = .create
-            if case .write(let object) = ProTransformer.transform(type: type, json: json, context: context),
-               let body = try? JSONSerialization.jsonObject(with: object.body) as? [String: Any] {
-                sentFields.append("\(entry.type) sent fields: \(body.keys.sorted().joined(separator: ", ")); source fields: \(json.keys.sorted().joined(separator: ", "))")
-            }
-        }
         try require("the app's engine created exactly the test objects, nothing else",
                     onlyCreates && fence.refusals.isEmpty && sourceNetwork.refusals.isEmpty,
                     note: (report.entries.map { "\($0.type) \($0.objectName): \($0.status)" }
+                           + [report.stopReason].compactMap { $0 }
                            + fence.refusals.map { "fence refused \($0)" }
-                           + sourceNetwork.refusals.map { "source write refused: \($0)" } + sentFields).joined(separator: "; "))
+                           + sourceNetwork.refusals.map { "source write refused: \($0)" }).joined(separator: "; "))
         // Only with `release-check.sh --fault fail-live-step`: fails with
         // objects on both tenants, so cleanup has to remove them.
         if label.isEmpty { try run.injectFault("fail-live-step", at: step("failure after creating objects")) }
@@ -653,7 +698,7 @@ struct LiveMigrationTests {
             let json = try await destination.api.json("pro/v1/scripts/\(id)", privilege: .readScripts)
             let sameCategory = ObjectLister.text(json["categoryId"]) == destIDs[.category]
             try require("read back: the script, its contents and category", json["name"]?.stringValue == name
-                        && json["scriptContents"]?.stringValue == Self.scriptContents && sameCategory)
+                        && json["scriptContents"]?.stringValue == scriptContents && sameCategory)
         }
         if let id = destIDs[.profile], let name = names[.profile] {
             let xml = try await destination.profileXML(id: id)
@@ -687,7 +732,8 @@ struct LiveMigrationTests {
         let accepted = differences.filter(betaQuirk)
         let unexpected = differences.filter { !betaQuirk($0) }
         let counted = verify.types.allSatisfy { result in
-            result.sourceCount == (limit[result.typeKey]?.count ?? -1) && result.blocked.isEmpty && result.destCount > 0
+            result.sourceCount == (limit[result.typeKey]?.count ?? -1) && result.blocked.isEmpty && (result.destCount ?? 0) > 0
+                && result.notChecked == nil
         }
         // Verify's only discrepancies are profiles whose whole diff is the accepted field
         let explained = verify.types.allSatisfy { result in
@@ -705,7 +751,24 @@ struct LiveMigrationTests {
         }
         try require("Verify made no write", fence.refusals.isEmpty && sourceNetwork.refusals.isEmpty)
 
-        // 6. Remove the objects from both tenants.
+        // 6. A second Preview shows everything Unchanged (the profile with only
+        //    the accepted beta field), and its Run writes nothing.
+        let second = await preview()
+        let secondDiffers = second.entries.filter { if case .unchanged = $0.change { false } else { true } }
+        let onlyQuirk = secondDiffers.allSatisfy { entry in
+            entry.typeKey == "osxconfigurationprofiles" && !entry.diff.isEmpty
+                && entry.diff.allSatisfy { betaQuirk((typeKey: entry.typeKey, field: $0)) }
+        }
+        var ticks = second.runnableIds
+        for entry in secondDiffers { ticks[entry.typeKey]?.remove(entry.objectId) }
+        let writesBefore = fence.writes
+        let nothing = await engine.run(second, including: ticks)
+        try require("a second Preview shows Unchanged and its Run writes nothing",
+                    onlyQuirk && second.entries.count == wanted.count && nothing.entries.isEmpty
+                        && nothing.stopReason == nil && fence.writes == writesBefore && fence.refusals.isEmpty,
+                    note: describePlan(second) + (secondDiffers.isEmpty ? "" : "; left unticked (accepted 11.34 beta difference): \(secondDiffers.map(\.name))"))
+
+        // 7. Remove the objects from both tenants.
         let problems = await destination.removeOutstanding(run) + (await source.removeOutstanding(run))
         let left = try await destination.testObjects(run).filter { names.values.contains($0.name) }
             + (try await source.testObjects(run).filter { names.values.contains($0.name) })

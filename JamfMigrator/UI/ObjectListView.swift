@@ -38,11 +38,10 @@ struct ObjectListView: View {
                 ToolbarItem {
                     Menu("Select", systemImage: "checklist") {
                         Button("Check all") {
-                            appState.excludedObjectIds[typeKey] = []
+                            appState.setAllIncluded(true, typeKey: typeKey)
                         }
                         Button("Uncheck all") {
-                            appState.excludedObjectIds[typeKey] = Set(
-                                appState.plan?.entries(for: typeKey).map(\.objectId) ?? [])
+                            appState.setAllIncluded(false, typeKey: typeKey)
                         }
                     }
                     .help("Check or uncheck every object of this type.")
@@ -78,6 +77,12 @@ private struct ObjectRow: View {
                 .help("Uncheck to leave this object out of the run.")
             Text(entry.name.isEmpty ? "(unnamed)" : entry.name)
                 .lineLimit(1)
+            if let needing = appState.waitingOn(entry).first {
+                Label("Needed by \"\(needing.name)\"", systemImage: "link")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .help("A ticked object refers to this one, which the run would create. Tick it, or untick the objects that need it.")
+            }
             if !entry.warnings.isEmpty {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.yellow)
@@ -90,14 +95,8 @@ private struct ObjectRow: View {
 
     private var includedBinding: Binding<Bool> {
         Binding(
-            get: { !(appState.excludedObjectIds[entry.typeKey]?.contains(entry.objectId) ?? false) },
-            set: { included in
-                if included {
-                    appState.excludedObjectIds[entry.typeKey]?.remove(entry.objectId)
-                } else {
-                    appState.excludedObjectIds[entry.typeKey, default: []].insert(entry.objectId)
-                }
-            })
+            get: { appState.isIncluded(entry) },
+            set: { appState.setIncluded($0, entry) })
     }
 }
 

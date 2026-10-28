@@ -57,3 +57,20 @@ func makeJournal(mode: RunMode = .copy) -> JournalStore {
         .appendingPathComponent("EngineTests-\(UUID().uuidString).json")
     return JournalStore(url: url, mode: mode)
 }
+
+extension MigrationEngine {
+    /// The app's flow with every row ticked: Preview, then Run exactly that plan.
+    func migrate(typeKeys: Set<String>, only: OnlyObjects? = nil) async -> RunReport {
+        let plan = await MigrationPlanner(source: source, dest: dest, secrets: secrets, mappings: mappings)
+            .plan(typeKeys: typeKeys, only: only)
+        return await run(plan, including: plan.runnableIds)
+    }
+}
+
+extension DeleteEngine {
+    /// Delete mode's flow with every row ticked: Preview, then Run exactly that plan.
+    func delete(typeKeys: Set<String>) async -> RunReport {
+        let plan = await MigrationPlanner(source: client, dest: client).planDeletion(typeKeys: typeKeys)
+        return await run(plan, including: plan.runnableIds)
+    }
+}
