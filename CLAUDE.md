@@ -1,5 +1,7 @@
 # JamfMigrator: instructions for Claude
 
+At the start of every conversation, run ../JTKit/Scripts/check-versions.sh (or fetch it from GitHub if ../JTKit isn’t there) and mention the result in one line if anything is out of date.
+
 Shared code and the standards for every app: see JTKit's CLAUDE.md and ROADMAP.md (github.com/JordyThery/JTKit, or ../JTKit in the workspace).
 
 ## What the app is
@@ -72,11 +74,11 @@ Demo mode (JTKit step 10): `AppState.demo` (JTKit `DemoMode`, key `demoMode`) wi
 - Blueprints: settings use `{Included, Value}`; any PATCH makes a deployed Blueprint out of date; `PATCH` with `steps` replaces all steps; names can repeat; a deployed Blueprint can be deleted directly.
 - Benchmarks: no update endpoint (Replace = delete and recreate); duplicate title → 409; `syncState` only on list entries.
 - Deleting a device group that a Blueprint still uses → `422 HAS_DEPENDENCIES`.
-- A Jamf Pro beta instance was seen deleting newly created benchmarks about 3 minutes after creation. That is a Jamf-side issue, not an app bug.
 - Licensed-software writes are recorded without contents, and serial numbers are blanked from failure reasons (a refused write can echo a licence serial).
 - Rate limits aren't published: keep JTKit's write spacing.
-- A computer static group create (`pro/v3/computer-groups/static-groups`) without `assignments` answers 500: a create sends `"assignments": []`; an update never sends members (seen 2026-10-28).
-- Jamf Pro 11.34.0 beta drops a macOS profile's Self Service `notification` settings on save (11.33.1 keeps them), so Verify reports such a copy as different. The live check accepts only that field, only on an 11.34.0 beta destination (decided by Jordy on 2026-10-28); recheck when 11.34 is released.
+- A computer static group create (`pro/v3/computer-groups/static-groups`) sends `"assignments": []`; an update never sends members.
+- The live check accepts a macOS profile’s Self Service `notification` settings as different only on a Jamf Pro 11.34.0 beta destination (decided by Jordy on 2026-10-28).
+- What this app waits for from Apple, Jamf or Microsoft, or must recheck: see WATCHLIST.md.
 
 ## Testing
 
