@@ -146,7 +146,7 @@ struct RunMatchesPreviewTests {
         tenants.category("src", id: "5", name: "New", priority: 3)
         let report = await tenants.run(plan)
         #expect(tenants.writes().isEmpty)
-        #expect(report.stopReason?.contains("Categories › \"New\": changed on the source since Preview") == true)
+        #expect(report.stopReason?.contains("Categories › “New”: changed on the source since Preview") == true)
         #expect(report.stopReason?.contains("Preview again") == true)
     }
 
@@ -156,7 +156,7 @@ struct RunMatchesPreviewTests {
         tenants.category("dst", id: "72", name: "Older", priority: 4)
         let report = await tenants.run(plan, including: ["categories": ["7"]])
         #expect(tenants.writes().isEmpty)
-        #expect(report.stopReason?.contains("\"Older\": changed on the destination since Preview") == true)
+        #expect(report.stopReason?.contains("“Older”: changed on the destination since Preview") == true)
     }
 
     @Test func stopsWhenACreateNameNowExists() async throws {
@@ -175,7 +175,7 @@ struct RunMatchesPreviewTests {
         tenants.categories("dst", [("71", "Same"), ("72", "Older"), ("74", "Older")])
         let report = await tenants.run(plan, including: ["categories": ["7"]])
         #expect(tenants.writes().isEmpty)
-        #expect(report.stopReason?.contains("more than one destination object is now named \"Older\"") == true)
+        #expect(report.stopReason?.contains("more than one destination object is now named “Older”") == true)
     }
 
     /// A script in a category the same run creates: Preview counted the
@@ -212,6 +212,7 @@ struct RunMatchesPreviewTests {
         tenants.categories("dst", [("77", "Tools")])
         tenants.category("dst", id: "77", name: "Tools", priority: 9)
         let journal = makeJournal()
+        await journal.begin(planId: plan.id)
         await journal.record(type: "categories", objectId: "5", status: .created(destId: "77"))
         let report = await MigrationEngine(source: tenants.source, dest: tenants.dest, journal: journal)
             .run(plan, including: plan.runnableIds)
@@ -240,7 +241,7 @@ struct RunMatchesPreviewTests {
             Issue.record("expected the dependent script not to be written: \(String(describing: needsTools))")
             return
         }
-        #expect(reason.contains("Categories › \"Tools\""))
+        #expect(reason.contains("Categories › “Tools”"))
         // only the independent script was written; the dependent one never
         let scripts = tenants.gateway.writes(to: "dst").filter { $0.path == "/pro/v1/scripts" }
         #expect(scripts.count == 1)
@@ -339,7 +340,7 @@ struct RunRulesInTheAppTests {
         app.selectedTypeKeys = ["categories", "scripts"]
         app.plan = plan(typeKeys: ["categories", "scripts"])
         app.includedObjectIds = ["scripts": ["3"]]
-        #expect(app.runBlockedReason?.contains("needs Categories › \"Tools\"") == true)
+        #expect(app.runBlockedReason?.contains("needs Categories › “Tools”") == true)
         #expect(app.waitingOn(app.plan!.entries[0]).map(\.name) == ["Hello"])
         app.setIncluded(true, app.plan!.entries[0])
         #expect(app.runBlockedReason == nil)
@@ -352,7 +353,7 @@ struct RunRulesInTheAppTests {
         app.includedObjectIds = app.plan!.runnableIds
         #expect(app.runBlockedReason == nil)
         app.selectedTypeKeys.insert("policies")
-        #expect(app.runBlockedReason == "The selected types changed since Preview. Preview again.")
+        #expect(app.runBlockedReason == "The selected types changed since Preview. Preview again before running.")
     }
 
     @Test func checkAllAndUncheckAll() {

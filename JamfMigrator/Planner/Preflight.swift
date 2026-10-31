@@ -2,10 +2,10 @@
 //  Preflight.swift
 //  JamfMigrator
 //
-//  Checks that run before a plan: both tenants answer, the integrations have
+//  Checks that run before a plan: both tenants answer, they have
 //  the permissions the selected types need, and the destination's contents
 //  are counted so a non-empty destination can be called out. Also carries the
-//  manual checklist of what the API cannot copy.
+//  manual checklist of what the API can’t copy.
 //
 
 import Foundation
@@ -27,7 +27,7 @@ struct PreflightReport: Sendable {
     /// Objects already on the destination, per registry key; -1 = the list
     /// failed.
     let destinationCounts: [String: Int]
-    /// Selected types that need the Platform API gateway while a tenant
+    /// Selected types that need the Jamf Platform API gateway while a tenant
     /// connects directly. They aren't probed — they are Blocked by design,
     /// not missing a permission.
     var unavailableTypes: [String] = []
@@ -100,14 +100,18 @@ struct PreflightReport: Sendable {
             .joined(separator: ", ")
     }
 
-    /// What the API cannot copy; shown before every clone.
+    /// Why Blueprints and Compliance Benchmarks are left out: the one
+    /// sentence everywhere the app says so.
+    static let gatewayOnlyReason = "Blueprints and Compliance Benchmarks need the Jamf Platform API gateway; a selected tenant connects directly to Jamf Pro."
+
+    /// What the API can’t copy; shown before every clone.
     static let manualChecklist: [String] = [
-        "ADE token: create one per tenant in Apple Business/School Manager against the destination's public key.",
-        "VPP / Apps and Books tokens.",
+        "ADE token: create one per tenant in Apple Business or Apple School Manager with the destination’s public key.",
+        "Apps and Books (VPP) tokens.",
         "APNs certificate.",
         "SSO certificates.",
-        "API clients and roles (the gateway doesn't serve them).",
-        "Package files: uploads are blocked by the gateway's CDN firewall, so files must already be on the destination's distribution points.",
+        "API roles and clients (the Jamf Platform API doesn’t serve them).",
+        "Package files: the Jamf Platform API can’t upload them, so they must already be on the destination’s distribution points.",
     ]
 }
 
@@ -183,9 +187,8 @@ enum Preflight {
     /// Whether the tenant answers, and its Jamf Pro version. Also Settings'
     /// Test Connection.
     static func check(_ client: JamfPlatform.Client) async -> PreflightReport.TenantCheck {
-        struct Version: Decodable { let version: String }
         do {
-            let version = try await client.get(Version.self, "pro/v1/jamf-pro-version")
+            let version = try await client.jamfProVersion()
             return .init(reachable: true, version: version.version, error: nil)
         } catch {
             return .init(reachable: false, version: nil, error: error.localizedDescription)

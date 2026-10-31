@@ -11,8 +11,7 @@
 import JTKit
 import SwiftUI
 
-/// The size every Jamf Migrator tab had in its own Settings window, kept so
-/// the tabs look as before.
+/// The height of the app's own Settings tabs.
 private let tabHeight: CGFloat = 480
 
 // MARK: - Connections
@@ -52,7 +51,7 @@ struct ConnectionsSettings: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("A protected tenant can never be wiped. Recommended for the source tenant.")
                     if !tenant.usesGateway {
-                        Text("Blueprints and Compliance Benchmarks need the Platform API and are unavailable over a direct connection.")
+                        Text("Blueprints and Compliance Benchmarks need the Jamf Platform API gateway; this tenant connects directly to Jamf Pro.")
                     }
                 }
                 .font(.caption)
@@ -82,7 +81,7 @@ struct SecretsSettings: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
-            Text("The API never returns these passwords. When set here, runs write them to the destination instead of the \"\(placeholderSecret)\" placeholder.")
+            Text("The API never returns these passwords. When set here, runs write them to the destination instead of the “\(placeholderSecret)” placeholder.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             ForEach(AppState.serviceSecretKeys, id: \.key) { entry in
@@ -132,7 +131,7 @@ struct ExportSettings: View {
         Form {
             // the app's own settings, so a sandbox run never changes the real one
             Toggle("Save payloads during runs", isOn: $appState.exportOnRun)
-            Text("Each run writes the raw source payloads and the trimmed payloads that were sent, per object, under Application Support › JamfMigrator › exports.")
+            Text("Each run writes the raw source payloads and the trimmed payloads that were sent, per object, under Application Support › JamfMigrator › exports. Passwords, password hashes, Settings › Secrets values and license serial numbers are replaced by “<redacted>”.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }

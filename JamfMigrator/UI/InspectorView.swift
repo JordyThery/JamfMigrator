@@ -32,7 +32,7 @@ struct InspectorView: View {
                     }
 
                     if !entry.warnings.isEmpty {
-                        GroupBox("Review after the run") {
+                        GroupBox("Review After the Run") {
                             VStack(alignment: .leading, spacing: 4) {
                                 ForEach(entry.warnings, id: \.self) { warning in
                                     Label(warning, systemImage: "exclamationmark.triangle")
@@ -73,7 +73,7 @@ struct InspectorView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else {
-            ContentUnavailableView("No object selected",
+            ContentUnavailableView("No Object Selected",
                                    systemImage: "doc.text.magnifyingglass",
                                    description: Text("Select an object to see its details and diff."))
         }

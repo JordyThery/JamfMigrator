@@ -22,19 +22,49 @@ enum ProTransformer {
             out[key] = nil
         }
 
-        // settings singletons copy as-is; their secrets never leave the source
+        // settings singletons copy as they are, except onboarding's references
+        // and SSO's switches; their secrets never leave the source
         if case .singleton = type.listShape {
             for secret in type.secretFields {
-                warnings.append("The \(secret) is not returned by the API and must be re-entered on the destination.")
+                warnings.append("The \(secret) isn’t returned by the API and must be re-entered on the destination.")
             }
             if type.key == "onboarding" {
-                warnings.append("Onboarding items reference policies and profiles by id and may need to be reselected on the destination.")
+                // items point at source objects by id: each one is matched
+                // by name on the destination, or the whole setting is Blocked
+                var items = [[String: Any]]()
+                for item in out["onboardingItems"] as? [[String: Any]] ?? [] {
+                    let kind = "\(item["selfServiceEntityType"] ?? "")"
+                    let sourceId = "\(item["entityId"] ?? "")"
+                    guard let typeKey = onboardingTypeKey(kind),
+                          let name = (item["entityName"] as? String).flatMap({ $0.isEmpty ? nil : $0 })
+                            ?? context.sourceName(typeKey, id: sourceId),
+                          let destId = context.destId(typeKey, named: name) else {
+                        let label = (item["entityName"] as? String) ?? "with id \(sourceId)"
+                        return .blocked(reason: "The onboarding item “\(label)” isn’t on the destination; migrate it first, or remove it from onboarding on the source.")
+                    }
+                    items.append(["entityId": destId, "selfServiceEntityType": kind,
+                                  "priority": item["priority"] ?? items.count + 1])
+                }
+                if out["onboardingItems"] != nil { out["onboardingItems"] = items }
+            }
+            if type.key == "sso" {
+                // the destination has none of the source's certificates or
+                // identity provider: a switch that is off there stays off
+                var keptOff = [String]()
+                for (key, value) in out where key.lowercased().hasSuffix("enabled") && value as? Bool == true
+                    && !context.destEnabledFlags.contains(key) {
+                    out[key] = false
+                    keptOff.append(key)
+                }
+                if !keptOff.isEmpty {
+                    warnings.append("Single sign-on stays off on the destination (\(keptOff.sorted().joined(separator: ", "))); switch it on there once its identity provider and certificates are set up.")
+                }
             }
             do {
                 let body = try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys])
                 return .write(TransformedObject(body: body, contentType: "application/json", warnings: warnings))
             } catch {
-                return .blocked(reason: "The payload could not be encoded: \(error.localizedDescription)")
+                return .blocked(reason: "The payload couldn’t be encoded: \(error.localizedDescription)")
             }
         }
 
@@ -44,7 +74,7 @@ enum ProTransformer {
 
         case "computerextensionattributes":
             if out["description"] as? String == "Extension Attribute provided by JAMF Nation patch service" {
-                return .blocked(reason: "Patch extension attributes are not migrated")
+                return .blocked(reason: "Patch extension attributes aren’t migrated.")
             }
 
         case "scripts":
@@ -64,13 +94,13 @@ enum ProTransformer {
             if let readWrite = context.secrets["fsrw"] { out["readWritePassword"] = readWrite }
             if let readOnly = context.secrets["fsro"] { out["readOnlyPassword"] = readOnly }
             if context.secrets["fsrw"] == nil || context.secrets["fsro"] == nil {
-                warnings.append("File-share passwords are not returned by the API; set them in Settings › Secrets or on the destination.")
+                warnings.append("File-share passwords aren’t returned by the API; set them in Settings › Secrets or on the destination.")
             }
 
         case "jamfusers":
             out["password"] = nil
             remapSite(&out, context: context, warnings: &warnings)
-            warnings.append("Account passwords are not returned by the API; new local accounts need one set on the destination.")
+            warnings.append("Account passwords aren’t returned by the API; new local accounts need one set on the destination.")
 
         case "smartcomputergroups", "smartmobiledevicegroups":
             remapSite(&out, context: context, warnings: &warnings)
@@ -82,12 +112,12 @@ enum ProTransformer {
                 out[field] = nil
             }
             // Jamf answers 500 to a computer static group create without a
-            // member list (seen 2026-10-28), so a new group gets an empty one.
+            // member list, so a new group gets an empty one.
             // Never on an update: that would empty the destination's members.
             if type.key == "staticcomputergroups", case .create = context.action {
                 out["assignments"] = [String]()
             }
-            warnings.append("Static group members are inventory records and are not copied; the group is created empty.")
+            warnings.append("Static group members are inventory records and aren’t copied; the group is created empty.")
 
         case "advancedmobiledevicesearches":
             remapSite(&out, context: context, warnings: &warnings)
@@ -99,7 +129,7 @@ enum ProTransformer {
             let nameId = out["softwareTitleNameId"] as? String ?? ""
             let sourceName = out["patchSourceName"] as? String ?? ""
             guard !nameId.isEmpty, !sourceName.isEmpty else {
-                return .blocked(reason: "The patch title's name id or patch source is missing")
+                return .blocked(reason: "The patch title’s name id or patch source is missing.")
             }
             patchSubscription = PatchSubscription(nameId: nameId, sourceName: sourceName,
                                                   displayName: out["displayName"] as? String ?? "")
@@ -118,7 +148,7 @@ enum ProTransformer {
             } else {
                 out["categoryId"] = "-1"
                 if let categoryName {
-                    warnings.append("Category \"\(categoryName)\" does not exist on the destination; the object was created without one.")
+                    warnings.append("Category “\(categoryName)” doesn’t exist on the destination; the object was created without one.")
                 }
             }
             out["categoryName"] = nil
@@ -136,7 +166,7 @@ enum ProTransformer {
                 if let destPackageId = context.destId("packages", named: packageName) {
                     updatedPackages.append(["packageId": destPackageId, "version": "\(package["version"] ?? "")"])
                 } else {
-                    warnings.append("Patch package \"\(packageName)\" does not exist on the destination and was dropped.")
+                    warnings.append("Patch package “\(packageName)” doesn’t exist on the destination and was dropped.")
                 }
             }
             out["packages"] = updatedPackages
@@ -145,9 +175,11 @@ enum ProTransformer {
             for readOnlyField in ["titleAvailableInAis", "selectedVersion", "latestAvailableVersion", "versionRemoved"] {
                 out[readOnlyField] = nil
             }
-            out["categoryId"] = (out["categoryName"] as? String).flatMap { context.destId("categories", named: $0) } ?? "-1"
+            // detail payloads carry categoryId and siteId only: resolve them
+            // through the source lookups, and say so when one can't be kept
+            remapCategory(&out, context: context, warnings: &warnings)
             out["categoryName"] = nil
-            out["siteId"] = (out["siteName"] as? String).flatMap { context.destId("sites", named: $0) } ?? "-1"
+            remapSite(&out, context: context, warnings: &warnings)
             out["siteName"] = nil
 
             let smartGroupId = "\(out["smartGroupId"] ?? "")"
@@ -164,8 +196,8 @@ enum ProTransformer {
                 } else {
                     out["smartGroupId"] = nil
                     out["enabled"] = false
-                    let groupLabel = smartGroupName.isEmpty ? "with id \(smartGroupId)" : "\"\(smartGroupName)\""
-                    warnings.append("Smart group \(groupLabel) does not exist on the destination; the deployment was created without a scope and disabled.")
+                    let groupLabel = smartGroupName.isEmpty ? "with id \(smartGroupId)" : "“\(smartGroupName)”"
+                    warnings.append("Smart group \(groupLabel) doesn’t exist on the destination; the deployment was created without a scope and disabled.")
                 }
             } else {
                 // the server stores "no group" as -1; normalize absent to match
@@ -184,7 +216,7 @@ enum ProTransformer {
                     if let destCategoryId = context.destId("categories", named: name) {
                         updated.append(["id": destCategoryId, "featured": category["featured"] ?? false])
                     } else {
-                        warnings.append("Self Service category \"\(name)\" does not exist on the destination and was dropped.")
+                        warnings.append("Self Service category “\(name)” doesn’t exist on the destination and was dropped.")
                     }
                 }
                 selfService["categories"] = updated.isEmpty ? nil : updated
@@ -194,7 +226,7 @@ enum ProTransformer {
         case "enrollmentcustomizations":
             remapSite(&out, context: context, warnings: &warnings)
             if out["brandingSettings"] != nil {
-                warnings.append("Branding images are not copied; re-upload them on the destination.")
+                warnings.append("Branding images aren’t copied; re-upload them on the destination.")
             }
 
         case "computerprestages", "mobiledeviceprestages":
@@ -207,20 +239,38 @@ enum ProTransformer {
             return transformBenchmark(source: out, context: context, warnings: &warnings)
 
         default:
-            return .blocked(reason: "\(type.displayName) are not supported by this version of the app")
+            return .blocked(reason: "\(type.displayName) aren’t supported by this version of the app.")
         }
 
         do {
             let body = try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys])
             // patch titles are only ever PATCHed (a create subscribes first),
             // and that endpoint accepts nothing but merge-patch (HTTP 415
-            // otherwise, verified live 2026-10-22)
+            // otherwise)
             let contentType = type.key == "patchsoftwaretitles" ? "application/merge-patch+json" : "application/json"
             return .write(TransformedObject(body: body, contentType: contentType, warnings: warnings,
                                             patchSubscription: patchSubscription))
         } catch {
-            return .blocked(reason: "The payload could not be encoded: \(error.localizedDescription)")
+            return .blocked(reason: "The payload couldn’t be encoded: \(error.localizedDescription)")
         }
+    }
+
+    /// The registry key an onboarding item's `selfServiceEntityType` points
+    /// at; nil for a kind the app can't match by name.
+    static func onboardingTypeKey(_ kind: String) -> String? {
+        let kind = kind.uppercased()
+        if kind.contains("PATCH") || kind.contains("EBOOK") { return nil }
+        if kind.contains("APP_INSTALLER") { return "appinstallers" }
+        if kind.contains("POLICY") { return "policies" }
+        if kind.contains("CONFIG") || kind.contains("PROFILE") { return "osxconfigurationprofiles" }
+        if kind.contains("MAC_APP") { return "macapplications" }
+        return nil
+    }
+
+    /// The top-level switches that are on in a settings payload (for SSO:
+    /// what the destination already has switched on).
+    static func enabledFlags(in json: [String: Any]) -> Set<String> {
+        Set(json.filter { $0.key.lowercased().hasSuffix("enabled") && $0.value as? Bool == true }.keys)
     }
 
     // MARK: PreStages
@@ -239,7 +289,7 @@ enum ProTransformer {
             if let mapped = context.mappings.adeInstances[adeId] {
                 out["deviceEnrollmentProgramInstanceId"] = mapped
             } else {
-                return .blocked(reason: "No ADE instance mapping is set; map one in the Clone wizard")
+                return .blocked(reason: "No ADE instance mapping is set; map one in the Clone Tenant wizard.")
             }
         }
 
@@ -251,7 +301,7 @@ enum ProTransformer {
         }
 
         // nested blocks: the API REQUIRES id and versionLock — a POST sends
-        // "-1"/0, a PUT echoes the destination's (verified live 2026-10-04)
+        // "-1"/0, a PUT echoes the destination's
         if var location = out["locationInformation"] as? [String: Any] {
             location["id"] = isUpdate ? (context.destPreStageIds["locationInformation"] ?? "-1") : "-1"
             remapNamedId(&location, idKey: "buildingId", lookupType: "buildings", label: "building", context: context, warnings: &warnings)
@@ -268,7 +318,7 @@ enum ProTransformer {
             accounts["id"] = isUpdate ? (context.destPreStageIds["accountSettings"] ?? "-1") : "-1"
             accounts["versionLock"] = isUpdate ? (context.destVersionLocks["accountSettings"] ?? 0) : 0
             out["accountSettings"] = accounts
-            warnings.append("The admin password is not returned by the API; set it on the destination PreStage.")
+            warnings.append("The admin password isn’t returned by the API; set it on the destination PreStage.")
         }
         out["versionLock"] = isUpdate ? context.destVersionLocks["root"] : nil
 
@@ -280,7 +330,7 @@ enum ProTransformer {
                 out["enrollmentCustomizationId"] = destId
             } else {
                 out["enrollmentCustomizationId"] = "0"
-                warnings.append("The enrollment customization does not exist on the destination and was cleared.")
+                warnings.append("The enrollment customization doesn’t exist on the destination and was cleared.")
             }
         }
 
@@ -299,7 +349,7 @@ enum ProTransformer {
                 out[key] = destId
             } else {
                 out[key] = nil
-                warnings.append("The \(profileLabels[key] ?? key) does not exist on the destination and was cleared.")
+                warnings.append("The \(profileLabels[key] ?? key) doesn’t exist on the destination and was cleared.")
             }
         }
 
@@ -308,18 +358,18 @@ enum ProTransformer {
             if let mapped = context.mappings.distributionPoints[dpId] {
                 out["customPackageDistributionPointId"] = mapped
             } else {
-                warnings.append("The custom package distribution point is not mapped; map it in the Clone wizard.")
+                warnings.append("The custom package distribution point isn’t mapped; map it in the Clone Tenant wizard.")
             }
         }
 
         // a manual Recovery Lock password is never returned by the API but is
         // required when enabled — take it from Settings › Secrets or write a
-        // placeholder (verified live 2026-10-04: omitting it is a 400)
+        // placeholder (omitting it is a 400)
         if out["enableRecoveryLock"] as? Bool == true,
            "\(out["recoveryLockPasswordType"] ?? "")" == "MANUAL" {
             out["recoveryLockPassword"] = context.secrets["recoverylock"] ?? placeholderSecret
             if context.secrets["recoverylock"] == nil {
-                warnings.append("The Recovery Lock password is not returned by the API; a placeholder was written — change it on the destination.")
+                warnings.append("The Recovery Lock password isn’t returned by the API; a placeholder was written — change it on the destination.")
             }
         }
 
@@ -331,7 +381,7 @@ enum ProTransformer {
             let body = try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys])
             return .write(TransformedObject(body: body, contentType: "application/json", warnings: warnings))
         } catch {
-            return .blocked(reason: "The payload could not be encoded: \(error.localizedDescription)")
+            return .blocked(reason: "The payload couldn’t be encoded: \(error.localizedDescription)")
         }
     }
 
@@ -352,7 +402,7 @@ enum ProTransformer {
                    let destUuid = context.destId(platformGroupsKey, named: name) {
                     remapped.append(destUuid)
                 } else {
-                    return .blocked(reason: "A scoped device group does not exist on the destination")
+                    return .blocked(reason: "A scoped device group doesn’t exist on the destination.")
                 }
             }
             scope["deviceGroups"] = remapped
@@ -361,7 +411,7 @@ enum ProTransformer {
         if var predicate = out["activationPredicate"] as? String, !predicate.isEmpty {
             for (uuid, name) in context.sourceNamesById[platformGroupsKey] ?? [:] where predicate.contains(uuid) {
                 guard let destUuid = context.destId(platformGroupsKey, named: name) else {
-                    return .blocked(reason: "The activation predicate references a device group that does not exist on the destination")
+                    return .blocked(reason: "The activation predicate references a device group that doesn’t exist on the destination.")
                 }
                 predicate = predicate.replacingOccurrences(of: uuid, with: destUuid)
             }
@@ -380,7 +430,7 @@ enum ProTransformer {
             let body = try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys])
             return .write(TransformedObject(body: body, contentType: "application/json", warnings: warnings))
         } catch {
-            return .blocked(reason: "The payload could not be encoded: \(error.localizedDescription)")
+            return .blocked(reason: "The payload couldn’t be encoded: \(error.localizedDescription)")
         }
     }
 
@@ -433,7 +483,7 @@ enum ProTransformer {
                    let destUuid = context.destId(platformGroupsKey, named: name) {
                     remapped.append(destUuid)
                 } else {
-                    return .blocked(reason: "A targeted device group does not exist on the destination")
+                    return .blocked(reason: "A targeted device group doesn’t exist on the destination.")
                 }
             }
             target["deviceGroups"] = remapped
@@ -444,7 +494,7 @@ enum ProTransformer {
             let body = try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys])
             return .write(TransformedObject(body: body, contentType: "application/json", warnings: warnings))
         } catch {
-            return .blocked(reason: "The payload could not be encoded: \(error.localizedDescription)")
+            return .blocked(reason: "The payload couldn’t be encoded: \(error.localizedDescription)")
         }
     }
 
@@ -458,7 +508,7 @@ enum ProTransformer {
             json[idKey] = destId
         } else {
             json[idKey] = "-1"
-            warnings.append("The \(label) does not exist on the destination and was cleared.")
+            warnings.append("The \(label) doesn’t exist on the destination and was cleared.")
         }
     }
 
@@ -473,7 +523,7 @@ enum ProTransformer {
                let destId = context.destId(lookupType, named: name) {
                 remapped.append(destId)
             } else {
-                warnings.append("A \(label) referenced by the PreStage does not exist on the destination and was dropped.")
+                warnings.append("A \(label) referenced by the PreStage doesn’t exist on the destination and was dropped.")
             }
         }
         json[key] = remapped
@@ -484,8 +534,11 @@ enum ProTransformer {
         var name = json["categoryName"] as? String
         if name == nil || name?.isEmpty == true {
             let sourceId = "\(json["categoryId"] ?? "")"
-            if !sourceId.isEmpty && sourceId != "-1" {
+            if !sourceId.isEmpty && sourceId != "-1" && sourceId != "<null>" {
                 name = context.sourceName("categories", id: sourceId)
+                if name == nil {
+                    warnings.append("The category couldn’t be found on the source; the object was created without one.")
+                }
             }
         }
         guard let name, !name.isEmpty, name != "NONE", name != "No category assigned" else {
@@ -497,7 +550,7 @@ enum ProTransformer {
             json["categoryId"] = destId
             if json["categoryName"] != nil { json["categoryName"] = name }
         } else {
-            warnings.append("Category \"\(name)\" does not exist on the destination; the object was created without one.")
+            warnings.append("Category “\(name)” doesn’t exist on the destination; the object was created without one.")
             json["categoryId"] = "-1"
             json["categoryName"] = nil
         }
@@ -514,7 +567,7 @@ enum ProTransformer {
            let destSiteId = context.destId("sites", named: siteName) {
             json["siteId"] = destSiteId
         } else {
-            warnings.append("The site does not exist on the destination; the object was created without one.")
+            warnings.append("The site doesn’t exist on the destination; the object was created without one.")
             json["siteId"] = "-1"
         }
     }

@@ -36,7 +36,7 @@ enum HTTPMethod: String, Sendable {
 /// a refusal on a direct connection says which one is missing.
 extension JamfPlatform.Client {
 
-    /// The spacing between writes the app has always used.
+    /// The pause between two writes, which keeps a run under Jamf's unpublished rate limits.
     static let defaultWriteSpacing: Duration = .milliseconds(200)
 
     /// Blueprints and Compliance Benchmarks exist only behind the gateway.

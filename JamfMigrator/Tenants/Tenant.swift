@@ -2,7 +2,8 @@
 //  Tenant.swift
 //  JamfMigrator
 //
-//  One Jamf tenant reached through the platform API gateway.
+//  One Jamf tenant: through the Jamf Platform API gateway, or a direct Jamf
+//  Pro server.
 //
 
 import Foundation
@@ -18,12 +19,12 @@ struct Tenant: Identifiable, Codable, Hashable, Sendable {
     var id = UUID()
     var name: String
     var region: JamfRegion = .us
-    /// The environment UUID sent as X-Environment-Id.
+    /// The Environment ID, sent as X-Environment-Id.
     var environmentId: String = ""
     /// The API integration's client ID.
     var clientId: String = ""
-    /// A direct Jamf Pro server URL (https://tenant.jamfcloud.com) for
-    /// tenants without Platform API access. Empty or nil = platform gateway.
+    /// A direct Jamf Pro server URL (https://yourcompany.jamfcloud.com) for
+    /// tenants without Jamf Platform API access. Empty or nil = the gateway.
     var serverURL: String?
     /// For direct connections: a Jamf Pro username instead of an API client.
     /// Non-empty = user/password auth; the password sits in the same Keychain
@@ -32,7 +33,7 @@ struct Tenant: Identifiable, Codable, Hashable, Sendable {
     /// A protected tenant can never be wiped. Recommended for the source tenant.
     var isProtected = false
 
-    /// Whether this tenant connects through the platform gateway.
+    /// Whether this tenant connects through the Jamf Platform API gateway.
     var usesGateway: Bool {
         (serverURL ?? "").isEmpty
     }
@@ -71,7 +72,7 @@ extension Tenant: ConnectionRecord {
             switch newValue.service {
             case .jamfPro:
                 // an empty URL would read back as a gateway tenant, so a new
-                // Jamf Pro tenant starts at "https://", as the old editor did
+                // Jamf Pro tenant starts at "https://"
                 let url = newValue.serverURL.isEmpty ? "https://" : newValue.serverURL
                 if serverURL != url { serverURL = url }
                 if newValue.signIn == .usernamePassword {

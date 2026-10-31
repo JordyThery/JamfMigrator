@@ -61,8 +61,8 @@ actor IconMigrator {
         let xml: String
         switch type.key {
         case "policies":
-            // an icon-only PUT resets the display name to the policy name
-            // (verified live 2026-10-04) — echo it in the same write
+            // an icon-only PUT resets the display name to the policy name;
+            // echo it in the same write
             let display = displayName.isEmpty ? ""
                 : "<self_service_display_name>\(ClassicXML.escape(displayName))</self_service_display_name>"
             xml = "<policy><self_service><self_service_icon><id>\(iconId)</id></self_service_icon>\(display)</self_service></policy>"

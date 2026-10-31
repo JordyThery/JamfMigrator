@@ -27,7 +27,7 @@ enum ClassicTransformer {
         case "webhooks":
             if out.contains("password_sha256") {
                 out = ClassicXML.replacing(pattern: "<password_sha256[^>]*>(.*?)</password_sha256>", in: out, with: "")
-                warnings.append("The webhook password is not returned by the API; set it on the destination.")
+                warnings.append("The webhook password isn’t returned by the API; set it on the destination.")
             }
 
         case "networksegments":
@@ -47,7 +47,7 @@ enum ClassicTransformer {
                 out = ClassicXML.replacing(pattern: "<password_sha256[^>]*>(.*?)</password_sha256>", in: out,
                                            with: "<password>\(ClassicXML.escape(secret))</password>")
                 if context.secrets[type.key == "ldapservers" ? "ldap" : "bind"] == nil {
-                    warnings.append("The \(type.key == "ldapservers" ? "LDAP" : "bind") password is not returned by the API; a placeholder was written.")
+                    warnings.append("The \(type.key == "ldapservers" ? "LDAP" : "bind") password isn’t returned by the API; a placeholder was written.")
                 }
             }
 
@@ -73,7 +73,7 @@ enum ClassicTransformer {
                     out = ClassicXML.replacing(pattern: "<ldap_server>(.|\\n|\\r)*?</ldap_server>", in: out,
                                                with: "<ldap_server><id>\(destLdapId)</id></ldap_server>")
                 } else {
-                    return .blocked(reason: "LDAP server \"\(ldapName)\" does not exist on the destination")
+                    return .blocked(reason: "LDAP server “\(ldapName)” doesn’t exist on the destination.")
                 }
             }
 
@@ -85,7 +85,7 @@ enum ClassicTransformer {
 
         case "classes":
             if ClassicXML.value(of: "source", in: out) == "Apple School Manager" {
-                return .blocked(reason: "Apple School Manager classes are not migrated")
+                return .blocked(reason: "Apple School Manager classes aren’t migrated.")
             }
             for tag in ["student_ids", "teacher_ids", "student_group_ids", "teacher_group_ids", "mobile_device_group_ids"] {
                 out = ClassicXML.strippingTag(tag, from: out)
@@ -94,7 +94,7 @@ enum ClassicTransformer {
         case "osxconfigurationprofiles", "mobiledeviceconfigurationprofiles":
             if type.key == "osxconfigurationprofiles",
                ClassicXML.value(of: "payloads", in: out).range(of: "com.apple.security.FDERecoveryKeyEscrow", options: .caseInsensitive) != nil {
-                return .blocked(reason: "FileVault payloads are not migrated and must be recreated manually")
+                return .blocked(reason: "FileVault payloads aren’t migrated and must be recreated manually.")
             }
             // double-encoded & in profile names breaks the payload
             out = out.replacingOccurrences(of: "&amp;amp;", with: "%26;")
@@ -116,7 +116,7 @@ enum ClassicTransformer {
             // attachments are files the XML can't carry
             out = ClassicXML.strippingTag("computers", from: out)
             if ClassicXML.value(of: "attachments", in: out).contains("<") {
-                warnings.append("License attachments are not copied; add them on the destination.")
+                warnings.append("License attachments aren’t copied; add them on the destination.")
             }
             out = ClassicXML.strippingTag("attachments", from: out)
 
@@ -159,7 +159,7 @@ enum ClassicTransformer {
                 if out.contains("<vpp>") {
                     out = ClassicXML.replacing(pattern: "<vpp>(.*?)</vpp>", in: out,
                                                with: "<vpp><assign_vpp_device_based_licenses>false</assign_vpp_device_based_licenses><vpp_admin_account_id>-1</vpp_admin_account_id></vpp>")
-                    warnings.append("VPP assignment was reset; licenses belong to the destination tenant's own token.")
+                    warnings.append("VPP assignment was reset; licenses belong to the destination tenant’s own token.")
                 }
             }
             // names that start with a space lose it on create
@@ -180,17 +180,17 @@ enum ClassicTransformer {
             let sourceTitleId = ClassicXML.value(of: "software_title_configuration_id", in: xml)
             guard let sourceTitleName = context.sourceName("patchsoftwaretitles", id: sourceTitleId),
                   let destTitleId = context.destId("patchsoftwaretitles", named: sourceTitleName) else {
-                return .blocked(reason: "The patch title for this policy does not exist on the destination")
+                return .blocked(reason: "The patch title for this policy doesn’t exist on the destination.")
             }
             out = ClassicXML.strippingTag("software_title_configuration_id", from: out)
             createPathOverride = "proclassic/patchpolicies/softwaretitleconfig/id/\(destTitleId)"
 
         default:
-            return .blocked(reason: "\(type.displayName) are not supported by this version of the app")
+            return .blocked(reason: "\(type.displayName) aren’t supported by this version of the app.")
         }
 
         guard let body = out.data(using: .utf8) else {
-            return .blocked(reason: "The payload is not valid UTF-8")
+            return .blocked(reason: "The payload isn’t valid UTF-8.")
         }
         return .write(TransformedObject(body: body,
                                         contentType: "application/xml",

@@ -22,7 +22,7 @@ extension AboutConfiguration {
     )
 }
 
-/// Credit for Replicator, with its MIT licence as it appears in
+/// Credit for Replicator, with its MIT license as it appears in
 /// THIRD-PARTY-NOTICES.md and in Replicator's own LICENSE.
 extension Acknowledgement {
     static let replicatorRepositoryURL = URL(string: "https://github.com/jamf/Replicator")

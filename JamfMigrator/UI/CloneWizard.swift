@@ -2,9 +2,9 @@
 //  CloneWizard.swift
 //  JamfMigrator
 //
-//  The one-button "Clone tenant" flow: Connect → Checklist & mappings →
+//  The one-button Clone Tenant flow: Connect → Checklist & mappings →
 //  Preview → Run → Verify. Reuses the planner, engine and journal, so a
-//  cancelled run resumes where it stopped.
+//  stopped run resumes where it stopped.
 //
 
 import SwiftUI
@@ -36,6 +36,7 @@ struct CloneWizard: View {
                     .font(.title2.weight(.semibold))
                 Spacer()
                 Button("Close") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
                     .disabled(appState.isRunning || appState.isBackingUp)
             }
             .padding()
@@ -107,12 +108,12 @@ private struct ConnectStep: View {
                       systemImage: preflight.destination.reachable ? "checkmark.circle.fill" : "xmark.circle.fill")
                     .foregroundStyle(preflight.destination.reachable ? .green : .red)
                 if !preflight.unavailableTypes.isEmpty {
-                    Label("Skipped: \(PreflightReport.displayNames(preflight.unavailableTypes)). These need the Platform API gateway, and a tenant here connects directly to Jamf Pro.",
+                    Label("Skipped: \(PreflightReport.displayNames(preflight.unavailableTypes)). \(PreflightReport.gatewayOnlyReason)",
                           systemImage: "info.circle")
                         .foregroundStyle(.secondary)
                 }
                 if preflight.flaggedTypes.isEmpty {
-                    Label("Both integrations have permission for every selected type.", systemImage: "checkmark.circle.fill")
+                    Label("Both tenants have permission for every selected type.", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
@@ -128,18 +129,18 @@ private struct ConnectStep: View {
                             }
                         }
                         if !preflight.notFoundTypes.isEmpty {
-                            Label("Not found: \(PreflightReport.displayNames(preflight.notFoundTypes)). A tenant doesn't have these lists, so these types will fail; leave them out.",
+                            Label("Not found: \(PreflightReport.displayNames(preflight.notFoundTypes)). A tenant doesn’t have these lists, so these types will fail; leave them out.",
                                   systemImage: "folder.badge.questionmark")
                                 .foregroundStyle(.orange)
                         }
                         if !preflight.uncheckedTypes.isEmpty {
-                            Label("Couldn't check: \(PreflightReport.displayNames(preflight.uncheckedTypes)). The check got an error or no answer; these types may still work. Choose Test again to retry.",
+                            Label("Couldn’t check: \(PreflightReport.displayNames(preflight.uncheckedTypes)). The check got an error or no answer; these types may still work. Choose Test Again to retry.",
                                   systemImage: "questionmark.circle")
                                 .foregroundStyle(.secondary)
                         }
                         let failing = preflight.missingPermissionTypes + preflight.notFoundTypes
                         if !failing.isEmpty {
-                            Button(preflight.uncheckedTypes.isEmpty ? "Leave these types out" : "Leave out the types that will fail") {
+                            Button(preflight.uncheckedTypes.isEmpty ? "Leave These Types Out" : "Leave Out the Types That Will Fail") {
                                 appState.selectedTypeKeys.subtract(failing)
                                 runPreflight()
                             }
@@ -148,26 +149,26 @@ private struct ConnectStep: View {
                     }
                 }
                 if !preflight.destinationIsEmpty {
-                    Label("The destination is not empty. Objects with a matching name are updated in place; everything else on the destination is left alone.",
+                    Label("The destination isn’t empty. Objects with a matching name are updated in place; everything else on the destination is left alone.",
                           systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.orange)
                 }
             } else {
-                Text("Validates both tenants and checks the integrations' permissions.")
+                Text("Checks that both tenants answer, and the permissions on both tenants.")
                     .foregroundStyle(.secondary)
             }
             Spacer()
             HStack {
                 Spacer()
                 if appState.preflight == nil || appState.isPlanning {
-                    Button("Test connections") { runPreflight() }
+                    Button("Test Connections") { runPreflight() }
                         .buttonStyle(.borderedProminent)
                         .disabled(appState.isPlanning || appState.destTenant == nil || appState.sourceTenant == nil)
                 } else {
-                    Button("Test again") { runPreflight() }
+                    Button("Test Again") { runPreflight() }
                     // only an unreachable tenant blocks; warnings are the
                     // user's call
-                    Button(appState.preflight?.hasWarnings == true ? "Continue anyway" : "Continue") { next() }
+                    Button(appState.preflight?.hasWarnings == true ? "Continue Anyway" : "Continue") { next() }
                         .buttonStyle(.borderedProminent)
                         .disabled(!(appState.preflight?.isReady ?? false))
                 }
@@ -180,7 +181,7 @@ private struct ConnectStep: View {
     private func tenantLabel(_ name: String, _ check: PreflightReport.TenantCheck) -> String {
         check.reachable
             ? "\(name): Jamf Pro \(check.version ?? "?")"
-            : "\(name) unreachable: \(check.error ?? "no response")"
+            : "\(name) unreachable: \(check.error ?? "No response.")"
     }
 
     private func runPreflight() {
@@ -205,14 +206,14 @@ private struct PrepareStep: View {
     var body: some View {
         @Bindable var appState = appState
         Form {
-            Section("Manual steps — the API can't copy these") {
+            Section("Manual Steps — the API Can’t Copy These") {
                 ForEach(PreflightReport.manualChecklist, id: \.self) { item in
                     Label(item, systemImage: "checklist")
                         .font(.callout)
                 }
             }
 
-            Section("ADE instances") {
+            Section("ADE Instances") {
                 if appState.isLoadingMappings {
                     ProgressView().controlSize(.small)
                 } else if appState.sourceADEInstances.isEmpty {
@@ -233,7 +234,7 @@ private struct PrepareStep: View {
                 }
             }
 
-            Section("Distribution points") {
+            Section("Distribution Points") {
                 if appState.sourceDistributionPoints.isEmpty {
                     Text("The source has no file-share distribution points.").foregroundStyle(.secondary)
                 } else {
@@ -249,11 +250,11 @@ private struct PrepareStep: View {
             }
 
             Section("Secrets") {
-                Text("Passwords the API won't return are written from Settings › Secrets, or as the \"\(placeholderSecret)\" placeholder.")
+                Text("Passwords the API won’t return are written from Settings › Secrets, or as the “\(placeholderSecret)” placeholder.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 SettingsLink {
-                    Text("Open Secrets settings…")
+                    Text("Open Secrets Settings…")
                 }
             }
         }
@@ -313,7 +314,7 @@ private struct PreviewStep: View {
                         .buttonStyle(.borderedProminent)
                         .disabled(appState.isPlanning)
                 } else {
-                    Button("Preview again") { appState.preview() }
+                    Button("Preview Again") { appState.preview() }
                     Button("Continue") { next() }
                         .buttonStyle(.borderedProminent)
                         .disabled(!appState.canRun && appState.plan?.changeCount != 0)
@@ -330,6 +331,9 @@ private struct RunStep: View {
     @Environment(AppState.self) private var appState
     let next: () -> Void
     @State private var started = false
+    /// Run and Resume Run confirm with the tenant's name and the counts,
+    /// exactly as the toolbar's Run does.
+    @State private var showRunConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -342,7 +346,7 @@ private struct RunStep: View {
                 } else {
                     ProgressView("Starting…")
                 }
-                Text("\(appState.runEvents.count) objects processed")
+                Text("\(Plural.count(appState.runEvents.count, "object")) processed")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else if let report = appState.report, let reason = report.stopReason {
@@ -351,15 +355,15 @@ private struct RunStep: View {
             } else if let report = appState.report {
                 let failures = report.retryableFailures
                 Label(failures.isEmpty
-                      ? "Run finished: \(report.entries.count) objects processed."
-                      : "Run finished with \(failures.count) objects not migrated. Resume run retries them.",
+                      ? "Run finished: \(Plural.count(report.entries.count, "object")) processed."
+                      : "Run finished with \(Plural.count(failures.count, "object")) not migrated. Resume Run retries them.",
                       systemImage: failures.isEmpty ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
                     .foregroundStyle(failures.isEmpty ? .green : .orange)
             } else if appState.plan?.changeCount == 0 {
                 Label("Nothing to do — every object is already on the destination.", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
             } else {
-                Text("Copies \(appState.plan?.changeCount ?? 0) changes to \(appState.destTenant?.name ?? "the destination"), in step order. The run can be stopped and resumed.")
+                Text("Copies \(Plural.count(appState.effectiveChangeCount, "change")) to \(appState.destTenant?.name ?? "the destination"), in step order. The run can be stopped and resumed.")
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -369,21 +373,28 @@ private struct RunStep: View {
                     Button("Stop", role: .destructive) { appState.cancel() }
                 } else if started || appState.plan?.changeCount == 0 {
                     if appState.report?.retryableFailures.isEmpty == false {
-                        Button("Resume run") { appState.run() }
+                        Button("Resume Run") { showRunConfirmation = true }
+                            .disabled(!appState.canRun)
                     }
                     Button("Continue to Verify") { next() }
                         .buttonStyle(.borderedProminent)
                 } else {
-                    Button("Run") {
-                        started = true
-                        appState.run()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!appState.canRun)
+                    Button("Run") { showRunConfirmation = true }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!appState.canRun)
                 }
             }
         }
         .padding()
+        .confirmationDialog(appState.runConfirmationTitle, isPresented: $showRunConfirmation) {
+            Button(appState.runConfirmationButton, role: appState.mode == .delete ? .destructive : nil) {
+                started = true
+                appState.run()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(appState.runConfirmationMessage)
+        }
     }
 }
 
@@ -401,8 +412,8 @@ private struct VerifyStep: View {
                 Label(report.isClean
                       ? "Verified: a second run would write nothing."
                       : report.notCheckedCount > 0
-                        ? "\(report.notCheckedCount) types could not be checked\(report.discrepancyCount > 0 ? "; \(report.discrepancyCount) objects differ or are missing" : "")."
-                        : "\(report.discrepancyCount) objects differ or are missing.",
+                        ? "\(Plural.count(report.notCheckedCount, "type")) couldn’t be checked\(report.discrepancyCount > 0 ? "; \(Plural.count(report.discrepancyCount, "object")) \(report.discrepancyCount == 1 ? "differs or is" : "differ or are") missing" : "")."
+                        : "\(Plural.count(report.discrepancyCount, "object")) \(report.discrepancyCount == 1 ? "differs or is" : "differ or are") missing.",
                       systemImage: report.isClean ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
                     .foregroundStyle(report.isClean ? .green : .orange)
                     .font(.headline)
@@ -432,7 +443,7 @@ private struct VerifyStep: View {
                         }
                     }
                 }
-                Button("Export report…") { exportReport(report) }
+                Button("Export Report…") { exportReport(report) }
             } else {
                 Text("Plans again and checks that every object is now Unchanged.")
                     .foregroundStyle(.secondary)
@@ -468,7 +479,7 @@ private struct VerifyStep: View {
         do {
             try lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
         } catch {
-            appState.lastError = "The report could not be saved: \(error.localizedDescription)"
+            appState.lastError = "The verification report couldn’t be saved: \(error.localizedDescription)"
         }
     }
 }

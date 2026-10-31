@@ -45,15 +45,12 @@ actor DeleteEngine {
     func run(_ plan: MigrationPlan, including: [String: Set<String>]) async -> RunReport {
         var report = RunReport()
         stopReason = nil
+        // a journal of another plan never makes this run skip a delete
+        await journal.begin(planId: plan.id)
         var retryQueue = [(ObjectType, ObjectRef)]()
 
         for type in ObjectRegistry.deletionOrder where plan.typeKeys.contains(type.key) {
             guard !isCancelled, stopReason == nil else { break }
-            if type.requiresGateway && !client.supportsPlatformEndpoints {
-                report.add(type: type, ref: ObjectRef(id: "-", name: "(all objects)"),
-                           status: .blocked(reason: "\(type.displayName) require the Jamf Platform API gateway"))
-                continue
-            }
             if case .singleton = type.listShape {
                 // settings singletons can't be deleted
                 continue
@@ -72,7 +69,7 @@ actor DeleteEngine {
                     guard !isCancelled, stopReason == nil else { break }
                     completed += 1
                     if Self.protectedNames[type.key]?.contains(ref.name) == true {
-                        report.add(type: type, ref: ref, status: .blocked(reason: "Built-in object"))
+                        report.add(type: type, ref: ref, status: .blocked(reason: "Built-in object."))
                         continue
                     }
                     if let previous = await journal.status(type: type.key, objectId: ref.id), previous.isDone {
@@ -81,7 +78,7 @@ actor DeleteEngine {
                     }
                     guard current[ref.id] == ref.name else {
                         let change = current[ref.id] == nil ? "no longer on the tenant" : "renamed since Preview"
-                        stopReason = "\(type.displayName) › \"\(ref.name)\": \(change). The run stopped before deleting it; Preview again."
+                        stopReason = "\(type.displayName) › “\(ref.name)”: \(change). The run stopped before deleting it. Preview again before running."
                         AppActivity.record(stopReason ?? "", category: "Delete", level: .warning)
                         break
                     }

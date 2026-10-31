@@ -1,5 +1,5 @@
 //
-//  Phase6Tests.swift
+//  PlatformObjectTests.swift
 //  JamfMigratorTests
 //
 //  Platform objects: PreStages, enrollment customizations, Blueprints,
@@ -11,7 +11,7 @@ import Testing
 import JTKit
 @testable import JamfMigrator
 
-private func phase6Context() -> TransformContext {
+private func platformContext() -> TransformContext {
     var context = TransformContext()
     context.destIdsByName = [
         "sites": ["HQ": "9"],
@@ -61,7 +61,7 @@ struct PreStageTransformTests {
 
     @Test func createRemapsEverythingAndStripsLocks() throws {
         let type = ObjectRegistry.type("computerprestages")!
-        let out = try jsonBody(ProTransformer.transform(type: type, json: sourcePreStage, context: phase6Context()))
+        let out = try jsonBody(ProTransformer.transform(type: type, json: sourcePreStage, context: platformContext()))
 
         #expect(out["id"] == nil)
         #expect(out["profileUuid"] == nil)
@@ -82,7 +82,7 @@ struct PreStageTransformTests {
 
     @Test func updateEchoesTheDestinationVersionLocks() throws {
         let type = ObjectRegistry.type("computerprestages")!
-        var context = phase6Context()
+        var context = platformContext()
         context.action = .update(destId: "77")
         context.destVersionLocks = ["root": 12, "locationInformation": 4, "purchasingInformation": 5, "accountSettings": 6]
         context.destPreStageIds = ["locationInformation": "9", "purchasingInformation": "9", "accountSettings": "9"]
@@ -97,7 +97,7 @@ struct PreStageTransformTests {
 
     @Test func unmappedADEInstanceBlocks() {
         let type = ObjectRegistry.type("computerprestages")!
-        var context = phase6Context()
+        var context = platformContext()
         context.mappings.adeInstances = [:]
         guard case .blocked(let reason) = ProTransformer.transform(type: type, json: sourcePreStage, context: context) else {
             Issue.record("expected .blocked")
@@ -108,7 +108,7 @@ struct PreStageTransformTests {
 
     @Test func adminPasswordWarningIsAttached() throws {
         let type = ObjectRegistry.type("computerprestages")!
-        let outcome = ProTransformer.transform(type: type, json: sourcePreStage, context: phase6Context())
+        let outcome = ProTransformer.transform(type: type, json: sourcePreStage, context: platformContext())
         guard case .write(let object) = outcome else { return }
         #expect(object.warnings.contains { $0.contains("admin password") })
     }
@@ -127,7 +127,7 @@ struct BlueprintBenchmarkTransformTests {
                                        "payloadIdentifier": "OLD-PAYLOAD-ID",
                                        "settings": ["RequirePasscode": ["Included": true, "Value": true]]]]]],
         ]
-        let out = try jsonBody(ProTransformer.transform(type: type, json: source, context: phase6Context()))
+        let out = try jsonBody(ProTransformer.transform(type: type, json: source, context: platformContext()))
 
         #expect(out["id"] == nil)
         #expect(out["deploymentState"] == nil)
@@ -141,7 +141,7 @@ struct BlueprintBenchmarkTransformTests {
     @Test func blueprintWithUnknownGroupBlocks() {
         let type = ObjectRegistry.type("blueprints")!
         let source: [String: Any] = ["name": "Baseline", "scope": ["deviceGroups": ["UNKNOWN-UUID"]]]
-        guard case .blocked = ProTransformer.transform(type: type, json: source, context: phase6Context()) else {
+        guard case .blocked = ProTransformer.transform(type: type, json: source, context: platformContext()) else {
             Issue.record("expected .blocked")
             return
         }
@@ -155,7 +155,7 @@ struct BlueprintBenchmarkTransformTests {
             "rules": [["id": "r1", "enabled": true, "odv": "8", "extra": "dropme"]],
             "target": ["deviceGroups": ["SRC-GROUP-UUID"]],
         ]
-        let out = try jsonBody(ProTransformer.transform(type: type, json: source, context: phase6Context()))
+        let out = try jsonBody(ProTransformer.transform(type: type, json: source, context: platformContext()))
 
         #expect(out["sourceBaselineId"] as? String == "cis-l1")
         #expect(out["baselineId"] == nil)
@@ -169,7 +169,7 @@ struct BlueprintBenchmarkTransformTests {
     @Test func singletonCopiesWithSecretWarnings() throws {
         let type = ObjectRegistry.type("smtpserver")!
         let outcome = ProTransformer.transform(type: type, json: ["enabled": true, "connectionSettings": ["host": "smtp.x"]],
-                                               context: phase6Context())
+                                               context: platformContext())
         let out = try jsonBody(outcome)
         #expect(out["enabled"] as? Bool == true)
         guard case .write(let object) = outcome else { return }
@@ -177,7 +177,7 @@ struct BlueprintBenchmarkTransformTests {
     }
 }
 
-struct Phase6EngineTests {
+struct PlatformObjectEngineTests {
 
     @Test func singletonsAreUpdatedInPlace() async throws {
         let gateway = FakeGateway { env, method, path, _ in
@@ -234,9 +234,9 @@ struct Phase6EngineTests {
         #expect(writes == ["DELETE /compliance-benchmarks/v1/benchmarks/C9", "POST /compliance-benchmarks/v1/benchmarks"])
     }
 
-    /// A 409 duplicate title on create means a benchmark with that name
-    /// already exists; the engine re-lists and treats the match as the object.
-    @Test func benchmarkDuplicateTitleIsAMatch() async throws {
+    /// A 409 duplicate title on a planned create is a failure: nothing was
+    /// written, so it is never reported as unchanged.
+    @Test func benchmarkDuplicateTitleIsAFailure() async throws {
         let listCalls = Locked(0)
         let gateway = FakeGateway { env, method, path, _ in
             switch (env, method, path) {
@@ -261,12 +261,70 @@ struct Phase6EngineTests {
         }
         let engine = MigrationEngine(source: gateway.source, dest: gateway.dest, journal: makeJournal())
         let report = await engine.migrate(typeKeys: ["compliancebenchmarks"])
-        #expect(report.entries.first?.status == .unchanged(destId: "C9"))
+        guard case .failed(let reason)? = report.entries.first?.status else {
+            Issue.record("expected .failed, got \(String(describing: report.entries.first?.status))")
+            return
+        }
+        #expect(reason.contains("already exists"))
+    }
+
+    /// A benchmark the destination holds, differing from the source, whose
+    /// DELETE answers `deleteStatus` and whose recreate answers `postStatus`.
+    private func replaceGateway(deleteStatus: Int, postStatus: Int, deleted: Locked<Bool>) -> FakeGateway {
+        FakeGateway { env, method, path, _ in
+            switch (env, method, path) {
+            case ("src", "GET", "/compliance-benchmarks/v1/benchmarks"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["benchmarks": [["id": "C1", "title": "CIS Level 1"]]]))
+            case ("src", "GET", "/compliance-benchmarks/v1/benchmarks/C1"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(
+                    ["id": "C1", "title": "CIS Level 1", "baselineId": "cis-l1", "enforcementMode": "ENFORCE"]))
+            case ("dst", "GET", "/compliance-benchmarks/v1/benchmarks"):
+                let entries: [[String: Any]] = deleted.value ? [] : [["id": "C9", "title": "CIS Level 1"]]
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["benchmarks": entries]))
+            case ("dst", "GET", "/compliance-benchmarks/v1/benchmarks/C9"):
+                if deleted.value { return MockHTTP.Reply(status: 403) }
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(
+                    ["id": "C9", "title": "CIS Level 1", "baselineId": "cis-l1", "enforcementMode": "MONITOR"]))
+            case ("dst", "DELETE", "/compliance-benchmarks/v1/benchmarks/C9"):
+                if deleteStatus < 300 { deleted.withLock { $0 = true } }
+                return MockHTTP.Reply(status: deleteStatus)
+            case ("dst", "POST", "/compliance-benchmarks/v1/benchmarks"):
+                return MockHTTP.Reply(status: postStatus, data: MockHTTP.json(["benchmarkId": "C10"]))
+            default:
+                return nil
+            }
+        }
+    }
+
+    /// A refused DELETE (403) leaves the benchmark in the list: the Replace
+    /// fails, nothing is created, and it is never "unchanged".
+    @Test func aRefusedBenchmarkDeleteFailsTheReplace() async throws {
+        let gateway = replaceGateway(deleteStatus: 403, postStatus: 201, deleted: Locked(false))
+        let report = await MigrationEngine(source: gateway.source, dest: gateway.dest, journal: makeJournal())
+            .migrate(typeKeys: ["compliancebenchmarks"])
+        guard case .failed? = report.entries.first?.status else {
+            Issue.record("expected .failed, got \(String(describing: report.entries.first?.status))")
+            return
+        }
+        #expect(gateway.writes(to: "dst").map(\.method) == ["DELETE"])
+    }
+
+    /// When the recreate fails after the delete, the reason says the
+    /// benchmark is gone from the destination.
+    @Test func aFailedRecreateSaysTheBenchmarkWasDeleted() async throws {
+        let gateway = replaceGateway(deleteStatus: 204, postStatus: 400, deleted: Locked(false))
+        let report = await MigrationEngine(source: gateway.source, dest: gateway.dest, journal: makeJournal())
+            .migrate(typeKeys: ["compliancebenchmarks"])
+        guard case .failed(let reason)? = report.entries.first?.status else {
+            Issue.record("expected .failed, got \(String(describing: report.entries.first?.status))")
+            return
+        }
+        #expect(reason.hasPrefix("Deleted on the destination"))
     }
 
     /// A fake destination Blueprint B7 that shows a new deployment once it
     /// is deployed, ending as `job`.
-    private func blueprintGateway(job: String) -> FakeGateway {
+    private func blueprintGateway(job: String, sourceState: String = "DEPLOYED") -> FakeGateway {
         let deployed = Locked(false)
         return FakeGateway { env, method, path, _ in
             switch (env, method, path) {
@@ -274,7 +332,7 @@ struct Phase6EngineTests {
                 return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 1, "results": [["id": "B1", "name": "Baseline"]]]))
             case ("src", "GET", "/blueprints/v1/blueprints/B1"):
                 return MockHTTP.Reply(status: 200, data: MockHTTP.json(
-                    ["id": "B1", "name": "Baseline", "deploymentState": ["state": "DEPLOYED"], "steps": []]))
+                    ["id": "B1", "name": "Baseline", "deploymentState": ["state": sourceState], "steps": []]))
             case ("dst", "POST", "/blueprints/v1/blueprints"):
                 return MockHTTP.Reply(status: 201, data: MockHTTP.json(["id": "B7"]))
             case ("dst", "POST", "/blueprints/v1/blueprints/B7/deploy"):
@@ -311,7 +369,38 @@ struct Phase6EngineTests {
         let report = await engine.migrate(typeKeys: ["blueprints"])
 
         #expect(report.entries.first?.status == .created(destId: "B7"))
-        #expect(report.entries.first?.warnings == ["The blueprint was created but its deployment failed on the destination; check it there."])
+        #expect(report.entries.first?.warnings == ["The Blueprint was written but its deployment failed on the destination; check it there."])
+    }
+
+    /// A Blueprint that isn't deployed on the source is created and left
+    /// undeployed: it never reaches the destination's devices.
+    @Test func aNotDeployedBlueprintStaysUndeployed() async throws {
+        let gateway = blueprintGateway(job: "SUCCEEDED", sourceState: "NOT_DEPLOYED")
+        let report = await MigrationEngine(source: gateway.source, dest: gateway.dest, journal: makeJournal())
+            .migrate(typeKeys: ["blueprints"])
+
+        #expect(report.entries.first?.status == .created(destId: "B7"))
+        #expect(gateway.writes(to: "dst").map { "\($0.method) \($0.path)" } == ["POST /blueprints/v1/blueprints"])
+    }
+
+    /// An out-of-date source Blueprint is deployed, with a warning.
+    @Test func anOutOfDateBlueprintIsDeployedWithAWarning() async throws {
+        let gateway = blueprintGateway(job: "SUCCEEDED", sourceState: "OUT_OF_DATE")
+        let report = await MigrationEngine(source: gateway.source, dest: gateway.dest, journal: makeJournal())
+            .migrate(typeKeys: ["blueprints"])
+
+        #expect(gateway.writes(to: "dst").map { "\($0.method) \($0.path)" }
+                == ["POST /blueprints/v1/blueprints", "POST /blueprints/v1/blueprints/B7/deploy"])
+        #expect(report.entries.first?.warnings.first?.contains("out of date on the source") == true)
+    }
+
+    @Test(arguments: [("DEPLOYED", MigrationEngine.BlueprintDeployment.deploy),
+                      ("OUT_OF_DATE", .deployWithWarning),
+                      ("NOT_DEPLOYED", .leaveUndeployed),
+                      ("SOMETHING_NEW", .leaveUndeployed)])
+    func blueprintDeploymentFollowsTheSourceState(state: String, expected: MigrationEngine.BlueprintDeployment) {
+        #expect(MigrationEngine.blueprintDeployment(["deploymentState": ["state": state]]) == expected)
+        #expect(MigrationEngine.blueprintDeployment([:]) == .leaveUndeployed)
     }
 
     @Test func blueprintDelete500IsVerifiedWithAGet() async throws {
@@ -345,7 +434,7 @@ struct Phase6EngineTests {
     }
 }
 
-struct Phase6PlannerTests {
+struct PlatformObjectPlannerTests {
 
     @Test func benchmarkDifferencesPlanAsReplace() async throws {
         let gateway = FakeGateway { env, method, path, _ in

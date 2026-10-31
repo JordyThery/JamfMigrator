@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import JTKit
 
 enum PayloadDiff {
 
@@ -16,6 +17,25 @@ enum PayloadDiff {
         var entries = [DiffEntry]()
         compare(source, destination, path: path, into: &entries)
         return entries
+    }
+
+    /// `entries` with every secret hidden: a field whose name says it holds
+    /// a password or secret, or a value that is one of `values` (Settings ›
+    /// Secrets), shows JTKit's placeholder instead. The row stays, so the
+    /// Inspector still says the field differs.
+    static func hidingSecrets(_ entries: [DiffEntry], values: [String]) -> [DiffEntry] {
+        let secrets = values.filter { !$0.isEmpty }
+        return entries.map { entry in
+            let field = entry.path.split(separator: "/").last.map(String.init) ?? entry.path
+            let name = field.replacing(/\[\d+\]|#count/, with: "").lowercased()
+            let namedSecret = ["password", "passwd", "passcode", "secret"].contains { name.contains($0) }
+            func hidden(_ value: String?) -> String? {
+                guard let value else { return nil }
+                if namedSecret { return Redaction.placeholder }
+                return secrets.contains(where: value.contains) ? Redaction.placeholder : value
+            }
+            return DiffEntry(path: entry.path, source: hidden(entry.source), destination: hidden(entry.destination))
+        }
     }
 
     private static func compare(_ source: Any?, _ destination: Any?, path: String, into entries: inout [DiffEntry]) {
@@ -47,8 +67,8 @@ enum PayloadDiff {
         case nil, is NSNull:
             return nil
         case let string as String where string.isEmpty:
-            // Jamf normalizes absent fields to "" (verified live: package
-            // manifest fields) — treat empty and missing as the same
+            // Jamf normalizes absent fields to "" (package manifest fields,
+            // for one): treat empty and missing as the same
             return nil
         case let number as NSNumber:
             // normalizes true/1 representations across JSON and XML strings

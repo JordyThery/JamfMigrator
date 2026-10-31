@@ -1,7 +1,40 @@
 # Change log
 
-## Unreleased
-- Run now carries out exactly the plan Preview showed: only the ticked
+## v1.1.0 (2026-10-31)
+- Fixed: a Blueprint that isn’t deployed on the source was deployed on the
+  destination, and an out-of-date one wasn’t deployed. Now only a deployed
+  Blueprint is deployed, and an out-of-date one is deployed with a warning.
+- Fixed: a run could skip objects a new Preview planned, and report them as
+  done, when an earlier run of the same tenants had stopped or failed. Only
+  Resume Run of the same Preview skips what was already done.
+- Settings › Secrets values no longer appear in saved payloads (Settings ›
+  Export) or in the inspector’s differences: passwords, password hashes,
+  Secrets values and license serial numbers show as “<redacted>”.
+- Delete mode and Wipe Tenant never remove the account a direct connection
+  signs in with, nor a Jamf Pro account or group with full access and the
+  Administrator privilege set; Preview lists them as kept.
+- Clone Tenant’s Run and Resume Run now ask for the same confirmation as the
+  toolbar’s Run, with the tenant name and counts.
+- While a run is writing, the tenants and the Copy/Delete mode can’t be
+  changed.
+- Stop lets the object being written finish, so the report says what
+  happened to it.
+- Fixed: App Installer deployments lost their category and site.
+- A Compliance Benchmark Replace that can’t delete or recreate the benchmark
+  is reported as failed, and says when the benchmark was already deleted; a
+  patch title whose settings couldn’t be written after subscribing says so.
+- Onboarding items are matched by name on the destination (Preview blocks the
+  setting when one isn’t there); single sign-on that is off on the
+  destination stays off.
+- Blueprints and Compliance Benchmarks can use device groups the same run
+  creates.
+- A list Jamf answers without its contents is an error, never an empty tenant.
+- Wipe Tenant’s delete button stays off when Run can’t run, and the finished
+  count shows only the objects actually deleted.
+- Editing a tenant’s server, region or Environment ID clears the plan.
+- Clearer, consistent wording throughout (Check All, Clone Tenant, counts with
+  the right plural).
+- Run now carries out exactly the plan Preview showed: only the checked
   objects that Preview marked to create, update or delete. Unchanged
   objects are skipped, objects added after Preview are left alone, and
   changing the selected types after Preview turns Run off until you
@@ -12,14 +45,14 @@
   (for Secrets only that they changed, never a value).
 - Objects with the same name on the source are all blocked, as are
   duplicates on the destination; Run never picks one of them.
-- Unticking an object that a ticked object needs (for example a script's
+- Unchecking an object that a checked object needs (for example a script’s
   new category) turns Run off and says which object needs it.
 - If creating an object fails during Run, the objects that need it are not
   written with a missing reference; they are reported as not written, and
-  Resume run retries them.
+  Resume Run retries them.
 - Delete mode deletes only the objects Preview listed, and stops if one
   changed since Preview.
-- Verify marks a type it couldn't read as "Not checked" instead of
+- Verify marks a type it couldn’t read as “Not checked” instead of
   passing it.
 - Fixed: new static computer groups failed to copy (Jamf answered with
   an error); they are now created empty as intended.
@@ -53,19 +86,19 @@
   Updates…; turn the daily check off in Settings › Updates.
 
 ## v1.0.2
-- A dry run now shows a clear progress view while it plans ("type 12 of
-  51"), and opens on a new Summary page: totals per outcome, every
+- A dry run now shows a clear progress view while it plans (“type 12 of
+  51”), and opens on a new Summary page: totals per outcome, every
   planned type with its counts, and a legend for the sidebar badges.
-- Clone tenant: missing permissions and a non-empty destination are
-  warnings now and no longer block the wizard ("Continue anyway"), with a
+- Clone Tenant: missing permissions and a non-empty destination are
+  warnings now and no longer block the wizard (“Continue Anyway”), with a
   button to leave the denied types out. Blueprints and Compliance
   Benchmarks are skipped on direct connections instead of being reported
   as missing permissions.
 
 ## v1.0.1
 - Fixed: secrets and passwords entered in Settings were not saved in the
-  released build, so every tenant failed with "No client secret or
-  password is stored". Secrets now go to the login keychain, and Settings
+  released build, so every tenant failed with “No client secret or
+  password is stored”. Secrets now go to the login keychain, and Settings
   shows a warning if the Keychain ever refuses a save.
 
 ## v1.0
@@ -73,5 +106,5 @@ First release. A complete rewrite of Replicator as a SwiftUI app for
 macOS 26: 52 object types over the Jamf Platform API gateway or direct
 Jamf Pro connections, a dry-run preview with field-level diffs,
 selective migration down to a single object, a resumable journaled
-engine, the Clone tenant and Wipe tenant guided flows, a verify pass,
+engine, the Clone Tenant and Wipe Tenant guided flows, a verify pass,
 and a guided tour.

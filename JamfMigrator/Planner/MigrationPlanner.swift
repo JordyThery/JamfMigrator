@@ -69,7 +69,7 @@ actor MigrationPlanner {
                           into plan: inout MigrationPlan) async throws {
         if type.requiresGateway && !(source.supportsPlatformEndpoints && dest.supportsPlatformEndpoints) {
             plan.entries.append(ObjectPlan(typeKey: type.key, objectId: "-", name: "(all objects)",
-                                           change: .blocked(reason: "\(type.displayName) require the Jamf Platform API gateway; one of the selected tenants connects directly to Jamf Pro")))
+                                           change: .blocked(reason: PreflightReport.gatewayOnlyReason)))
             return
         }
         for dependency in type.dependencies + ["sites"] {
@@ -90,7 +90,7 @@ actor MigrationPlanner {
         for ref in refs {
             if (nameCounts[ref.name] ?? 0) > 1 {
                 plan.entries.append(ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
-                                               change: .blocked(reason: "\(nameCounts[ref.name] ?? 0) source objects are named \"\(ref.name)\"; rename them so each can be migrated")))
+                                               change: .blocked(reason: "\(nameCounts[ref.name] ?? 0) source objects are named “\(ref.name)”; rename them so each can be migrated.")))
                 continue
             }
             let entry = await planObject(type, ref: ref, included: included)
@@ -104,7 +104,7 @@ actor MigrationPlanner {
     private func planObject(_ type: ObjectType, ref: ObjectRef, included: Set<String>) async -> ObjectPlan {
         if destDuplicateNames[type.key]?.contains(ref.name) == true {
             return ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
-                              change: .blocked(reason: "More than one destination object is named \"\(ref.name)\""))
+                              change: .blocked(reason: "More than one destination object is named “\(ref.name)”."))
         }
         do {
             let payload = try await ObjectLister.detail(type, id: ref.id, on: source)
@@ -165,6 +165,11 @@ actor MigrationPlanner {
                 lookups[typeKey, default: [:]][name] = plannedId
             }
         }
+        // a device group this run creates is a platform group once it exists,
+        // so a Blueprint or Benchmark scoped to it isn't Blocked
+        for name in plannedDeviceGroups(inputs.plannedCreates) where lookups[platformGroupsKey]?[name] == nil {
+            lookups[platformGroupsKey, default: [:]][name] = plannedId
+        }
         let references = PlannedReferenceRecorder()
         var context = TransformContext()
         context.isForComparison = true
@@ -185,6 +190,9 @@ actor MigrationPlanner {
                case .json(let destJson)? = destPayload {
                 context.destVersionLocks = versionLocks(in: destJson)
                 context.destPreStageIds = nestedIds(in: destJson)
+            }
+            if type.key == "sso", case .json(let destJson)? = destPayload {
+                context.destEnabledFlags = ProTransformer.enabledFlags(in: destJson)
             }
         }
 
@@ -214,6 +222,7 @@ actor MigrationPlanner {
             destContext.mappings = inputs.mappings.identity
             destContext.destVersionLocks = context.destVersionLocks
             destContext.destPreStageIds = context.destPreStageIds
+            destContext.destEnabledFlags = context.destEnabledFlags
             guard case .write(let normalizedDest) = transform(type, payload: destPayload, context: destContext) else {
                 return ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
                                   change: .update(destId: existingDestId), warnings: transformed.warnings,
@@ -221,7 +230,9 @@ actor MigrationPlanner {
             }
             let destDictionary = dictionary(from: normalizedDest, isClassic: type.api.isClassic)
             plan.destDigest = digest(destDictionary)
-            let diff = PayloadDiff.diff(source: sourceDictionary, destination: destDictionary)
+            // Settings › Secrets values never go into the plan: only that the field differs
+            let diff = PayloadDiff.hidingSecrets(PayloadDiff.diff(source: sourceDictionary, destination: destDictionary),
+                                                 values: Array(inputs.secrets.values))
             if diff.isEmpty {
                 return ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
                                   change: .unchanged(destId: existingDestId),
@@ -235,6 +246,16 @@ actor MigrationPlanner {
                               sourceDigest: plan.sourceDigest, destDigest: plan.destDigest,
                               plannedDependencies: plan.plannedDependencies)
         }
+    }
+
+    /// The device group types whose groups Blueprints and Benchmarks scope
+    /// by platform id.
+    static let deviceGroupKeys = ["smartcomputergroups", "staticcomputergroups",
+                                  "smartmobiledevicegroups", "staticmobiledevicegroups"]
+
+    /// The device group names the run creates, of every group type.
+    static func plannedDeviceGroups(_ plannedCreates: [String: Set<String>]) -> Set<String> {
+        deviceGroupKeys.reduce(into: Set<String>()) { $0.formUnion(plannedCreates[$1] ?? []) }
     }
 
     /// A SHA-256 of a compared payload (sorted keys), so Run can tell whether
@@ -251,7 +272,13 @@ actor MigrationPlanner {
     private static func dependencies(of type: ObjectType, in dictionary: [String: Any],
                                      recorded: Set<PlannedDependency>,
                                      plannedCreates: [String: Set<String>]) -> [PlannedDependency] {
-        var found = recorded
+        // a planned platform group is the device group the run creates
+        var found = Set(recorded.map { dependency -> PlannedDependency in
+            guard dependency.typeKey == platformGroupsKey,
+                  let key = deviceGroupKeys.first(where: { plannedCreates[$0]?.contains(dependency.name) == true })
+            else { return dependency }
+            return PlannedDependency(typeKey: key, name: dependency.name)
+        })
         if type.api.isClassic {
             var names: [String] = []
             collectReferenceNames(dictionary, path: [], into: &names)
@@ -281,8 +308,11 @@ actor MigrationPlanner {
 
     // MARK: Delete plan
 
-    /// What delete mode would remove, in deletion order, with the built-ins kept.
-    func planDeletion(typeKeys: Set<String>) async -> MigrationPlan {
+    /// What delete mode would remove, in deletion order, with the built-ins
+    /// kept, and the Jamf Pro accounts that keep the tenant reachable: the
+    /// signed-in account (`signedInUsername`, a direct username-and-password
+    /// connection's) and every full-access administrator account or group.
+    func planDeletion(typeKeys: Set<String>, signedInUsername: String? = nil) async -> MigrationPlan {
         var plan = MigrationPlan(mode: .delete, typeKeys: typeKeys)
         for type in ObjectRegistry.deletionOrder where typeKeys.contains(type.key) {
             progress?(type.displayName)
@@ -298,7 +328,10 @@ actor MigrationPlanner {
                 for ref in refs {
                     if DeleteEngine.protectedNames[type.key]?.contains(ref.name) == true {
                         plan.entries.append(ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
-                                                       change: .keep(reason: "Built-in object")))
+                                                       change: .keep(reason: "Built-in object.")))
+                    } else if let reason = await accountKeepReason(type, ref: ref, signedInUsername: signedInUsername) {
+                        plan.entries.append(ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
+                                                       change: .keep(reason: reason)))
                     } else {
                         plan.entries.append(ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
                                                        change: .delete))
@@ -312,6 +345,49 @@ actor MigrationPlanner {
             }
         }
         return plan
+    }
+
+    /// Why a Jamf Pro account or account group is never deleted, or nil
+    /// for any other object: it is the signed-in account, it has full access
+    /// with the Administrator privilege set, or its access couldn't be read
+    /// (so it could be the last administrator).
+    private func accountKeepReason(_ type: ObjectType, ref: ObjectRef, signedInUsername: String?) async -> String? {
+        switch type.key {
+        case "jamfusers":
+            if let signedInUsername, !signedInUsername.isEmpty,
+               ref.name.caseInsensitiveCompare(signedInUsername) == .orderedSame {
+                return "The account this connection signs in with."
+            }
+            guard case .json(let json)? = try? await ObjectLister.detail(type, id: ref.id, on: dest) else {
+                return "Its access couldn’t be read, so it could be the last administrator."
+            }
+            return Self.isFullAdministrator(accessLevel: json["accessLevel"] as? String,
+                                            privilegeSet: json["privilegeLevel"] as? String)
+        case "jamfgroups":
+            guard case .xml(let xml)? = try? await ObjectLister.detail(type, id: ref.id, on: dest) else {
+                return "Its access couldn’t be read, so it could hold the last administrator."
+            }
+            return Self.isFullAdministrator(accessLevel: ClassicXML.text(of: "access_level", in: xml),
+                                            privilegeSet: ClassicXML.text(of: "privilege_set", in: xml))
+        default:
+            return nil
+        }
+    }
+
+    /// The keep reason for an account or group with full access and the
+    /// Administrator privilege set, or whose access isn't stated; nil otherwise.
+    static func isFullAdministrator(accessLevel: String?, privilegeSet: String?) -> String? {
+        func normalized(_ text: String?) -> String {
+            (text ?? "").lowercased().filter(\.isLetter)
+        }
+        let access = normalized(accessLevel), privileges = normalized(privilegeSet)
+        if access.isEmpty || privileges.isEmpty {
+            return "Its access couldn’t be read, so it could be the last administrator."
+        }
+        if access == "fullaccess" && privileges == "administrator" {
+            return "A full-access administrator: Wipe never removes the accounts that keep the tenant reachable."
+        }
+        return nil
     }
 
     // MARK: Helpers

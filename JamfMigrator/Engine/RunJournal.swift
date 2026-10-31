@@ -2,8 +2,8 @@
 //  RunJournal.swift
 //  JamfMigrator
 //
-//  Persists a run's progress and id map so a failed run can resume and a
-//  second run is safe. Saved as JSON after every object.
+//  Persists a run's progress so Resume Run can carry on with the same plan.
+//  Saved as JSON after every object.
 //
 
 import Foundation
@@ -37,33 +37,24 @@ enum RunMode: String, Codable, Sendable {
 }
 
 struct RunJournal: Codable, Sendable {
-    /// On-disk metadata only; useful when inspecting a journal by hand.
-    var runId = UUID()
     var mode: RunMode = .copy
-    var startedAt = Date()
     var sourceTenantId: UUID?
     var destTenantId: UUID?
-    /// Source id → destination id, per registry key, captured from write
-    /// statuses. On-disk metadata for debugging and tests; the engine resolves
-    /// ids through its own lookups.
-    var idMap: [String: [String: String]] = [:]
+    /// The Preview this journal records a run of. Only a run of that same
+    /// plan (Resume Run) skips what the journal says is done; a run of any
+    /// other plan starts a fresh journal, so an earlier run never makes Run
+    /// skip a write Preview planned.
+    var planId: UUID?
     /// Per-object outcome, per registry key, keyed by source id (copy) or
     /// destination id (delete).
     var objects: [String: [String: ObjectStatus]] = [:]
 
     mutating func record(type: String, objectId: String, status: ObjectStatus) {
         objects[type, default: [:]][objectId] = status
-        if let destId = status.destId {
-            idMap[type, default: [:]][objectId] = destId
-        }
     }
 
     func status(type: String, objectId: String) -> ObjectStatus? {
         objects[type]?[objectId]
-    }
-
-    func destId(type: String, sourceId: String) -> String? {
-        idMap[type]?[sourceId]
     }
 }
 
@@ -92,13 +83,23 @@ actor JournalStore {
         }
     }
 
-    func record(type: String, objectId: String, status: ObjectStatus) {
-        journal.record(type: type, objectId: objectId, status: status)
+    /// Called by the engines before a run of `planId`: a journal of
+    /// another plan (or of none) is replaced by a fresh one, so only Resume
+    /// Run of the same plan skips finished objects.
+    func begin(planId: UUID) {
+        guard journal.planId != planId else { return }
+        var fresh = RunJournal()
+        fresh.mode = journal.mode
+        fresh.sourceTenantId = journal.sourceTenantId
+        fresh.destTenantId = journal.destTenantId
+        fresh.planId = planId
+        journal = fresh
         save()
     }
 
-    func destId(type: String, sourceId: String) -> String? {
-        journal.destId(type: type, sourceId: sourceId)
+    func record(type: String, objectId: String, status: ObjectStatus) {
+        journal.record(type: type, objectId: objectId, status: status)
+        save()
     }
 
     func status(type: String, objectId: String) -> ObjectStatus? {
@@ -118,7 +119,7 @@ actor JournalStore {
                                                     withIntermediateDirectories: true)
             try encoder.encode(journal).write(to: fileURL, options: .atomic)
         } catch {
-            AppActivity.record("Could not save the run journal \(fileURL.lastPathComponent): \(error.localizedDescription)",
+            AppActivity.record("Couldn’t save the run journal \(fileURL.lastPathComponent): \(error.localizedDescription)",
                                category: "Journal", level: .warning)
         }
     }

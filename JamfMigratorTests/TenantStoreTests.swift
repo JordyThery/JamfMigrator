@@ -40,7 +40,7 @@ struct TenantStoreTests {
         "isProtected" : false,
         "name" : "Demo (direct)",
         "region" : "us",
-        "serverURL" : "https:\\/\\/demo.jamfcloud.com",
+        "serverURL" : "https:\\/\\/direct.example.test",
         "username" : "jssadmin"
       },
       {
@@ -119,7 +119,7 @@ struct TenantStoreTests {
         #expect(connections[2].service == .jamfPro)
         #expect(connections[2].signIn == .usernamePassword)
         #expect(connections[2].username == "jssadmin")
-        #expect(connections[2].serverURL == "https://demo.jamfcloud.com")
+        #expect(connections[2].serverURL == "https://direct.example.test")
         #expect(connections[3].service == .jamfPro)
         #expect(connections[3].signIn == .apiClient)
         #expect(connections[3].region == .apac)
@@ -132,10 +132,10 @@ struct TenantStoreTests {
         var connection = tenant.connection
         connection.service = .jamfPro
         connection.signIn = .usernamePassword
-        connection.serverURL = "https://demo.jamfcloud.com"
+        connection.serverURL = "https://direct.example.test"
         connection.username = "admin"
         tenant.connection = connection
-        #expect(tenant.serverURL == "https://demo.jamfcloud.com")
+        #expect(tenant.serverURL == "https://direct.example.test")
         #expect(tenant.username == "admin")
         #expect(tenant.isProtected)
         #expect(!tenant.usesGateway)

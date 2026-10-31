@@ -28,7 +28,7 @@ struct TransformContext: Sendable {
     var includedTypes: Set<String> = []
     /// For profile updates: the destination profile's payload UUID to keep.
     var destProfileUUID: String? = nil
-    /// ADE and distribution-point mappings from the Clone wizard; the
+    /// ADE and distribution-point mappings from the Clone Tenant wizard; the
     /// PreStage transforms consume these.
     var mappings = TenantMappings()
     /// For PreStage updates: the destination's versionLock values, which every
@@ -38,6 +38,9 @@ struct TransformContext: Sendable {
     /// For PreStage updates: the destination's nested block ids, which a PUT
     /// must echo (a POST sends "-1").
     var destPreStageIds: [String: String] = [:]
+    /// Single sign-on: the switches already on at the destination; the
+    /// source's other switches are written off.
+    var destEnabledFlags: Set<String> = []
     /// Set by the planner when transforming both sides of a diff: fields that
     /// are regenerated on every write (Blueprint payload identifiers) use a
     /// stable placeholder instead, so identical objects compare as unchanged.
@@ -67,7 +70,7 @@ struct SelfServiceIcon: Sendable, Equatable {
     /// The full icon URI; CDN-hash icons download straight from it.
     var uri: String = ""
     /// A policy's Self Service display name — an icon-only PUT resets it to
-    /// the policy name (verified live 2026-10-04), so assign echoes it back.
+    /// the policy name, so assign echoes it back.
     var displayName: String = ""
 }
 

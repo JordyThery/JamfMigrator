@@ -2,7 +2,7 @@
 //  WipeWizard.swift
 //  JamfMigrator
 //
-//  The gated "Wipe tenant" flow. Every gate must pass, in order: delete mode
+//  The gated Wipe Tenant flow. Every gate must pass, in order: delete mode
 //  is on (the button only exists there), the tenant isn't protected, the
 //  dry-run preview, a verified backup (skippable only through an extra
 //  confirmation), and finally typing the tenant's name before a destructive
@@ -29,6 +29,7 @@ struct WipeWizard: View {
                     .foregroundStyle(.red)
                 Spacer()
                 Button("Close") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
                     .disabled(appState.isRunning || appState.isBackingUp)
             }
             .padding()
@@ -39,7 +40,7 @@ struct WipeWizard: View {
                 ContentUnavailableView {
                     Label("\(tenant.name) is protected", systemImage: "lock.fill")
                 } description: {
-                    Text("A protected tenant can't be wiped at all. Switch protection off in Settings › Connections first.")
+                    Text("\(tenant.name) is protected and can’t be wiped or deleted from. Switch protection off in Settings › Connections first.")
                 }
             } else if started || appState.isRunning || appState.report != nil {
                 runSection
@@ -75,13 +76,13 @@ struct WipeWizard: View {
                     }
                 } else if let plan = appState.plan, plan.mode == .delete {
                     let counts = plan.counts
-                    Label("\(counts.delete) objects will be deleted; \(counts.keep) built-ins are kept.",
+                    Label("\(Plural.count(counts.delete, "object")) will be deleted; \(Plural.count(counts.keep, "object")) \(counts.keep == 1 ? "is" : "are") kept.",
                           systemImage: "checkmark.circle.fill")
                     Text("Close the wizard to review the full list in the main window; uncheck anything to keep it.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 } else {
-                    Button("Preview what will be deleted") { appState.preview() }
+                    Button("Preview What Will Be Deleted") { appState.preview() }
                 }
             }
 
@@ -90,30 +91,30 @@ struct WipeWizard: View {
                     ProgressView("Backing up… \(appState.planningStatus)")
                 } else if let result = appState.backupResult {
                     if result.isComplete {
-                        Label("Backup complete: \(result.totalObjects) objects in \(result.root.lastPathComponent).",
+                        Label("Backup complete: \(Plural.count(result.totalObjects, "object")) in \(result.root.lastPathComponent).",
                               systemImage: "checkmark.circle.fill")
                         Button("Show in Finder") {
                             NSWorkspace.shared.activateFileViewerSelecting([result.root])
                         }
                     } else {
-                        Label("The backup did not complete.", systemImage: "xmark.circle.fill")
+                        Label("The backup didn’t complete.", systemImage: "xmark.circle.fill")
                             .foregroundStyle(.red)
                         ForEach(result.errors.prefix(5), id: \.self) { error in
                             Text(error).font(.caption).foregroundStyle(.secondary)
                         }
-                        Button("Try again") { appState.backup() }
+                        Button("Try Again") { appState.backup() }
                     }
                 } else if backupSkipped {
                     Label("Backup skipped.", systemImage: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
                 } else {
-                    Button("Back up \(tenantName) first") { appState.backup() }
+                    Button("Back Up \(tenantName) First") { appState.backup() }
                         .buttonStyle(.borderedProminent)
-                    Button("Skip the backup…", role: .destructive) {
+                    Button("Skip the Backup…", role: .destructive) {
                         showSkipBackupConfirmation = true
                     }
                     .confirmationDialog("Skip the backup?", isPresented: $showSkipBackupConfirmation) {
-                        Button("I don't need a backup", role: .destructive) { backupSkipped = true }
+                        Button("Skip the Backup", role: .destructive) { backupSkipped = true }
                         Button("Cancel", role: .cancel) {}
                     } message: {
                         Text("Without a backup there is no way to restore anything this wipe deletes.")
@@ -122,14 +123,14 @@ struct WipeWizard: View {
             }
 
             Section("3 — Confirm") {
-                TextField("Type the tenant's name: \(tenantName)", text: $typedName)
+                TextField("Type the tenant’s name: \(tenantName)", text: $typedName)
                     .autocorrectionDisabled()
-                Button("Delete \(deleteCount) objects from \(tenantName)", role: .destructive) {
+                Button("Delete \(Plural.count(deleteCount, "Object")) from \(tenantName)", role: .destructive) {
                     started = true
                     appState.run()
                 }
                 .disabled(!allGatesPass)
-                .help(allGatesPass ? "" : "Finish the preview and the backup, and type the tenant's name exactly.")
+                .help(allGatesPass ? "" : "Finish the preview and the backup, and type the tenant’s name exactly.")
             }
         }
         .formStyle(.grouped)
@@ -140,11 +141,7 @@ struct WipeWizard: View {
     }
 
     private var allGatesPass: Bool {
-        guard appState.mode == .delete,
-              let tenant = appState.destTenant, !tenant.isProtected,
-              let plan = appState.plan, plan.mode == .delete, appState.effectiveCounts.delete > 0,
-              typedName == tenant.name else { return false }
-        return backupSkipped || appState.backupResult?.isComplete == true
+        appState.wipeGatesPass(typedName: typedName, backupSkipped: backupSkipped)
     }
 
     // MARK: Run and leftovers
@@ -167,13 +164,13 @@ struct WipeWizard: View {
             } else if let report = appState.report {
                 let leftovers = report.retryableFailures
                 Label(leftovers.isEmpty
-                      ? "Wipe finished: \(report.entries.count) objects deleted."
-                      : "Wipe finished, but \(leftovers.count) objects could not be deleted.",
+                      ? "Wipe finished: \(Plural.count(report.deletedCount, "object")) deleted."
+                      : "Wipe finished, but \(Plural.count(leftovers.count, "object")) couldn’t be deleted.",
                       systemImage: leftovers.isEmpty ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
                     .foregroundStyle(leftovers.isEmpty ? .green : .orange)
                     .font(.headline)
                 if !leftovers.isEmpty {
-                    List(leftovers, id: \.objectId) { entry in
+                    List(leftovers) { entry in
                         VStack(alignment: .leading) {
                             Text(entry.objectName)
                             if case .failed(let reason) = entry.status {
@@ -181,7 +178,7 @@ struct WipeWizard: View {
                             }
                         }
                     }
-                    Button("Resume run") {
+                    Button("Resume Run") {
                         appState.run()
                     }
                 }

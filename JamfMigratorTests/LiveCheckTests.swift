@@ -644,7 +644,7 @@ struct LiveMigrationTests {
             let stopped = await engine.run(plan, including: plan.runnableIds)
             let scriptOnDestination = try await ObjectLister.list(try #require(ObjectRegistry.type("scripts")), on: destination.app)
                 .contains { $0.name == scriptName }
-            let stoppedAtScript = stopped.stopReason?.contains("Scripts › \"\(scriptName)\": changed on the source since Preview") == true
+            let stoppedAtScript = stopped.stopReason?.contains("Scripts › “\(scriptName)”: changed on the source since Preview") == true
             let onlyCategory = stopped.entries.map(\.type) == ["categories"]
                 && stopped.entries.allSatisfy { if case .created = $0.status { true } else { false } }
             try require("Run stops when the source changed since Preview",
@@ -766,7 +766,7 @@ struct LiveMigrationTests {
         try require("a second Preview shows Unchanged and its Run writes nothing",
                     onlyQuirk && second.entries.count == wanted.count && nothing.entries.isEmpty
                         && nothing.stopReason == nil && fence.writes == writesBefore && fence.refusals.isEmpty,
-                    note: describePlan(second) + (secondDiffers.isEmpty ? "" : "; left unticked (accepted 11.34 beta difference): \(secondDiffers.map(\.name))"))
+                    note: describePlan(second) + (secondDiffers.isEmpty ? "" : "; left unchecked (accepted 11.34 beta difference): \(secondDiffers.map(\.name))"))
 
         // 7. Remove the objects from both tenants.
         let problems = await destination.removeOutstanding(run) + (await source.removeOutstanding(run))

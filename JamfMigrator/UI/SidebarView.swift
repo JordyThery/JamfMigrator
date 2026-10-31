@@ -43,10 +43,10 @@ struct SidebarView: View {
                         .tag(AppState.summaryKey)
                 }
                 HStack {
-                    Button("Check all") {
+                    Button("Check All") {
                         appState.selectedTypeKeys = Set(ObjectRegistry.types.map(\.key))
                     }
-                    Button("Uncheck all") {
+                    Button("Uncheck All") {
                         appState.selectedTypeKeys = []
                     }
                     Spacer()
@@ -55,7 +55,7 @@ struct SidebarView: View {
                 .font(.callout)
                 .controlSize(.small)
             } header: {
-                Text("Object types")
+                Text("Object Types")
             }
             .tourAnchor(TourAnchorID.objectTypes)
 
@@ -97,6 +97,8 @@ private struct TenantPicker: View {
             .lineLimit(1)
             .truncationMode(.middle)
         }
+        // a run keeps the tenants it started with
+        .disabled(!appState.canChangeTenants)
     }
 }
 
@@ -111,7 +113,7 @@ private struct PreflightSummary: View {
                 .foregroundStyle(ok ? .green : .orange)
             ForEach([("No permission", preflight.missingPermissionTypes),
                      ("Not found", preflight.notFoundTypes),
-                     ("Couldn't check", preflight.uncheckedTypes)].filter { !$0.1.isEmpty }, id: \.0) { title, keys in
+                     ("Couldn’t check", preflight.uncheckedTypes)].filter { !$0.1.isEmpty }, id: \.0) { title, keys in
                 Text("\(title): \(PreflightReport.displayNames(keys))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -123,7 +125,7 @@ private struct PreflightSummary: View {
                     .textSelection(.enabled)
             }
             if !preflight.destinationIsEmpty {
-                Text("The destination is not empty.")
+                Text("The destination isn’t empty.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -154,6 +156,7 @@ private struct TypeRow: View {
             if unavailable {
                 Image(systemName: "bolt.horizontal.circle")
                     .foregroundStyle(.tertiary)
+                    .accessibilityLabel("Needs the Jamf Platform API gateway")
             } else if let plan = appState.plan {
                 PlanBadge(entries: plan.entries(for: type.key), mode: plan.mode)
             }
@@ -161,7 +164,7 @@ private struct TypeRow: View {
         .disabled(unavailable)
         .foregroundStyle(unavailable ? .secondary : .primary)
         .help(unavailable
-              ? "Only available via the Platform API — a selected tenant connects directly to Jamf Pro."
+              ? PreflightReport.gatewayOnlyReason
               : "")
         .tag(type.key)
     }
@@ -177,7 +180,26 @@ private struct PlanBadge: View {
             Text(summary)
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
+                // VoiceOver reads the counts in words, not "3 plus"
+                .accessibilityLabel(spokenSummary)
         }
+    }
+
+    private var spokenSummary: String {
+        var create = 0, update = 0, unchanged = 0, blocked = 0, delete = 0
+        for entry in entries {
+            switch entry.change {
+            case .create: create += 1
+            case .update, .replace: update += 1
+            case .unchanged: unchanged += 1
+            case .blocked: blocked += 1
+            case .delete: delete += 1
+            case .keep: break
+            }
+        }
+        if mode == .delete { return "\(delete) to delete" }
+        return [(create, "to create"), (update, "to update"), (unchanged, "unchanged"), (blocked, "blocked")]
+            .filter { $0.0 > 0 }.map { "\($0.0) \($0.1)" }.joined(separator: ", ")
     }
 
     private var summary: String {

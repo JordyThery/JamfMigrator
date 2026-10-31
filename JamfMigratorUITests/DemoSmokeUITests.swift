@@ -27,7 +27,7 @@ final class DemoSmokeUITests: JTKitUITestCase {
 
     func test1Launch() {
         XCTAssertTrue(toolbarButton("Preview").waitForExistence(timeout: 20), "The main window has no Preview")
-        XCTAssertTrue(toolbarButton("Clone tenant").exists, "The main window has no Clone tenant")
+        XCTAssertTrue(toolbarButton("Clone Tenant").exists, "The main window has no Clone Tenant")
     }
 
     func test2About() {
@@ -51,15 +51,16 @@ final class DemoSmokeUITests: JTKitUITestCase {
         }
     }
 
-    /// The Clone tenant wizard from Contoso Source to Contoso Destination:
-    /// connect, prepare, Preview, Run, and a clean Verify.
+    /// The Clone Tenant wizard from Contoso Source to Contoso Destination:
+    /// connect, prepare, Preview, Run (confirmed like the toolbar's Run), and a
+    /// clean Verify.
     func test5MainTask() {
-        tap(toolbarButton("Clone tenant"), timeout: 20)
+        tap(toolbarButton("Clone Tenant"), timeout: 20)
         let wizard = app.sheets.firstMatch
-        XCTAssertTrue(wizard.waitForExistence(timeout: 10), "The Clone tenant wizard did not open")
+        XCTAssertTrue(wizard.waitForExistence(timeout: 10), "The Clone Tenant wizard did not open")
 
         // 1 Connect (the wizard tests both connections as it opens)
-        let test = wizard.buttons["Test connections"]
+        let test = wizard.buttons["Test Connections"]
         if test.waitForExistence(timeout: 3), test.isEnabled { test.click() }
         tap(continueButton(in: wizard), timeout: 60)
         // 2 Prepare
@@ -69,12 +70,16 @@ final class DemoSmokeUITests: JTKitUITestCase {
         tap(continueButton(in: wizard), timeout: 180)
         // 4 Run
         tap(wizard.buttons["Run"], timeout: 10)
+        // the same confirmation as the toolbar's Run, naming the count
+        let confirm = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Copy ' AND (label ENDSWITH ' Change' OR label ENDSWITH ' Changes')")).firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10), "The wizard's Run doesn't confirm")
+        confirm.click()
         tap(wizard.buttons["Continue to Verify"], timeout: 300)
         // 5 Verify
         tap(wizard.buttons["Verify"], timeout: 10)
         let clean = anyContaining("Verified: a second run would write nothing.")
         if !clean.waitForExistence(timeout: 180) {
-            XCTFail("Verify isn't clean: \(anyContaining("objects differ or are missing").label)")
+            XCTFail("Verify isn't clean: \(anyContaining("missing").label)")
         }
         tap(wizard.buttons["Done"], timeout: 10)
     }
@@ -98,9 +103,9 @@ final class DemoSmokeUITests: JTKitUITestCase {
         checkDemoTitles()
     }
 
-    /// Ticks are what Run carries out: Preview Categories, untick every
-    /// object, tick one, and Run offers exactly that one change.
-    func test8RunTakesOnlyTickedObjects() {
+    /// Checked objects are what Run carries out: Preview Categories, uncheck
+    /// every object, check one, and Run offers exactly that one change.
+    func test8RunTakesOnlyCheckedObjects() {
         previewCategoriesOnly()
         // show the Categories objects (the row, not its checkbox)
         let row = app.outlines["Sidebar"].outlineRows.containing(.checkBox, identifier: "Categories").firstMatch
@@ -109,16 +114,16 @@ final class DemoSmokeUITests: JTKitUITestCase {
         XCTAssertTrue(categoriesRow.waitForExistence(timeout: 10), "No Categories row")
         categoriesRow.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).click()
         tap(app.toolbars.menuButtons["Select"].firstMatch, timeout: 10)
-        tap(app.menuItems["Uncheck all"].firstMatch, timeout: 5)
+        tap(app.menuItems["Uncheck All"].firstMatch, timeout: 5)
         let runButton = toolbarButton("Run")
         XCTAssertTrue(runButton.waitForExistence(timeout: 5))
-        XCTAssertFalse(runButton.isEnabled, "Run is on with nothing ticked")
-        // the first object row that can be ticked
-        let objectRow = app.checkBoxes.matching(NSPredicate(format: "label == '' AND isEnabled == true")).firstMatch
+        XCTAssertFalse(runButton.isEnabled, "Run is on with nothing checked")
+        // the first object row that can be checked
+        let objectRow = app.checkBoxes.matching(NSPredicate(format: "label BEGINSWITH 'Include ' AND isEnabled == true")).firstMatch
         tap(objectRow, timeout: 10)
         tap(runButton, timeout: 10)
-        let copyOne = dialogButton("Copy 1 changes")
-        XCTAssertTrue(copyOne.waitForExistence(timeout: 10), "The confirmation doesn't offer exactly the one ticked change")
+        let copyOne = dialogButton("Copy 1 Change")
+        XCTAssertTrue(copyOne.waitForExistence(timeout: 10), "The confirmation doesn't offer exactly the one checked change")
         copyOne.click()
         XCTAssertTrue(anyContaining("Results").waitForExistence(timeout: 60), "The run didn't finish")
         tap(app.buttons["Close"].firstMatch, timeout: 10)
@@ -139,7 +144,7 @@ final class DemoSmokeUITests: JTKitUITestCase {
 
     /// Only Categories selected, then Preview until Run can be clicked.
     private func previewCategoriesOnly() {
-        tap(app.links["Uncheck all"].firstMatch, timeout: 20)
+        tap(app.links["Uncheck All"].firstMatch, timeout: 20)
         let categories = app.checkBoxes["Categories"].firstMatch
         scrollIntoView(categories)
         tap(categories, timeout: 10)
@@ -152,9 +157,9 @@ final class DemoSmokeUITests: JTKitUITestCase {
         app.toolbars.buttons[label].firstMatch
     }
 
-    /// The wizard's "Continue" (or "Continue anyway"), not "Continue to Verify".
+    /// The wizard's "Continue" (or "Continue Anyway"), not "Continue to Verify".
     private func continueButton(in wizard: XCUIElement) -> XCUIElement {
-        wizard.buttons.matching(NSPredicate(format: "(label == 'Continue' OR label == 'Continue anyway') AND isEnabled == true"))
+        wizard.buttons.matching(NSPredicate(format: "(label == 'Continue' OR label == 'Continue Anyway') AND isEnabled == true"))
             .firstMatch
     }
 }

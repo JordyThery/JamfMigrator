@@ -19,7 +19,7 @@ struct ObjectListView: View {
             if appState.isPlanning {
                 PlanningProgressView()
             } else if appState.plan == nil {
-                ContentUnavailableView("No preview yet",
+                ContentUnavailableView("No Preview Yet",
                                        systemImage: "eye",
                                        description: Text("Select the tenants, then click Preview to see what would change."))
             } else if appState.selectedTypeKey == nil || appState.selectedTypeKey == AppState.summaryKey {
@@ -37,10 +37,10 @@ struct ObjectListView: View {
             if let typeKey = appState.selectedTypeKey, typeKey != AppState.summaryKey, appState.plan != nil {
                 ToolbarItem {
                     Menu("Select", systemImage: "checklist") {
-                        Button("Check all") {
+                        Button("Check All") {
                             appState.setAllIncluded(true, typeKey: typeKey)
                         }
-                        Button("Uncheck all") {
+                        Button("Uncheck All") {
                             appState.setAllIncluded(false, typeKey: typeKey)
                         }
                     }
@@ -73,20 +73,23 @@ private struct ObjectRow: View {
             Toggle("", isOn: includedBinding)
                 .toggleStyle(.checkbox)
                 .labelsHidden()
+                .accessibilityLabel("Include \(entry.name.isEmpty ? "this object" : entry.name)")
                 .disabled(!entry.change.isRunnable)
                 .help("Uncheck to leave this object out of the run.")
             Text(entry.name.isEmpty ? "(unnamed)" : entry.name)
                 .lineLimit(1)
             if let needing = appState.waitingOn(entry).first {
-                Label("Needed by \"\(needing.name)\"", systemImage: "link")
+                Label("Needed by “\(needing.name)”", systemImage: "link")
                     .font(.caption)
                     .foregroundStyle(.orange)
-                    .help("A ticked object refers to this one, which the run would create. Tick it, or untick the objects that need it.")
+                    .help("A checked object refers to this one, which the run would create. Check it, or uncheck the objects that need it.")
             }
             if !entry.warnings.isEmpty {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.yellow)
                     .help(entry.warnings.joined(separator: "\n"))
+                    .accessibilityLabel("Warnings")
+                    .accessibilityValue(entry.warnings.joined(separator: " "))
             }
             Spacer()
             ChangeBadge(change: entry.change)
@@ -100,8 +103,11 @@ private struct ObjectRow: View {
     }
 }
 
-struct ChangeBadge: View {
-    let change: PlannedChange
+/// A plan row's outcome as a colored capsule. JTKit's `StatusBadge` has no
+/// per-outcome colors, so the app keeps this one view for plan and run rows.
+struct OutcomeBadge: View {
+    let label: String
+    let color: Color
 
     var body: some View {
         Text(label)
@@ -110,6 +116,15 @@ struct ChangeBadge: View {
             .padding(.vertical, 2)
             .background(color.opacity(0.2), in: .capsule)
             .foregroundStyle(color)
+    }
+}
+
+/// A planned change's badge.
+struct ChangeBadge: View {
+    let change: PlannedChange
+
+    var body: some View {
+        OutcomeBadge(label: label, color: color)
     }
 
     private var label: String {

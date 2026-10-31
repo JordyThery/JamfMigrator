@@ -169,7 +169,7 @@ struct ClassicTransformerTests {
         let xml = """
         <policy><general><id>10</id><name>Install Chrome</name></general>\
         <self_service><self_service_icon><id>66</id><filename>chrome.png</filename>\
-        <uri>https://src.jamfcloud.com/iconservlet?id=66</uri></self_service_icon></self_service>\
+        <uri>https://source.example.test/iconservlet?id=66</uri></self_service_icon></self_service>\
         <account_maintenance><password_sha256 since="9.23">hash</password_sha256></account_maintenance>\
         <limit_to_users><user_groups/></limit_to_users></policy>
         """
@@ -180,7 +180,7 @@ struct ClassicTransformerTests {
         }
         let out = String(decoding: object.body, as: UTF8.self)
         #expect(object.icon == SelfServiceIcon(name: "chrome.png", sourceId: "66",
-                                               uri: "https://src.jamfcloud.com/iconservlet?id=66"))
+                                               uri: "https://source.example.test/iconservlet?id=66"))
         #expect(!out.contains("self_service_icon"))
         #expect(!out.contains("limit_to_users"))
         #expect(out.contains("<password>\(placeholderSecret)</password>"))
@@ -211,7 +211,7 @@ struct ClassicTransformerTests {
         <policy><general><id>10</id><name>[Self Service] Flush DNS cache</name></general>\
         <self_service><self_service_display_name>Flush DNS cache</self_service_display_name>\
         <self_service_icon><id>66</id><filename>dns.png</filename>\
-        <uri>https://src.jamfcloud.com/iconservlet?id=66</uri></self_service_icon></self_service></policy>
+        <uri>https://source.example.test/iconservlet?id=66</uri></self_service_icon></self_service></policy>
         """
         let outcome = ClassicTransformer.transform(type: ObjectRegistry.type("policies")!, xml: xml, context: context())
         guard case .write(let object) = outcome else {
@@ -228,7 +228,7 @@ struct ClassicTransformerTests {
         <mobile_device_application><general><id>5</id><name>Keynote</name>\
         <internal_app>true</internal_app>\
         <icon><id>0</id><name>1024x1024bb.png</name>\
-        <uri>https://use1.ics.services.jamfcloud.com/icon/hash_abc123&amp;v=1</uri></icon>\
+        <uri>https://icons.example.test/icon/hash_abc123&amp;v=1</uri></icon>\
         </general></mobile_device_application>
         """
         let outcome = ClassicTransformer.transform(type: ObjectRegistry.type("mobiledeviceapplications")!, xml: xml, context: context())

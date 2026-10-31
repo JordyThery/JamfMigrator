@@ -41,7 +41,7 @@ struct RunView: View {
             }
 
             if !appState.isRunning, let problem = appState.reportSaveError {
-                Label("The run report could not be saved: \(problem)", systemImage: "exclamationmark.triangle.fill")
+                Label("The run report couldn’t be saved: \(problem)", systemImage: "exclamationmark.triangle.fill")
                     .symbolRenderingMode(.multicolor)
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -81,7 +81,7 @@ private struct EventLog: View {
                 Text(event.objectName.isEmpty ? "(unnamed)" : event.objectName)
                     .lineLimit(1)
                 Spacer()
-                StatusBadge(status: event.status)
+                RunStatusBadge(status: event.status)
             }
         }
     }
@@ -92,7 +92,7 @@ private struct ReportSummary: View {
 
     var body: some View {
         List {
-            Section("Per type") {
+            Section("Per Type") {
                 ForEach(typeKeys, id: \.self) { typeKey in
                     let entries = report.entries(for: typeKey)
                     HStack {
@@ -105,13 +105,13 @@ private struct ReportSummary: View {
                 }
             }
             if !report.failures.isEmpty {
-                Section("Not completed") {
-                    ForEach(report.failures, id: \.objectId) { entry in
+                Section("Not Completed") {
+                    ForEach(report.failures) { entry in
                         VStack(alignment: .leading) {
                             HStack {
                                 Text(entry.objectName)
                                 Spacer()
-                                StatusBadge(status: entry.status)
+                                RunStatusBadge(status: entry.status)
                             }
                             if case .failed(let reason) = entry.status {
                                 Text(reason).font(.caption).foregroundStyle(.secondary)
@@ -125,8 +125,8 @@ private struct ReportSummary: View {
             }
             let warned = report.entriesWithWarnings
             if !warned.isEmpty {
-                Section("Review after the run") {
-                    ForEach(warned, id: \.objectId) { entry in
+                Section("Review After the Run") {
+                    ForEach(warned) { entry in
                         VStack(alignment: .leading) {
                             Text(entry.objectName)
                             ForEach(entry.warnings, id: \.self) { warning in
@@ -170,16 +170,12 @@ private struct ReportSummary: View {
     }
 }
 
-private struct StatusBadge: View {
+/// A run outcome's badge.
+private struct RunStatusBadge: View {
     let status: ObjectStatus
 
     var body: some View {
-        Text(label)
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.2), in: .capsule)
-            .foregroundStyle(color)
+        OutcomeBadge(label: label, color: color)
     }
 
     private var label: String {

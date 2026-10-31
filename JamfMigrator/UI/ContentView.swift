@@ -60,20 +60,21 @@ struct ContentView: View {
                     Label("Delete", systemImage: "trash").tag(RunMode.delete)
                 }
                 .pickerStyle(.segmented)
+                .disabled(!appState.canChangeTenants)
                 .help("Delete mode stays on for the session (⌘D). The app always launches in Copy mode.")
 
                 if appState.mode == .copy {
-                    Button("Clone tenant", systemImage: "wand.and.stars") {
+                    Button("Clone Tenant", systemImage: "wand.and.stars") {
                         showCloneWizard = true
                     }
-                    .disabled(appState.sourceTenant == nil || appState.destTenant == nil || appState.isRunning)
+                    .disabled(!appState.canClone)
                     .help("Opens the guided clone flow: connect, map, preview, run, and verify.")
                 } else {
-                    Button("Wipe tenant", systemImage: "xmark.bin") {
+                    Button("Wipe Tenant", systemImage: "xmark.bin") {
                         showWipeWizard = true
                     }
                     .tint(.red)
-                    .disabled(appState.destTenant == nil || appState.isRunning)
+                    .disabled(!appState.canWipe)
                     .help("Deletes every selected object type from the tenant, behind gates: a preview, a backup, and typing the tenant’s name.")
                 }
 
@@ -89,12 +90,24 @@ struct ContentView: View {
                 .tint(appState.mode == .delete ? .red : nil)
                 .buttonStyle(.borderedProminent)
                 .disabled(!appState.canRun)
-                .help(appState.runBlockedReason ?? "Carries out the plan Preview showed: the ticked objects only.")
+                .help(appState.runBlockedReason ?? "Carries out the plan Preview showed: the checked objects only.")
             }
         }
         // demo mode on or off, or another tenant: the plan is for other tenants
         .onChange(of: appState.demo.isOn) { appState.tenantsChanged(demoSwitched: true) }
         .onChange(of: appState.tenantPairKey) { appState.tenantsChanged(demoSwitched: false) }
+        .onChange(of: appState.cloneRequested) { _, requested in
+            if requested {
+                appState.cloneRequested = false
+                showCloneWizard = true
+            }
+        }
+        .onChange(of: appState.wipeRequested) { _, requested in
+            if requested {
+                appState.wipeRequested = false
+                showWipeWizard = true
+            }
+        }
         .onChange(of: appState.runRequested) { _, requested in
             if requested {
                 appState.runRequested = false
@@ -102,8 +115,7 @@ struct ContentView: View {
             }
         }
         .confirmationDialog(runConfirmationTitle, isPresented: $showRunConfirmation) {
-            Button(appState.mode == .delete ? "Delete \(appState.effectiveCounts.delete) objects" : "Copy \(appState.effectiveChangeCount) changes",
-                   role: appState.mode == .delete ? .destructive : nil) {
+            Button(appState.runConfirmationButton, role: appState.mode == .delete ? .destructive : nil) {
                 appState.run()
                 if appState.lastError == nil {
                     showRunSheet = true
@@ -128,7 +140,7 @@ struct ContentView: View {
             UpdateView()
                 .environment(updates)
         }
-        .alert("Can’t complete this action", isPresented: .init(
+        .alert("Can’t Complete This Action", isPresented: .init(
             get: { appState.lastError != nil },
             set: { if !$0 { appState.lastError = nil } })) {
             Button("OK", role: .cancel) {}
@@ -146,7 +158,7 @@ struct DeleteModeBanner: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-            Text("Delete mode — runs remove objects from the destination tenant")
+            Text("Delete mode — runs remove objects from the selected tenant")
                 .fontWeight(.semibold)
             Spacer()
         }

@@ -63,13 +63,13 @@ struct PlanSummaryView: View {
                     header(plan)
                     totals(plan)
                     if unchecked(plan) > 0 {
-                        Label("\(unchecked(plan)) unchecked objects are left out of the run.",
+                        Label("\(Plural.count(unchecked(plan), "unchecked object")) \(unchecked(plan) == 1 ? "is" : "are") left out of the run.",
                               systemImage: "checklist.unchecked")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
                     if warningCount(plan) > 0 {
-                        Label("\(warningCount(plan)) objects have warnings to review after the run.",
+                        Label("\(Plural.count(warningCount(plan), "object")) \(warningCount(plan) == 1 ? "has" : "have") warnings to review after the run.",
                               systemImage: "exclamationmark.triangle.fill")
                             .font(.callout)
                             .foregroundStyle(.orange)
@@ -126,7 +126,7 @@ struct PlanSummaryView: View {
     private func perType(_ plan: MigrationPlan) -> some View {
         let rows = ObjectRegistry.types.filter { !plan.entries(for: $0.key).isEmpty }
         return VStack(alignment: .leading, spacing: 0) {
-            Text("Per type")
+            Text("Per Type")
                 .font(.headline)
                 .padding(.bottom, 6)
             ForEach(rows) { type in

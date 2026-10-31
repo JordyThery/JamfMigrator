@@ -51,6 +51,7 @@ struct JamfMigratorApp: App {
                     appState.mode = appState.mode == .copy ? .delete : .copy
                 }
                 .keyboardShortcut("d", modifiers: .command)
+                .disabled(!appState.canChangeTenants)
 
                 Divider()
 
@@ -62,6 +63,15 @@ struct JamfMigratorApp: App {
                 Button("Run") { appState.runRequested = true }
                     .keyboardShortcut("r", modifiers: .command)
                     .disabled(!appState.canRun)
+
+                Divider()
+
+                // the toolbar's wizards, also in the menu bar; each is
+                // available in its own mode
+                Button("Clone Tenant…") { appState.cloneRequested = true }
+                    .disabled(!appState.canClone)
+                Button("Wipe Tenant…") { appState.wipeRequested = true }
+                    .disabled(!appState.canWipe)
             }
         }
 
