@@ -57,7 +57,7 @@ extension JamfPlatform.Client {
                                    accept: accept,
                                    contentType: contentType,
                                    headers: method.isWrite ? ["Accept-Encoding": "identity"] : [:],
-                                   safeToRepeat: method.isIdempotent,
+                                   repeating: method.isIdempotent ? .safe : .standard,
                                    withholdsContents: withholdsContents),
                        privileges: privileges)
     }

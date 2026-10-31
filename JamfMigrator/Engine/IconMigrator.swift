@@ -37,11 +37,11 @@ actor IconMigrator {
             let (data, response) = try await source.recorder.send(URLRequest(url: url), category: "Icons")
             guard response.statusCode == 200 else {
                 let answer = HTTPResponse(status: response.statusCode, data: data)
-                throw JamfPlatformError(HTTPError.status(answer, method: "GET", path: url.path(), duringSignIn: false))
+                throw JamfPlatform.APIError(HTTPError.status(answer, method: "GET", path: url.path(), duringSignIn: false))
             }
             imageData = data
         } else {
-            throw JamfPlatformError(.invalidResponse("No usable icon source for \(icon.name)."))
+            throw JamfPlatform.APIError(.invalidResponse("No usable icon source for \(icon.name)."))
         }
         let upload = multipartBody(fileName: icon.name.isEmpty ? "icon.png" : icon.name, data: imageData)
         let response = try await dest.send(.post, "pro/v1/icon",
@@ -49,7 +49,7 @@ actor IconMigrator {
                                            contentType: upload.contentType)
         let json = try JSONSerialization.jsonObject(with: response.data) as? [String: Any]
         guard let id = json?["id"] else {
-            throw JamfPlatformError(.invalidResponse("The new icon’s ID is missing from the answer."))
+            throw JamfPlatform.APIError(.invalidResponse("The new icon’s ID is missing from the answer."))
         }
         let destIconId = "\(id)"
         copied[icon.sourceId] = destIconId

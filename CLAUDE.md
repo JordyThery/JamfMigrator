@@ -41,9 +41,9 @@ Shared code and the standards for every app: see JTKit's CLAUDE.md and ROADMAP.m
 - `Tenants/`: `Tenant` (a JTKit `ConnectionRecord`) and `TenantStore` (one JTKit client per tenant, rebuilt after an edit, dropped on delete).
 - `UI/`: `AppState`, sidebar, object list, inspector, plan summary, run view, `CloneWizard`, `WipeWizard`, Settings tabs, `GuidedTour.swift` (steps only).
 - `Support/Support.swift`: app paths and `AppActivity`, the app's own lines in the activity log (redacted).
-- Under tests (`UnderTest`, `SavedTenantGuard` in `TenantStore.swift`; `OnlyObjects` in `MigrationEngine.swift`): see Testing.
+- Under tests (`SavedTenantGuard` in `TenantStore.swift`, built on JTKit's `TestRun`; `OnlyObjects` in `MigrationEngine.swift`): see Testing.
 
-From JTKit: `JamfPlatform.Client` (gateway and direct Jamf Pro, retries, write spacing), `JamfPlatformError`, `JamfPlatform.PermissionCheck`, `JamfPlatform.Poller`, `JamfPlatform.Blueprints`, `JamfPro.Privilege`, `JamfRegion`, `JamfTokenProvider`, `LosslessJSON`, `RequestRecorder`, `Redaction`, `IdentifierMasker`, `ActivityLog` + `ActivityLogWindow`, `ConnectionStore` + `ConnectionCommands`, `KeychainSecretStore`, `SettingsWindow`, `AboutWindow` + acknowledgements, `UpdateChecker`, `TourState`/`TourStep`, `StatusBadge`, `JSONFile`; `JTKitTestSupport` in tests.
+From JTKit: `JamfPlatform.Client` (gateway and direct Jamf Pro, retries, write spacing), `JamfPlatform.APIError`, `JamfPlatform.PermissionCheck`, `JamfPlatform.Poller`, `JamfPlatform.Blueprints`, `JamfPro.Privilege`, `JamfRegion`, `JamfPlatform.TokenProvider`, `TestRun`, `LosslessJSON`, `RequestRecorder`, `Redaction`, `IdentifierMasker`, `ActivityLog` + `ActivityLogWindow`, `ConnectionStore` + `ConnectionCommands`, `KeychainSecretStore`, `SettingsWindow`, `AboutWindow` + acknowledgements, `UpdateChecker`, `TourState`/`TourStep`, `StatusBadge`, `JSONFile`; `JTKitTestSupport` in tests.
 
 Stays in the app: the registry and transforms, Classic XML payloads, the delete engine and its retries, journal, run reports, mappings, the wizards. Extend JTKit instead of adding another copy of anything it has.
 

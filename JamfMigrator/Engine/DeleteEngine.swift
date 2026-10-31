@@ -142,7 +142,7 @@ actor DeleteEngine {
         do {
             _ = try await client.send(.delete, type.api.detailPath(id: ref.id), privileges: type.access.delete)
             return .deleted
-        } catch let error as JamfPlatformError {
+        } catch let error as JamfPlatform.APIError {
             // a Classic DELETE sometimes reports a misleading 400 after doing
             // the work, and a Blueprint DELETE a misleading 500; a follow-up
             // GET decides
@@ -163,7 +163,7 @@ actor DeleteEngine {
                                       accept: type.api.isClassic ? "application/xml" : "application/json",
                                       privileges: type.access.read)
             return false
-        } catch let error as JamfPlatformError {
+        } catch let error as JamfPlatform.APIError {
             return error.status == 404
         } catch {
             return false

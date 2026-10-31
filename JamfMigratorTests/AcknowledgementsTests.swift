@@ -18,7 +18,7 @@ struct AcknowledgementsTests {
         let start = try #require(notices.range(of: "```\nMIT License"))
         let end = try #require(notices.range(of: "\n```", range: start.upperBound..<notices.endIndex))
         let fromNotices = String(notices[notices.index(start.lowerBound, offsetBy: 4)..<end.lowerBound])
-        let inApp = try #require(Acknowledgement.replicator.licence)
+        let inApp = try #require(Acknowledgement.replicator.license)
         #expect(inApp == fromNotices)
     }
 
@@ -27,7 +27,7 @@ struct AcknowledgementsTests {
     @Test func licenceMatchesTheJamfNoticeInLICENSE() throws {
         let license = try String(contentsOf: Self.repository.appendingPathComponent("LICENSE"), encoding: .utf8)
         let jamfNotice = "Copyright (c) 2017 Jamf Professional Services"
-        let inApp = try #require(Acknowledgement.replicator.licence)
+        let inApp = try #require(Acknowledgement.replicator.license)
         #expect(license.contains(jamfNotice))
         #expect(inApp.contains(jamfNotice))
         // Without the copyright lines, the two texts are the same word for word.

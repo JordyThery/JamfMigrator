@@ -239,8 +239,8 @@ struct TenantStoreTests {
         await #expect {
             _ = try await store.client(for: tenant).send(.get, "pro/v1/sites")
         } throws: { error in
-            guard let error = error as? JamfPlatformError, case .invalidEnvironmentID("env-1") = error.kind else { return false }
-            return error.message().contains("not a UUID")
+            guard let error = error as? JamfPlatform.APIError, case .invalidEnvironmentID("env-1") = error.kind else { return false }
+            return error.message().contains("The Environment ID isn’t a UUID (8-4-4-4-12 hexadecimal characters). Copy it from Jamf Account.")
         }
         #expect(sent.value == 0)
     }

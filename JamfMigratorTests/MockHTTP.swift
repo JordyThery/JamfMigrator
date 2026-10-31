@@ -119,7 +119,7 @@ extension JamfPlatform.Client {
                      writeSpacing: Duration = .zero,
                      sleep: @escaping @Sendable (Duration) async throws -> Void = { _ in }) -> JamfPlatform.Client {
         let recorder = RequestRecorder(session: session, log: nil)
-        let tokens = JamfTokenProvider(tokenURL: JamfRegion.us.gatewayURL.appending(path: "auth/token"),
+        let tokens = JamfPlatform.TokenProvider(tokenURL: JamfRegion.us.gatewayURL.appending(path: "auth/token"),
                                        method: .apiClient(clientID: "id"), secret: { "secret" }, recorder: recorder)
         // the Environment IDs tests use are UUIDs, so this can't throw
         return try! JamfPlatform.Client(baseURL: JamfRegion.us.gatewayURL, scope: .environment(environmentId),
@@ -131,7 +131,7 @@ extension JamfPlatform.Client {
     static func fakeDirect(serverURL: URL = URL(string: "https://msp.jamfcloud.com")!,
                            session: URLSession) -> JamfPlatform.Client {
         let recorder = RequestRecorder(session: session, log: nil)
-        let tokens = JamfTokenProvider(tokenURL: serverURL.appending(path: "api/oauth/token"),
+        let tokens = JamfPlatform.TokenProvider(tokenURL: serverURL.appending(path: "api/oauth/token"),
                                        method: .apiClient(clientID: "id"), secret: { "secret" }, recorder: recorder)
         return try! JamfPlatform.Client(baseURL: serverURL, scope: .organization, server: .jamfPro,
                                         tokens: tokens, recorder: recorder, sleep: { _ in }, random: { 0 })

@@ -9,7 +9,6 @@
 import Foundation
 import JTKit
 import Observation
-import Synchronization
 
 /// The list of configured tenants. JTKit's `ConnectionStore` keeps them where
 /// they have always been: tenants.json in Application Support, and each
@@ -63,7 +62,7 @@ final class TenantStore {
          savedTenantGuard: SavedTenantGuard? = nil) {
         self.secrets = secrets
         self.savedTenantGuard = savedTenantGuard
-            ?? (UnderTest.isActive && Self.holdsSavedTenants(directory: directory, storage: storage, secrets: secrets)
+            ?? (TestRun.isActive && Self.holdsSavedTenants(directory: directory, storage: storage, secrets: secrets)
                 ? .shared : nil)
         self.log = log
         self.session = session
@@ -150,7 +149,7 @@ final class TenantStore {
         } catch {
             // an unusable server URL or Environment ID surfaces at the first
             // request rather than silently falling back to the gateway
-            let reason = error as? JamfPlatformError ?? JamfPlatformError(.invalidResponse(error.localizedDescription))
+            let reason = error as? JamfPlatform.APIError ?? JamfPlatform.APIError(.invalidResponse(error.localizedDescription))
             // organization scope has no Environment ID to check, so this can't throw
             return try! JamfPlatform.Client(baseURL: connection.jamfBaseURL ?? tenant.region.gatewayURL,
                                             scope: .organization,
@@ -171,7 +170,7 @@ struct MissingSecret: LocalizedError {
 /// The tokens of a tenant whose address can't be used: every request fails
 /// with the reason.
 private struct UnusableTokens: BearerTokenSource {
-    let error: JamfPlatformError
+    let error: JamfPlatform.APIError
 
     func token() async throws -> String { throw error }
     func forgetToken() async {}
@@ -180,116 +179,64 @@ private struct UnusableTokens: BearerTokenSource {
 // MARK: - Under tests
 //
 // What changes while the app runs under tests (the unit tests' host, the UI
-// smoke tests, the release check's live checks): it never reaches a saved
-// tenant.
+// smoke tests, the release check's live checks, all JTKit's `TestRun.isActive`):
+// it never reaches a saved tenant.
 
-enum UnderTest {
-
-    /// The app runs under tests: it hosts the unit tests (Xcode's test
-    /// configuration is in its environment) or the UI tests launched it as a
-    /// sandbox run (`-JTKitSandbox YES`).
-    static let isActive: Bool = {
-        let environment = ProcessInfo.processInfo.environment
-        if ["XCTestConfigurationFilePath", "XCTestBundlePath", "XCTestSessionIdentifier"]
-            .contains(where: { environment[$0] != nil }) {
-            return true
-        }
-        return isSandboxRun(ProcessInfo.processInfo.arguments)
-    }()
-
-    /// `-JTKitSandbox YES` (or true, 1), read the way JTKit's demo mode reads it.
-    static func isSandboxRun(_ arguments: [String]) -> Bool {
-        guard let index = arguments.lastIndex(of: DemoMode.sandboxArgument), arguments.indices.contains(index + 1) else {
-            return false
-        }
-        return ["yes", "true", "1"].contains(arguments[index + 1].lowercased())
-    }
+/// Refuses, and records, every request to a saved tenant while the app runs
+/// under tests: no sign-in, no token refresh, no read. A saved tenant is one
+/// from the real tenants.json or the real Keychain items; the tests' own
+/// tenants (in memory) and demo mode's tenants are not affected. Built on
+/// JTKit's `TestRun.AttemptLog` and `TestRun.refusingSession`.
+final class SavedTenantGuard: Sendable {
 
     /// Where refused attempts to reach a saved tenant are written, one JSON
     /// line each, in the app's temporary folder (inside its container). The
     /// release check empties it before a run and fails the run if it isn't
     /// empty at the end.
-    static let savedTenantAttemptsURL = FileManager.default.temporaryDirectory
-        .appendingPathComponent("JamfMigrator-under-test", isDirectory: true)
-        .appendingPathComponent("saved-tenant-requests.jsonl")
-}
+    static let attemptsURL = TestRun.attemptsFolder(named: "JamfMigrator-under-test")
+        .appending(path: "saved-tenant-requests.jsonl")
 
-/// Refuses, and records, every request to a saved tenant while the app runs
-/// under tests: no sign-in, no token refresh, no read. A saved tenant is one
-/// from the real tenants.json or the real Keychain items; the tests' own
-/// tenants (in memory) and demo mode's tenants are not affected.
-final class SavedTenantGuard: Sendable {
+    static let shared = SavedTenantGuard(fileURL: attemptsURL)
 
-    /// One refused attempt. No names, hosts or secrets: the tenant's local id
-    /// is shortened to its last four characters.
-    struct Attempt: Codable, Equatable, Sendable {
-        var time: Date
-        var process: String
-        var tenant: String
-        var what: String
-    }
+    /// The message a refused sign-in or request ends with.
+    static let refusal = "A saved tenant is never reached while the app runs under tests."
 
-    static let shared = SavedTenantGuard(fileURL: UnderTest.savedTenantAttemptsURL)
-
-    let fileURL: URL
-    private let lock = NSLock()
+    let log: TestRun.AttemptLog
+    var fileURL: URL { log.fileURL }
 
     init(fileURL: URL) {
-        self.fileURL = fileURL
+        log = TestRun.AttemptLog(fileURL: fileURL)
     }
 
-    /// The process the attempt came from, for the report.
-    private static var process: String {
-        let environment = ProcessInfo.processInfo.environment
-        return environment["XCTestConfigurationFilePath"] != nil || environment["XCTestBundlePath"] != nil
-            ? "unit test host" : "UI test run"
+    /// The tenant as an attempt names it: never its name or a secret, only
+    /// the tenant's local id shortened to its last four characters. A refused
+    /// request is written as "tenant …abcd: METHOD host/path" (JTKit's form).
+    static func label(for tenant: Tenant.ID) -> String {
+        "tenant …" + tenant.uuidString.suffix(4)
     }
 
+    /// Records an attempt as "tenant …abcd: what".
     func record(tenant: Tenant.ID, what: String) {
-        let attempt = Attempt(time: Date(), process: Self.process,
-                              tenant: "…" + tenant.uuidString.suffix(4), what: what)
         AppActivity.record("Refused under tests: \(what) for a saved tenant", category: "Tests", level: .error)
-        guard var line = try? JSONEncoder().encode(attempt) else { return }
-        line.append(0x0A)
-        lock.withLock {
-            let folder = fileURL.deletingLastPathComponent()
-            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            if let handle = try? FileHandle(forWritingTo: fileURL) {
-                defer { try? handle.close() }
-                _ = try? handle.seekToEnd()
-                try? handle.write(contentsOf: line)
-            } else {
-                try? line.write(to: fileURL, options: .atomic)
-            }
-        }
+        log.record("\(Self.label(for: tenant)): \(what)")
     }
 
     /// The attempts recorded so far.
-    func attempts() -> [Attempt] {
-        lock.withLock {
-            guard let data = try? Data(contentsOf: fileURL) else { return [] }
-            let decoder = JSONDecoder()
-            return data.split(separator: 0x0A).compactMap { try? decoder.decode(Attempt.self, from: Data($0)) }
-        }
+    func attempts() -> [TestRun.AttemptLog.Attempt] {
+        log.attempts()
     }
 
     /// A client for a saved tenant that never sends anything: every token
     /// request (sign-in or refresh) and every request is refused and recorded.
     func refusingClient(for tenant: Tenant) -> JamfPlatform.Client {
-        let recorder = RequestRecorder(session: RefusedRequests.session(guard: self, tenant: tenant.id), log: nil)
+        let session = TestRun.refusingSession(log: log, kind: Self.label(for: tenant.id), message: Self.refusal)
+        let recorder = RequestRecorder(session: session, log: nil)
         // organization scope has no Environment ID to check, so this can't throw
         return try! JamfPlatform.Client(baseURL: tenant.connection.jamfBaseURL ?? tenant.region.gatewayURL,
                                         scope: .organization,
                                         server: tenant.usesGateway ? .platformAPI : .jamfPro,
                                         tokens: RefusedTokens(guard: self, tenant: tenant.id),
                                         recorder: recorder)
-    }
-}
-
-/// The error a refused request ends with.
-struct SavedTenantRefused: LocalizedError {
-    var errorDescription: String? {
-        "A saved tenant is never reached while the app runs under tests."
     }
 }
 
@@ -300,37 +247,8 @@ private struct RefusedTokens: BearerTokenSource {
 
     func token() async throws -> String {
         self.guard.record(tenant: tenant, what: "sign-in")
-        throw SavedTenantRefused()
+        throw TestRun.Refusal(SavedTenantGuard.refusal)
     }
 
     func forgetToken() async {}
-}
-
-/// A session whose requests never leave the Mac: each one is recorded.
-private enum RefusedRequests {
-    static func session(guard: SavedTenantGuard, tenant: Tenant.ID) -> URLSession {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.protocolClasses = [RefusingURLProtocol.self]
-        configuration.httpAdditionalHeaders = [RefusingURLProtocol.tenantHeader: tenant.uuidString]
-        RefusingURLProtocol.guards.withLock { $0[tenant] = `guard` }
-        return URLSession(configuration: configuration)
-    }
-}
-
-private final class RefusingURLProtocol: URLProtocol, @unchecked Sendable {
-    static let tenantHeader = "X-JamfMigrator-Saved-Tenant"
-    static let guards = Mutex<[Tenant.ID: SavedTenantGuard]>([:])
-
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-
-    override func startLoading() {
-        if let value = request.value(forHTTPHeaderField: Self.tenantHeader), let tenant = UUID(uuidString: value),
-           let tenantGuard = Self.guards.withLock({ $0[tenant] }) {
-            tenantGuard.record(tenant: tenant, what: "\(request.httpMethod ?? "GET") \(request.url?.path ?? "")")
-        }
-        client?.urlProtocol(self, didFailWithError: SavedTenantRefused())
-    }
-
-    override func stopLoading() {}
 }

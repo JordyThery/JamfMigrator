@@ -60,7 +60,7 @@ final class AppState {
     /// keeps tenants, secrets and settings in memory. So does the unit tests'
     /// host: under tests the saved tenants aren't even loaded.
     static func forLaunch() -> AppState {
-        let isUnitTestHost = UnderTest.isActive && !UnderTest.isSandboxRun(ProcessInfo.processInfo.arguments)
+        let isUnitTestHost = TestRun.isActive && !DemoMode.isSandboxLaunch(ProcessInfo.processInfo.arguments)
         let demo = isUnitTestHost
             ? DemoMode(key: "demoMode", arguments: ProcessInfo.processInfo.arguments + ["-JTKitSandbox", "YES"])
             : DemoMode(key: "demoMode")

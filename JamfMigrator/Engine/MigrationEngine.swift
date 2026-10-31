@@ -271,7 +271,7 @@ actor MigrationEngine {
                 if type.key == "compliancebenchmarks", case .update(let destId) = action {
                     do {
                         _ = try await dest.send(.delete, type.api.detailPath(id: destId))
-                    } catch let error as JamfPlatformError where error.status != nil {
+                    } catch let error as JamfPlatform.APIError where error.status != nil {
                         guard await objectIsGone(type, id: destId) else { throw error }
                     }
                     action = .create
@@ -280,7 +280,7 @@ actor MigrationEngine {
                 let destId: String
                 do {
                     destId = try await write(object, type: type, action: action)
-                } catch let error as JamfPlatformError where error.status == 409 && type.key == "compliancebenchmarks" {
+                } catch let error as JamfPlatform.APIError where error.status == 409 && type.key == "compliancebenchmarks" {
                     // a duplicate title means a benchmark with this name already
                     // exists: treat it as the match
                     let refs = try await ObjectLister.list(type, on: dest)
@@ -347,14 +347,14 @@ actor MigrationEngine {
         // the created id: <id>n</id> on Classic, "id" in the JSON on Pro
         if type.api.isClassic {
             let id = ClassicXML.value(of: "id", in: String(decoding: response.data, as: UTF8.self))
-            guard !id.isEmpty else { throw JamfPlatformError(.invalidResponse("The new object’s ID is missing from the answer.")) }
+            guard !id.isEmpty else { throw JamfPlatform.APIError(.invalidResponse("The new object’s ID is missing from the answer.")) }
             return id
         }
         let json = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any]
         // benchmark create responses name the id "benchmarkId" (verified live
         // 2026-10-04); everything else uses "id"
         guard let id = json?["id"] ?? json?["benchmarkId"] else {
-            throw JamfPlatformError(.invalidResponse("The new object’s ID is missing from the answer."))
+            throw JamfPlatform.APIError(.invalidResponse("The new object’s ID is missing from the answer."))
         }
         return "\(id)"
     }
@@ -372,7 +372,7 @@ actor MigrationEngine {
                                            contentType: "application/xml", accept: "application/xml",
                                            privileges: privileges)
         let id = ClassicXML.value(of: "id", in: String(decoding: response.data, as: UTF8.self))
-        guard !id.isEmpty else { throw JamfPlatformError(.invalidResponse("The new object’s ID is missing from the answer.")) }
+        guard !id.isEmpty else { throw JamfPlatform.APIError(.invalidResponse("The new object’s ID is missing from the answer.")) }
         return id
     }
 
@@ -421,7 +421,7 @@ actor MigrationEngine {
                     return uuid
                 },
                 isDone: { $0 != nil },
-                isNotReadyYet: { ($0 as? JamfPlatformError)?.status == 404 })
+                isNotReadyYet: { ($0 as? JamfPlatform.APIError)?.status == 404 })
             if outcome?.isFinished != true {
                 warnings.append("The PreStage's profile UUID did not appear in time; check the PreStage on the destination.")
             }
@@ -501,7 +501,7 @@ actor MigrationEngine {
                                     accept: type.api.isClassic ? "application/xml" : "application/json",
                                     privileges: type.access.read)
             return false
-        } catch let error as JamfPlatformError {
+        } catch let error as JamfPlatform.APIError {
             return error.status == 404 || error.status == 403
         } catch {
             return false
@@ -581,7 +581,7 @@ struct OnlyObjects: Sendable, Equatable {
 extension OnlyObjects {
     /// For tests only: stops the app when it isn't running under tests.
     init(testing idsByType: [String: Set<String>]) {
-        precondition(UnderTest.isActive, "OnlyObjects is for tests only")
+        precondition(TestRun.isActive, "OnlyObjects is for tests only")
         self.init(unchecked: idsByType)
     }
 }

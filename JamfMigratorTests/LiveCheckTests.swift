@@ -110,7 +110,7 @@ struct LiveConnection {
             do {
                 let response = try await client.send(HTTPRequest(method: "POST", path: "pro/v1/auth/invalidate-token"))
                 notes.append("\(name): \(response.status)")
-            } catch let error as JamfPlatformError where error.status == 401 {
+            } catch let error as JamfPlatform.APIError where error.status == 401 {
                 // never signed in, or already cancelled
                 notes.append("\(name): no token")
             }
@@ -411,12 +411,12 @@ extension LiveConnection {
             do {
                 _ = try await api.send(HTTPRequest(method: "DELETE", path: kind.deletePath(id: id),
                                                    accept: kind == .profile || kind == .classicGroup ? "application/xml" : nil,
-                                                   safeToRepeat: true),
+                                                   repeating: .safe),
                                        privilege: kind.deletePrivilege)
                 return
-            } catch let error as JamfPlatformError where error.status == 404 {
+            } catch let error as JamfPlatform.APIError where error.status == 404 {
                 return
-            } catch let error as JamfPlatformError where (error.status == 409 || error.status == 422) && Date() < deadline {
+            } catch let error as JamfPlatform.APIError where (error.status == 409 || error.status == 422) && Date() < deadline {
                 try await Task.sleep(for: .seconds(5))
             }
         }
@@ -452,7 +452,7 @@ func liveFolder() throws -> URL {
 
 /// A failed step's reason, naming the missing Jamf privilege when the tenant refused one.
 func failure(_ error: any Error) -> String {
-    if let error = error as? JamfPlatformError, error.status == 401 || error.status == 403 {
+    if let error = error as? JamfPlatform.APIError, error.status == 401 || error.status == 403 {
         return "MISSING PRIVILEGE on the API client's role or the account: \(error.localizedDescription)"
     }
     return String(describing: error)
@@ -465,7 +465,7 @@ func failure(_ error: any Error) -> String {
 func checkNoSavedTenantRequests(_ run: LiveCheckRun, when: String) -> Bool {
     let attempts = SavedTenantGuard.shared.attempts()
     let note = attempts.isEmpty ? nil
-        : attempts.prefix(10).map { "\($0.process): \($0.what) (tenant \($0.tenant))" }.joined(separator: "; ")
+        : attempts.prefix(10).map { "\($0.process): \($0.what)" }.joined(separator: "; ")
     run.record(step: "no request to a saved tenant under tests (\(when))", passed: attempts.isEmpty,
                note: attempts.isEmpty ? nil : "\(attempts.count) refused: \(note ?? "")")
     #expect(attempts.isEmpty, "\(attempts)")

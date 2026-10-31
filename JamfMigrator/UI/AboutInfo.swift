@@ -34,7 +34,7 @@ extension Acknowledgement {
         links: [
             replicatorRepositoryURL.map { AboutLink("jamf/Replicator", url: $0) },
         ].compactMap { $0 },
-        licence: """
+        license: """
             MIT License
 
             Copyright (c) 2017 Jamf Professional Services

@@ -50,7 +50,7 @@ struct DirectConnectionTests {
         await #expect {
             _ = try await client.send(.get, "blueprints/v1/blueprints")
         } throws: { error in
-            guard let error = error as? JamfPlatformError, case .invalidResponse(let message) = error.kind else { return false }
+            guard let error = error as? JamfPlatform.APIError, case .invalidResponse(let message) = error.kind else { return false }
             return message.contains("Platform API gateway")
         }
     }

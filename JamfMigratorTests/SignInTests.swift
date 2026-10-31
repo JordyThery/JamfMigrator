@@ -149,7 +149,7 @@ struct SignInTests {
         await #expect {
             _ = try await harness.store.client(for: tenant).send(.get, "pro/v1/sites")
         } throws: { error in
-            guard let error = error as? JamfPlatformError, case .signIn(let status, _, _) = error.kind else { return false }
+            guard let error = error as? JamfPlatform.APIError, case .signIn(let status, _, _) = error.kind else { return false }
             let message = error.message()
             return status == 401
                 && message.hasPrefix("Sign-in failed: HTTP 401")
@@ -161,7 +161,7 @@ struct SignInTests {
 
     @Test func everyErrorMessageIsRedacted() {
         let answer = HTTPResponse(status: 400, data: Data(#"<password>hunter2</password> token=abc123"#.utf8))
-        let error = JamfPlatformError(HTTPError.status(answer, method: "GET", path: "/pro/v1/sites", duringSignIn: false))
+        let error = JamfPlatform.APIError(HTTPError.status(answer, method: "GET", path: "/pro/v1/sites", duringSignIn: false))
         let message = error.errorDescription ?? ""
         #expect(message.hasPrefix("HTTP 400"))
         #expect(!message.contains("hunter2"))

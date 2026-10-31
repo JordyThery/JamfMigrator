@@ -78,7 +78,7 @@ struct SavedTenantGuardTests {
     }
 
     @Test func theUnitTestHostRunsUnderTests() {
-        #expect(UnderTest.isActive)
+        #expect(TestRun.isActive)
     }
 
     /// The app's own state in the test host: sandbox, so the saved tenants
@@ -116,7 +116,7 @@ struct SavedTenantGuardTests {
         #expect(reached.value == 0)
         let attempts = recorded.attempts()
         #expect(attempts.count >= 2)
-        #expect(attempts.allSatisfy { $0.tenant == "…" + tenant.id.uuidString.suffix(4) })
+        #expect(attempts.allSatisfy { $0.what.hasPrefix("tenant …" + tenant.id.uuidString.suffix(4) + ": ") })
     }
 
     /// The tests' own stores (temporary folder, in-memory secrets) are not

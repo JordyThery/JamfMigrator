@@ -36,8 +36,6 @@ CREDENTIALS=(
     "jamf-test-b:jamfPro:jamfpro-username"
     "jamf-test-b:jamfPro:jamfpro-password"
 )
-# No older test objects: the app never had tests that reached a tenant.
-LEGACY_PREFIXES=""
 DOMAIN="be.jordythery.jamfmigrator"
 CONTAINER="$HOME/Library/Containers/$DOMAIN/Data"
 # The app is sandboxed: its test host reaches only its own container, so the

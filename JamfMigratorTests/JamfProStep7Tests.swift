@@ -283,7 +283,7 @@ struct PagedListTests {
         }
         let client = JamfPlatform.Client.fakeDirect(session: session)
 
-        await #expect(throws: JamfPlatformError.self) {
+        await #expect(throws: JamfPlatform.APIError.self) {
             _ = try await ObjectLister.list(try #require(ObjectRegistry.type("scripts")), on: client)
         }
     }
@@ -300,7 +300,7 @@ struct PagedListTests {
         await #expect {
             _ = try await ObjectLister.list(try #require(ObjectRegistry.type("scripts")), on: client)
         } throws: { error in
-            guard let error = error as? JamfPlatformError, case .pageLimitReached = error.kind else { return false }
+            guard let error = error as? JamfPlatform.APIError, case .pageLimitReached = error.kind else { return false }
             return true
         }
     }

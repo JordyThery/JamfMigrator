@@ -16,7 +16,9 @@ private struct Harness {
     let tokenRequestCount: Locked<Int>
     let sleeps: Locked<[Duration]>
 
-    init(environmentId: String = TestEnvironment.id, handler: @escaping MockHTTP.Handler) {
+    init(environmentId: String = TestEnvironment.id,
+         writeSpacing: Duration = JamfPlatform.Client.defaultWriteSpacing,
+         handler: @escaping MockHTTP.Handler) {
         let apiRequests = Locked<[URLRequest]>([])
         let tokenRequestCount = Locked(0)
         let sleeps = Locked<[Duration]>([])
@@ -28,10 +30,10 @@ private struct Harness {
             apiRequests.withLock { $0.append(request) }
             return try handler(request)
         }
-        // the app's usual spacing between writes, so the throttle test sees it
+        // the app's usual spacing between writes unless a test asks for another
         self.client = JamfPlatform.Client.fake(environmentId: environmentId,
                                           session: session,
-                                          writeSpacing: JamfPlatform.Client.defaultWriteSpacing,
+                                          writeSpacing: writeSpacing,
                                           sleep: { duration in sleeps.withLock { $0.append(duration) } })
         self.apiRequests = apiRequests
         self.tokenRequestCount = tokenRequestCount
@@ -93,7 +95,7 @@ struct PlatformClientTests {
         let harness = Harness { _ in MockHTTP.Reply(status: 401) }
         await #expect {
             _ = try await harness.client.send(.get, "pro/v1/sites")
-        } throws: { ($0 as? JamfPlatformError)?.status == 401 }
+        } throws: { ($0 as? JamfPlatform.APIError)?.status == 401 }
         // one refresh attempt, then give up
         #expect(harness.apiRequests.value.count == 2)
     }
@@ -131,7 +133,7 @@ struct PlatformClientTests {
         }
         await #expect {
             _ = try await postHarness.client.send(.post, "pro/v1/buildings", body: Data("{}".utf8))
-        } throws: { ($0 as? JamfPlatformError)?.status == 502 }
+        } throws: { ($0 as? JamfPlatform.APIError)?.status == 502 }
         #expect(postCalls.value == 1)
 
         // PUT replaces a whole record, so it is safe to send again
@@ -156,20 +158,30 @@ struct PlatformClientTests {
         }
         await #expect {
             _ = try await harness.client.send(.get, "pro/v1/sites")
-        } throws: { ($0 as? JamfPlatformError)?.status == 302 }
+        } throws: { ($0 as? JamfPlatform.APIError)?.status == 302 }
         #expect(harness.apiRequests.value.count == 1)
     }
 
     @Test func writesAreThrottled() async throws {
-        let harness = Harness { _ in MockHTTP.Reply(status: 201, data: Data("{}".utf8)) }
+        // JTKit measures the spacing on the real clock (it can't be injected),
+        // so a spacing far longer than any test machine's delay keeps the
+        // second write inside the interval; the waits themselves are recorded,
+        // not slept
+        let spacing = Duration.seconds(3600)
+        let harness = Harness(writeSpacing: spacing) { _ in MockHTTP.Reply(status: 201, data: Data("{}".utf8)) }
         _ = try await harness.client.send(.post, "pro/v1/buildings", body: Data("{}".utf8))
         _ = try await harness.client.send(.post, "pro/v1/buildings", body: Data("{}".utf8))
 
         // the second write waits out the remainder of the write interval
         #expect(harness.sleeps.value.count == 1)
         if let delay = harness.sleeps.value.first {
-            #expect(delay > .zero && delay <= .milliseconds(200))
+            #expect(delay > spacing - .seconds(60) && delay <= spacing)
         }
+    }
+
+    /// The spacing every tenant's client uses between writes.
+    @Test func theAppsWriteSpacingIs200Milliseconds() {
+        #expect(JamfPlatform.Client.defaultWriteSpacing == .milliseconds(200))
     }
 
     @Test func gatewayErrorBodyIsDecoded() async throws {
@@ -183,7 +195,7 @@ struct PlatformClientTests {
         await #expect {
             _ = try await harness.client.send(.post, "pro/v1/buildings", body: Data("{}".utf8))
         } throws: { error in
-            guard let error = error as? JamfPlatformError else { return false }
+            guard let error = error as? JamfPlatform.APIError else { return false }
             return error.status == 400 && error.traceID == "abc123"
                 && error.body?.errors == [.init(code: "INVALID_FIELD", field: "name", description: "must not be blank")]
                 && error.message().contains("INVALID_FIELD (name): must not be blank")
