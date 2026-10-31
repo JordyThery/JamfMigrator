@@ -27,25 +27,35 @@ enum ObjectLister {
             return try await client.allPages(type.api.listPath, pageSize: 200, privileges: read) { entry in
                 ref(from: entry, nameKey: type.nameKey)
             }
+        // an answer without the expected list is an error, never an empty
+        // tenant (that would plan every object as Create)
         case .proArray:
             let response = try await client.send(.get, type.api.listPath, privileges: read)
-            let array = try JSONSerialization.jsonObject(with: response.data) as? [[String: Any]] ?? []
+            guard let array = try JSONSerialization.jsonObject(with: response.data) as? [[String: Any]] else {
+                throw missingList(type)
+            }
             return refs(from: array, nameKey: type.nameKey)
         case .classicArray(let container):
             let response = try await client.send(.get, type.api.listPath, accept: "application/json", privileges: read)
-            let root = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]
-            let array = root[container] as? [[String: Any]] ?? []
+            let root = try JSONSerialization.jsonObject(with: response.data) as? [String: Any]
+            guard let array = root?[container] as? [[String: Any]] else { throw missingList(type) }
             return refs(from: array, nameKey: type.nameKey)
         case .singleton:
             // a settings singleton always exists, once, on every tenant
             return [ObjectRef(id: "singleton", name: type.displayName)]
         case .classicAccounts(let sub):
             let response = try await client.send(.get, type.api.listPath, accept: "application/json", privileges: read)
-            let root = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]
-            let accounts = root["accounts"] as? [String: Any] ?? [:]
+            let root = try JSONSerialization.jsonObject(with: response.data) as? [String: Any]
+            guard let accounts = root?["accounts"] as? [String: Any] else { throw missingList(type) }
+            // a tenant without account groups may leave that list out
             let array = accounts[sub] as? [[String: Any]] ?? []
             return refs(from: array, nameKey: type.nameKey)
         }
+    }
+
+    /// The error for a list answer that doesn't hold the list.
+    private static func missingList(_ type: ObjectType) -> JamfPlatform.APIError {
+        JamfPlatform.APIError(.invalidResponse("The answer for \(type.displayName) doesn’t contain a list."))
     }
 
     /// One entry of a Jamf Pro page; nil without an id.

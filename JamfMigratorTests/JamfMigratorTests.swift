@@ -2,9 +2,8 @@
 //  JamfMigratorTests.swift
 //  JamfMigratorTests
 //
-//  Unit tests for Jamf Migrator. New service-layer sources are compiled
-//  into both the app and this bundle; the bundle has no test host, so
-//  running tests does not launch the app.
+//  Unit tests for Jamf Migrator. The app is the test host; it starts like a
+//  sandbox run and never reaches a saved tenant (see `SavedTenantGuard`).
 //
 
 import Testing

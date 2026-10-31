@@ -4,7 +4,7 @@
 #
 # One-time setup — store notarization credentials in the keychain:
 #   xcrun notarytool store-credentials "JamfMigrator-notary" \
-#       --apple-id you@example.com --team-id K3LQ9NPBMG \
+#       --apple-id you@example.com --team-id <team ID> \
 #       --password <app-specific password from appleid.apple.com>
 #
 # Usage: scripts/release.sh [notary-keychain-profile]

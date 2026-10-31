@@ -1,12 +1,11 @@
 //
-//  JamfProStep7Tests.swift
+//  JamfProConnectionTests.swift
 //  JamfMigratorTests
 //
-//  ROADMAP step 7 (JTKit 0.8.3): privileges from JTKit's table on every
-//  request and in the pre-run check, JTKit's Jamf Pro page reader, Classic
-//  error pages read as their message, the sign-in hint on a direct Jamf Pro
-//  tenant, and licence serial numbers kept out of the activity log and the
-//  run report.
+//  Jamf Pro behavior: privileges from JTKit's table on every request and in
+//  the pre-run check, JTKit's Jamf Pro page reader, Classic error pages read
+//  as their message, the sign-in hint on a direct Jamf Pro tenant, and
+//  license serial numbers kept out of the activity log and the run report.
 //
 
 import Foundation
@@ -44,12 +43,18 @@ private struct Tenants {
                     : MockHTTP.tokenJSON()
             }
             let tenant = switch (request.url?.host, request.value(forHTTPHeaderField: "X-Environment-Id")) {
-            case ("src.jamfcloud.com"?, _), (_, TestEnvironment.source?): "src"
+            case ("src.example.test"?, _), (_, TestEnvironment.source?): "src"
             default: "dst"
             }
             let method = request.httpMethod ?? ""
             requests.withLock { $0.append((tenant, method, path)) }
             if let reply = handler(tenant, method, path) { return reply }
+            // empty lists in the registry's shape, at the direct paths too
+            let gatewayPath = path.replacingOccurrences(of: "/JSSResource/", with: "/proclassic/")
+                .replacingOccurrences(of: "/api/", with: "/pro/")
+            if method == "GET", let empty = FakeGateway.emptyList(at: gatewayPath) {
+                return MockHTTP.Reply(status: 200, data: empty)
+            }
             if method == "GET" && (path.hasPrefix("/JSSResource/") || path.hasPrefix("/proclassic/")) {
                 return MockHTTP.Reply(status: 200, data: Data("{}".utf8))
             }
@@ -67,7 +72,7 @@ private struct Tenants {
         func tenant(_ name: String, host: String, environment: String) -> Tenant {
             var tenant = Tenant(name: name, environmentId: environment, clientId: "client-\(host)")
             if direct {
-                tenant.serverURL = "https://\(host).jamfcloud.com"
+                tenant.serverURL = "https://\(host).example.test"
                 tenant.username = username
             }
             return tenant

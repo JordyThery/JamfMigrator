@@ -41,7 +41,7 @@ actor TenantExporter {
 
         for type in ObjectRegistry.types where typeKeys.contains(type.key) {
             guard !isCancelled else {
-                result.errors.append("Backup cancelled")
+                result.errors.append("Backup canceled.")
                 break
             }
             progress?(type.displayName)
@@ -63,15 +63,15 @@ actor TenantExporter {
                         if wrote {
                             written += 1
                         } else {
-                            result.errors.append("\(type.displayName) \"\(ref.name)\": the file could not be written")
+                            result.errors.append("\(type.displayName) “\(ref.name)”: the file couldn’t be written")
                         }
                     } catch {
-                        result.errors.append("\(type.displayName) \"\(ref.name)\": \(error.localizedDescription)")
+                        result.errors.append("\(type.displayName) “\(ref.name)”: \(error.localizedDescription)")
                     }
                 }
                 result.objectCounts[type.key] = written
                 if written != refs.count && !isCancelled {
-                    result.errors.append("\(type.displayName): wrote \(written) of \(refs.count) objects")
+                    result.errors.append("\(type.displayName): wrote \(written) of \(Plural.count(refs.count, "object"))")
                 }
             } catch {
                 result.errors.append("\(type.displayName): \(error.localizedDescription)")

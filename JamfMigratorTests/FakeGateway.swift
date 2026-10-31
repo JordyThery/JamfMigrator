@@ -32,7 +32,11 @@ struct FakeGateway {
             let body = request.bodyData
             requests.withLock { $0.append((env, method, path, body)) }
             if let reply = handler(env, method, path, body) { return reply }
-            // default: empty lists in the right shape
+            // default: empty lists in the right shape (an answer without its
+            // list is an error)
+            if method == "GET", let empty = FakeGateway.emptyList(at: path) {
+                return MockHTTP.Reply(status: 200, data: empty)
+            }
             if method == "GET" && path.hasPrefix("/proclassic/") {
                 return MockHTTP.Reply(status: 200, data: Data("{}".utf8))
             }
@@ -45,6 +49,19 @@ struct FakeGateway {
         self.source = JamfPlatform.Client.fake(environmentId: TestEnvironment.source, session: session)
         self.dest = JamfPlatform.Client.fake(environmentId: TestEnvironment.destination, session: session)
         self.requests = requests
+    }
+
+    /// An empty list in the shape the registry expects at `path`; nil for
+    /// a path that isn't a list.
+    static func emptyList(at path: String) -> Data? {
+        guard let type = ObjectRegistry.types.first(where: { "/" + $0.api.listPath == path }) else { return nil }
+        switch type.listShape {
+        case .proPaginated: return Data(#"{"totalCount":0,"results":[]}"#.utf8)
+        case .proArray: return Data("[]".utf8)
+        case .classicArray(let container): return MockHTTP.json([container: [Any]()])
+        case .classicAccounts: return MockHTTP.json(["accounts": ["users": [Any](), "groups": [Any]()]])
+        case .singleton: return nil
+        }
     }
 
     func writes(to env: String) -> [(method: String, path: String, body: Data?)] {

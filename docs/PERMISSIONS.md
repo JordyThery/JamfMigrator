@@ -1,18 +1,18 @@
 # Permissions
 
 Jamf Migrator only needs the permissions for the object types you copy.
-This page lists them per type, so you can give each tenant's API
-integration (or API role) the least it needs.
+This page lists them per type, so you can give each tenant’s API
+integration, API role or user account the least it needs.
 
 ## How to read this page
 
 Each tenant connects one of two ways (see [Connections](../README.md#connections)),
 and the two name permissions differently:
 
-- **Platform API gateway**: an API integration in Jamf Account, granted
+- **Jamf Platform API**: an API integration in Jamf Account, granted
   *capabilities*. Each capability has actions such as Read, Create, Update and
   Delete. The API refers to them as `policies:read`, `policies:create`, and so on.
-- **Direct Jamf Pro**: an API client with an API role, or a Jamf Pro user,
+- **Jamf Pro (direct connection)**: an API client with an API role, or a Jamf Pro user account,
   granted Jamf Pro *privileges* named `<Action> <group>`, e.g. **Read
   Policies** or **Create Policies**.
 
@@ -22,9 +22,9 @@ What each tenant needs depends on its role:
 |---|---|---|
 | Source | Read | Listing and reading every object of the selected types |
 | Destination | Read, Create, Update | Matching objects by name, comparing them in the dry run, and writing changes |
-| Destination, delete mode or Wipe tenant | Read, Delete | Listing the tenant and deleting objects |
+| Destination, delete mode or Wipe Tenant | Read, Delete | Listing the tenant and deleting objects |
 
-The Wipe tenant backup reads the tenant being wiped, so it needs no extra
+The Wipe Tenant backup reads the tenant being wiped, so it needs no extra
 permissions.
 
 ## Object types
@@ -35,8 +35,8 @@ once covers them all.
 
 **Also reads** lists the types this type references: categories, sites,
 groups and so on. The app lists those on **both tenants** to map ids from
-the source to the destination, even when you aren't copying them, so both
-integrations need **Read** on them. If one of those reads is denied, the
+the source to the destination, even when you aren’t copying them, so both
+tenants need **Read** on them. If one of those reads is denied, the
 whole type is blocked in the dry run.
 
 | Step | Object type | Gateway capability | Jamf Pro privilege group | Also reads |
@@ -83,8 +83,8 @@ whole type is blocked in the dry run.
 | 9 | Enrollment customizations | `enrollment-customization` | Enrollment Customizations | Sites |
 | 10 | Computer PreStages | `prestage-enrollments` | Computer PreStage Enrollments | Sites, Buildings, Departments, Packages, macOS configuration profiles, Enrollment customizations, Distribution points |
 | 10 | Mobile device PreStages | `prestage-enrollments` | Mobile Device PreStage Enrollments | Sites, Mobile device configuration profiles, Enrollment customizations |
-| 11 | Blueprints | `blueprints` | — (gateway only) | Device groups — `device-groups:read` |
-| 12 | Compliance Benchmarks | `compliance-benchmarks` | — (gateway only) | Device groups — `device-groups:read` |
+| 11 | Blueprints | `blueprints` | — (gateway only) | Smart and static computer and mobile device groups, device groups — `device-groups:read` |
+| 12 | Compliance Benchmarks | `compliance-benchmarks` | — (gateway only) | Smart and static computer and mobile device groups, device groups — `device-groups:read` |
 | 13 | Webhooks | `webhooks` | Webhooks | Smart computer groups, Static computer groups |
 
 ### Settings
@@ -108,18 +108,26 @@ mode leaves them as they are.
 
 - **Compliance Benchmarks** have no update endpoint. A changed benchmark is
   deleted and recreated, so the destination needs `compliance-benchmarks`
-  **Delete** as well as Create, even when you're only copying.
-- **Blueprints** that are deployed on the source are deployed on the
-  destination after they're created, which needs `blueprints` **Deploy** on
-  the destination.
+  **Delete** as well as Create, even when you’re only copying.
+- **Blueprints** that are deployed (or out of date) on the source are
+  deployed on the destination after they’re written, which needs `blueprints`
+  **Deploy** on the destination. A Blueprint that isn’t deployed on the source
+  is left undeployed.
 - **Blueprints and Compliance Benchmarks** are only available through the
-  Platform API gateway. They reference device groups by their platform id, so
+  Jamf Platform API gateway. They reference device groups by their platform id, so
   both tenants also need `device-groups` **Read**.
-- **LAPS settings**: Jamf's API spec requires the update permission even for
+- **LAPS settings**: Jamf’s API spec requires the update permission even for
   reading them, so both tenants need `local-admin-passwords` **Update**. On a
   direct connection, both tenants need **Update Local Admin Password
-  Settings**.
-- **Distribution points**: Jamf's spec lists Read alongside Update for
+  Settings** and **Read User-Initiated Enrollment**.
+- **Onboarding** items point at policies, configuration profiles, Mac
+  applications and App Installers, which are matched by name: both tenants
+  also need **Read** on Policies, macOS configuration profiles, Mac
+  applications and App Installers.
+- **Delete mode and Wipe Tenant** read each Jamf Pro user account and group
+  account before planning, to keep the signed-in account and every
+  full-access administrator: the **Read** on accounts covers it.
+- **Distribution points**: Jamf’s spec lists Read alongside Update for
   updating them. The destination has Read anyway.
 - **Categories**: the category list also accepts Read Self Service. Grant
   Read Categories.
@@ -135,10 +143,10 @@ mode leaves them as they are.
   so not copied.
 - **Self Service icons** of policies, Mac applications and mobile device
   applications are downloaded from the source and uploaded to the
-  destination. Jamf's spec lists no separate privilege for the icon
+  destination. Jamf’s spec lists no separate privilege for the icon
   endpoints.
 
-## Clone tenant wizard
+## Clone Tenant wizard
 
 The Prepare step maps ADE instances and distribution points between the
 tenants. It reads both on both tenants:
@@ -151,9 +159,9 @@ tenants. It reads both on both tenants:
 Both are optional: without them, the Prepare step has nothing to map.
 
 The Connect step checks each selected type by reading its list on both
-tenants, and names the types the integration can't read. It can't detect a
+tenants, and names the types a tenant can’t read. It can’t detect a
 missing Create, Update or Delete permission without writing. Those show up
-as failed objects in the run report, with Jamf's error.
+as failed objects in the run report, with Jamf’s error.
 
 ## Sources
 
@@ -165,12 +173,12 @@ checked against the API reference on the
 [Jamf developer portal](https://developer.jamf.com/mcp), through its MCP
 server, for each of those calls:
 
-- **Gateway capabilities**: every one is confirmed by the portal's Platform
+- **Gateway capabilities**: every one is confirmed by the portal’s Platform
   API specs.
-- **Jamf Pro privileges, Jamf Pro API types**: confirmed by the portal's
-  Jamf Pro API reference, except for **App Installers**. The portal doesn't
+- **Jamf Pro privileges, Jamf Pro API types**: confirmed by the portal’s
+  Jamf Pro API reference, except for **App Installers**. The portal doesn’t
   document their endpoints, so the Mac Applications privilege group comes
-  from Jamf's SDK spec alone.
+  from Jamf’s SDK spec alone.
 - **Jamf Pro privileges, Classic API types**: neither source names them;
   both list only gateway capabilities. Their privilege groups were matched by
   name.

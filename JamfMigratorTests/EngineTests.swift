@@ -40,8 +40,8 @@ struct MigrationEngineTests {
         #expect(report.entries.count == 2)
         #expect(report.entries(for: "categories").first?.status == .created(destId: "77"))
         #expect(report.entries(for: "policies").first?.status == .created(destId: "31"))
-        #expect(await journal.destId(type: "categories", sourceId: "5") == "77")
-        #expect(await journal.destId(type: "policies", sourceId: "10") == "31")
+        #expect(await journal.status(type: "categories", objectId: "5")?.destId == "77")
+        #expect(await journal.status(type: "policies", objectId: "10")?.destId == "31")
 
         let writes = gateway.writes(to: "dst")
         #expect(writes.map(\.path) == ["/pro/v1/categories", "/proclassic/policies/id/0"])
@@ -147,24 +147,62 @@ struct MigrationEngineTests {
         #expect(gateway.writes(to: "dst").isEmpty, "nothing is written without the source")
     }
 
-    @Test func resumeSkipsFinishedObjects() async throws {
-        let gateway = FakeGateway { env, method, path, _ in
+    /// A category on the source only, created as id 88 on the destination.
+    private func newCategoryGateway() -> FakeGateway {
+        FakeGateway { env, method, path, _ in
             switch (env, method, path) {
             case ("src", "GET", "/pro/v1/categories"):
                 return MockHTTP.Reply(status: 200, data: MockHTTP.json(
                     ["totalCount": 1, "results": [["id": "5", "name": "Utilities"]]]))
+            case ("src", "GET", "/pro/v1/categories/5"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["id": "5", "name": "Utilities", "priority": 9]))
+            case ("dst", "POST", "/pro/v1/categories"):
+                return MockHTTP.Reply(status: 201, data: MockHTTP.json(["id": "88"]))
             default:
                 return nil
             }
         }
+    }
 
+    /// Resume Run of the same plan skips what the journal says is done.
+    @Test func resumeOfTheSamePlanSkipsFinishedObjects() async throws {
+        let gateway = newCategoryGateway()
+        let plan = await MigrationPlanner(source: gateway.source, dest: gateway.dest).plan(typeKeys: ["categories"])
         let journal = makeJournal()
+        await journal.begin(planId: plan.id)
         await journal.record(type: "categories", objectId: "5", status: .created(destId: "77"))
         let engine = MigrationEngine(source: gateway.source, dest: gateway.dest, journal: journal)
-        let report = await engine.migrate(typeKeys: ["categories"])
+        let report = await engine.run(plan, including: plan.runnableIds)
 
         #expect(report.entries.first?.status == .created(destId: "77"))
         #expect(gateway.writes(to: "dst").isEmpty)
+    }
+
+    /// A journal left by a run of an earlier plan never makes a new plan's
+    /// Run skip a write Preview planned, nor report the old outcome.
+    @Test func aJournalFromAnEarlierPlanNeverSkipsAPlannedWrite() async throws {
+        let gateway = newCategoryGateway()
+        let journal = makeJournal()
+        await journal.begin(planId: UUID())
+        await journal.record(type: "categories", objectId: "5", status: .updated(destId: "77"))
+
+        let plan = await MigrationPlanner(source: gateway.source, dest: gateway.dest).plan(typeKeys: ["categories"])
+        let report = await MigrationEngine(source: gateway.source, dest: gateway.dest, journal: journal)
+            .run(plan, including: plan.runnableIds)
+
+        #expect(report.entries.first?.status == .created(destId: "88"))
+        #expect(gateway.writes(to: "dst").map { "\($0.method) \($0.path)" } == ["POST /pro/v1/categories"])
+        #expect(await journal.journal.planId == plan.id)
+    }
+
+    /// The same for a journal from before journals named their plan.
+    @Test func aJournalWithoutAPlanNeverSkipsAPlannedWrite() async throws {
+        let gateway = newCategoryGateway()
+        let journal = makeJournal()
+        await journal.record(type: "categories", objectId: "5", status: .created(destId: "77"))
+        let report = await MigrationEngine(source: gateway.source, dest: gateway.dest, journal: journal)
+            .migrate(typeKeys: ["categories"])
+        #expect(report.entries.first?.status == .created(destId: "88"))
     }
 
     @Test func blockedObjectsAreReportedNotWritten() async throws {
@@ -306,7 +344,6 @@ struct RunJournalTests {
         let resumed = JournalStore(url: url, mode: .copy)
         #expect(await resumed.status(type: "categories", objectId: "5") == .created(destId: "77"))
         #expect(await resumed.status(type: "policies", objectId: "10") == .failed(reason: "boom"))
-        #expect(await resumed.destId(type: "categories", sourceId: "5") == "77")
 
         // a different mode starts fresh
         let wipeJournal = JournalStore(url: url, mode: .delete)

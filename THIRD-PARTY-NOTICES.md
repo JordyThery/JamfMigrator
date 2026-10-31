@@ -1,7 +1,7 @@
 # Third-party notices
 
 Jamf Migrator is MIT licensed (see LICENSE). It started as a fork of the
-following project, which is distributed under its own licence.
+following project, which is distributed under its own license.
 
 ## Replicator
 
@@ -10,7 +10,7 @@ following project, which is distributed under its own licence.
 
 Jamf Migrator started as a fork of Replicator and has been rewritten as a
 SwiftUI app on top of the Jamf Platform API and the Jamf Pro APIs. The same
-licence text is shown in the app under About Jamf Migrator › Acknowledgements.
+license text is shown in the app under About Jamf Migrator › Acknowledgements.
 
 ```
 MIT License

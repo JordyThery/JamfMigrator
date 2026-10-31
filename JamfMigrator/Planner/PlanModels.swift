@@ -7,8 +7,8 @@
 
 import Foundation
 
-/// The planned outcome for one object. `replace` (delete + recreate) arrives
-/// with Compliance Benchmarks in Phase 6.
+/// The planned outcome for one object. `replace`: delete and recreate,
+/// Compliance Benchmarks only.
 enum PlannedChange: Sendable, Equatable, Codable {
     /// The object isn't on the destination yet.
     case create
@@ -71,16 +71,9 @@ struct MigrationPlan: Sendable, Codable {
     /// The types Preview planned; Run carries out these, never the current
     /// selection.
     var typeKeys: Set<String> = []
-
-    /// The planned creates, by registry key: the names Preview treated as
-    /// "will exist" when comparing references.
-    var plannedCreateNames: [String: Set<String>] {
-        var names = [String: Set<String>]()
-        for entry in entries {
-            if case .create = entry.change { names[entry.typeKey, default: []].insert(entry.name) }
-        }
-        return names
-    }
+    /// This Preview: a run journal belongs to one plan, so only Resume Run
+    /// of this plan skips what an earlier run of it finished.
+    var id = UUID()
 
     /// Every Create, Update, Replace and Delete row, per registry key: the
     /// ticks right after Preview.

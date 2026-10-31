@@ -62,7 +62,7 @@ enum ListShape: Sendable {
     /// Pro: {"totalCount": n, "results": [...]} with page/page-size paging.
     case proPaginated
     /// Pro: a bare JSON array of every object, unpaginated (patch title
-    /// configurations, verified live 2026-10-22).
+    /// configurations).
     case proArray
     /// Classic: {"<container>": [{id, name}, ...]}.
     case classicArray(container: String)
@@ -138,7 +138,7 @@ struct ObjectType: Identifiable, Sendable {
     /// Platform-only namespaces (Blueprints, Compliance Benchmarks) have no
     /// direct Jamf Pro equivalent and are Blocked on direct connections.
     var requiresGateway = false
-    /// Its writes carry values no log may hold (licence serial numbers):
+    /// Its writes carry values no log may hold (license serial numbers):
     /// they are recorded without contents, and the values are blanked out
     /// of a failure's reason.
     /// The XML tags holding them, without their number: "serial_number_"
@@ -369,11 +369,13 @@ enum ObjectRegistry {
 
         // step 11 (platform namespace: gateway only; pattern is
         // /{namespace}/v{n}/{resource} — the gateway answers a wrong path with
-        // 403 BAD_PERMISSIONS, not 404; verified live 2026-10-04)
+        // 403 BAD_PERMISSIONS, not 404)
         ObjectType(key: "blueprints", displayName: "Blueprints", step: 11,
                    api: .platform(resource: "blueprints/v1/blueprints"), listShape: .proPaginated,
                    access: .gatewayOnly("blueprints"),
                    updateMethod: .patch,
+                   // scoped to device groups, by platform id
+                   dependencies: MigrationPlanner.deviceGroupKeys,
                    requiresGateway: true),
 
         // step 12 (platform namespace: gateway only; no update endpoint → Replace;
@@ -383,6 +385,7 @@ enum ObjectRegistry {
                    listShape: .classicArray(container: "benchmarks"),
                    access: .gatewayOnly("compliance-benchmarks"),
                    nameKey: "title",
+                   dependencies: MigrationPlanner.deviceGroupKeys,
                    requiresGateway: true),
 
         // step 13: tenant settings and webhooks
@@ -418,7 +421,9 @@ enum ObjectRegistry {
                                         gatewayRead: "local-admin-passwords:update")),
         ObjectType(key: "onboarding", displayName: "Onboarding", step: 13,
                    api: .pro(version: 1, resource: "onboarding"), listShape: .singleton,
-                   access: .settings("onboarding", read: .readOnboardingConfiguration, update: .updateOnboardingConfiguration)),
+                   access: .settings("onboarding", read: .readOnboardingConfiguration, update: .updateOnboardingConfiguration),
+                   // its items are matched by name through these lists
+                   dependencies: ["policies", "osxconfigurationprofiles", "macapplications", "appinstallers"]),
         ObjectType(key: "sso", displayName: "Single sign-on", step: 13,
                    api: .pro(version: 3, resource: "sso"), listShape: .singleton,
                    access: .settings("sso-settings", read: .readSSOSettings, update: .updateSSOSettings),

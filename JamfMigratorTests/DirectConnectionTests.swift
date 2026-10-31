@@ -36,8 +36,8 @@ struct DirectConnectionTests {
         _ = try await client.send(.get, "proclassic/sites", accept: "application/xml")
 
         let urls = requests.value.map { $0.url!.absoluteString }
-        #expect(urls == ["https://msp.jamfcloud.com/api/v1/jamf-pro-version",
-                         "https://msp.jamfcloud.com/JSSResource/sites"])
+        #expect(urls == ["https://msp.example.test/api/v1/jamf-pro-version",
+                         "https://msp.example.test/JSSResource/sites"])
         #expect(requests.value.allSatisfy { $0.value(forHTTPHeaderField: "X-Environment-Id") == nil })
         #expect(requests.value.allSatisfy { $0.value(forHTTPHeaderField: "Authorization") == "Bearer test-token" })
     }
@@ -71,7 +71,7 @@ struct DirectConnectionTests {
         let secrets = InMemorySecretStore()
         let store = TenantStore(directory: directory, secrets: secrets, log: nil, session: session)
         var tenant = Tenant(name: "MSP customer")
-        tenant.serverURL = "https://msp.jamfcloud.com"
+        tenant.serverURL = "https://msp.example.test"
         tenant.username = "admin"
         try store.connections.save(tenant)
         _ = secrets.setSecret("hunter2", for: tenant.id.uuidString)
@@ -117,13 +117,13 @@ struct DirectConnectionTests {
 
         let store = TenantStore(directory: directory, secrets: InMemorySecretStore(), log: nil)
         var tenant = Tenant(name: "MSP customer")
-        tenant.serverURL = "https://msp.jamfcloud.com"
+        tenant.serverURL = "https://msp.example.test"
         tenant.clientId = "client-1"
         try store.connections.save(tenant)
 
         let client = store.client(for: tenant)
         #expect(!client.supportsPlatformEndpoints)
-        #expect(client.baseURL.absoluteString == "https://msp.jamfcloud.com")
+        #expect(client.baseURL.absoluteString == "https://msp.example.test")
         #expect(client.scope == .organization)
         #expect(client.server == .jamfPro)
     }

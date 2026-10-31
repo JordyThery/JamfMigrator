@@ -105,7 +105,7 @@ extension URLRequest {
 
 /// Environment IDs for tests: JTKit refuses one that isn't a UUID.
 enum TestEnvironment {
-    static let id = "e77c1408-10c8-4007-b177-abc9157fbcaa"
+    static let id = "e0000000-0000-4000-8000-00000000000e"
     static let source = "5c0a1e00-0000-4000-8000-00000000005c"
     static let destination = "d5700000-0000-4000-8000-0000000000d5"
 }
@@ -128,7 +128,7 @@ extension JamfPlatform.Client {
     }
 
     /// A direct Jamf Pro client on a fake session, signing in at /api/oauth/token.
-    static func fakeDirect(serverURL: URL = URL(string: "https://msp.jamfcloud.com")!,
+    static func fakeDirect(serverURL: URL = URL(string: "https://msp.example.test")!,
                            session: URLSession) -> JamfPlatform.Client {
         let recorder = RequestRecorder(session: session, log: nil)
         let tokens = JamfPlatform.TokenProvider(tokenURL: serverURL.appending(path: "api/oauth/token"),

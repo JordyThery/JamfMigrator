@@ -217,7 +217,7 @@ struct MigrationPlannerTests {
         // deletion order: policies (step 8) before groups (step 6)
         #expect(plan.entries.map(\.name) == ["Chrome", "All Managed Clients", "All Laptops"])
         #expect(plan.entries[0].change == .delete)
-        #expect(plan.entries[1].change == .keep(reason: "Built-in object"))
+        #expect(plan.entries[1].change == .keep(reason: "Built-in object."))
         #expect(plan.entries[2].change == .delete)
         #expect(plan.changeCount == 2)
         #expect(gateway.writes(to: "dst").isEmpty)

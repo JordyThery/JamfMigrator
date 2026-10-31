@@ -8,12 +8,16 @@
 import Foundation
 import JTKit
 
-struct RunReportEntry: Codable, Sendable, Equatable {
+struct RunReportEntry: Codable, Sendable, Equatable, Identifiable {
     let type: String
     let objectId: String
     let objectName: String
     let status: ObjectStatus
     var warnings: [String] = []
+
+    /// Unique in a report: ids repeat across types, and a whole type's row
+    /// is "-".
+    var id: String { "\(type)/\(objectId)" }
 }
 
 struct RunReport: Codable, Sendable {
@@ -43,6 +47,11 @@ struct RunReport: Codable, Sendable {
         entries.filter { if case .failed = $0.status { true } else { false } }
     }
 
+    /// The objects a delete run actually deleted.
+    var deletedCount: Int {
+        entries.filter { $0.status == .deleted }.count
+    }
+
     var entriesWithWarnings: [RunReportEntry] {
         entries.filter { !$0.warnings.isEmpty }
     }
@@ -58,7 +67,7 @@ struct ProgressEvent: Sendable, Equatable {
 }
 
 /// A finished run's report as text, saved to Application Support/JamfMigrator/
-/// Run Reports, one file per run, so a record of what was created, changed,
+/// Run Reports, one file per run, so a record of what was created, updated,
 /// deleted, skipped and failed survives quitting the app. Stopped runs are
 /// saved too. Everything in it goes through JTKit's redaction.
 struct RunReportFile {
@@ -71,12 +80,6 @@ struct RunReportFile {
     var finished: Date
     var wasStopped: Bool
     var appVersion = AppInfo.version
-
-    /// Application Support/JamfMigrator/Run Reports (inside the sandbox container).
-    static var folder: URL {
-        URL(fileURLWithPath: AppInfo.appSupportPath, isDirectory: true)
-            .appendingPathComponent("Run Reports", isDirectory: true)
-    }
 
     /// e.g. 20261026-143205-copy.md, the date style of the exports and backups.
     var fileName: String {
@@ -110,13 +113,13 @@ struct RunReportFile {
         lines.append("Started \(Self.formatted(started, "yyyy-MM-dd HH:mm:ss")) · "
                      + "\(wasStopped ? "Stopped" : "Finished") \(end) · Jamf Migrator \(appVersion)")
         if let reason = report.stopReason {
-            lines.append("Stopped: \(reason) Objects after that point were not touched.")
+            lines.append("Stopped: \(reason) Objects after that point weren’t touched.")
         } else if wasStopped {
-            lines.append("The run was stopped before the end; objects after that point were not touched.")
+            lines.append("The run was stopped before the end; objects after that point weren’t touched.")
         }
 
         let created = report.entries.filter { if case .created = $0.status { true } else { false } }
-        let changed = report.entries.filter { if case .updated = $0.status { true } else { false } }
+        let updated = report.entries.filter { if case .updated = $0.status { true } else { false } }
         let deleted = report.entries.filter { $0.status == .deleted }
         let skipped = report.entries.filter {
             switch $0.status {
@@ -127,7 +130,7 @@ struct RunReportFile {
         let failed = report.retryableFailures
 
         var counts = mode == .copy
-            ? ["Created \(created.count)", "Changed \(changed.count)"]
+            ? ["Created \(created.count)", "Updated \(updated.count)"]
             : ["Deleted \(deleted.count)"]
         counts += ["Skipped \(skipped.count)", "Failed \(failed.count)"]
         lines.append(counts.joined(separator: " · "))
@@ -138,12 +141,12 @@ struct RunReportFile {
         section("Failed", failed, into: &lines)
         section("Skipped", skipped, into: &lines)
         section("Created", created, into: &lines)
-        section("Changed", changed, into: &lines)
+        section("Updated", updated, into: &lines)
         section("Deleted", deleted, into: &lines)
 
         let warned = report.entriesWithWarnings
         if !warned.isEmpty {
-            lines += ["", "## Review after the run"]
+            lines += ["", "## Review After the Run"]
             for entry in warned {
                 for warning in entry.warnings {
                     lines.append("- \(Self.object(entry)): \(warning)")
@@ -166,7 +169,7 @@ struct RunReportFile {
     private static func object(_ entry: RunReportEntry) -> String {
         let type = ObjectRegistry.type(entry.type)?.displayName ?? entry.type
         guard entry.objectId != "-" else { return "\(type) › \(entry.objectName)" }
-        let name = entry.objectName.isEmpty ? "(unnamed)" : "\"\(entry.objectName)\""
+        let name = entry.objectName.isEmpty ? "(unnamed)" : "“\(entry.objectName)”"
         return "\(type) › \(name) (id \(entry.objectId))"
     }
 

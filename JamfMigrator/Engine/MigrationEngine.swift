@@ -31,7 +31,7 @@ actor MigrationEngine {
     private var sourceNamesById = [String: [String: String]]()
     /// Stops the run before writing `ref`, because it changed since Preview.
     private func stop(_ type: ObjectType, _ ref: ObjectRef, _ change: String) {
-        stopReason = "\(type.displayName) › \"\(ref.name)\": \(change). The run stopped before writing it; Preview again."
+        stopReason = "\(type.displayName) › “\(ref.name)”: \(change). The run stopped before writing it. Preview again before running."
         AppActivity.record(stopReason ?? "", category: "Migration", level: .warning)
     }
 
@@ -72,6 +72,8 @@ actor MigrationEngine {
     func run(_ plan: MigrationPlan, including: [String: Set<String>]) async -> RunReport {
         var report = RunReport()
         stopReason = nil
+        // a journal of another plan never makes this run skip a write
+        await journal.begin(planId: plan.id)
         // the names Preview treated as "will exist" when it compared each object:
         // the planned creates before it, in plan order
         var precedingCreates = [String: Set<String>]()
@@ -84,11 +86,6 @@ actor MigrationEngine {
                 for entry in entries { if case .create = entry.change { precedingCreates[type.key, default: []].insert(entry.name) } }
             }
             guard !ticked.isEmpty else { continue }
-            if type.requiresGateway && !(source.supportsPlatformEndpoints && dest.supportsPlatformEndpoints) {
-                report.add(type: type, ref: ObjectRef(id: "-", name: "(all objects)"),
-                           status: .blocked(reason: "\(type.displayName) require the Jamf Platform API gateway"))
-                continue
-            }
             do {
                 try await runType(type, entries: entries, ticked: Set(ticked.map(\.objectId)), plan: plan,
                                   precedingCreates: precedingCreates, report: &report)
@@ -181,11 +178,11 @@ actor MigrationEngine {
         let ref = ObjectRef(id: entry.objectId, name: entry.name)
         // an object this one needs from the same run must exist now: if its
         // create failed, this row isn't written with a missing reference
-        // (it fails, so Resume run retries it once the other is there)
+        // (it fails, so Resume Run retries it once the other is there)
         let missing = entry.plannedDependencies.filter { destIdsByName[$0.typeKey]?[$0.name] == nil }
         if !missing.isEmpty {
-            let names = missing.map { "\(ObjectRegistry.type($0.typeKey)?.displayName ?? $0.typeKey) › \"\($0.name)\"" }
-            return (.failed(reason: "Not written: it needs \(names.joined(separator: ", ")), which this run didn't create"), [])
+            let names = missing.map { "\(ObjectRegistry.type($0.typeKey)?.displayName ?? $0.typeKey) › “\($0.name)”" }
+            return (.failed(reason: "Not written: it needs \(names.joined(separator: ", ")), which this run didn’t create"), [])
         }
         // values the server may repeat in an error, kept out of the reason
         var secretValues = [String]()
@@ -198,7 +195,7 @@ actor MigrationEngine {
             // the check before writing: the same comparison as Preview, with
             // what this run created counted as "will exist", as Preview did
             if destDuplicateNames[type.key]?.contains(ref.name) == true {
-                stop(type, ref, "more than one destination object is now named \"\(ref.name)\"")
+                stop(type, ref, "more than one destination object is now named “\(ref.name)”")
                 return (.failed(reason: "Not written"), [])
             }
             let existingDestId = destIdsByName[type.key]?[ref.name]
@@ -212,6 +209,9 @@ actor MigrationEngine {
             var asPreviewSaw = destIdsByName
             for (typeKey, names) in plannedCreates {
                 for name in names { asPreviewSaw[typeKey]?[name] = nil }
+            }
+            for name in MigrationPlanner.plannedDeviceGroups(plannedCreates) {
+                asPreviewSaw[platformGroupsKey]?[name] = nil
             }
             let now = MigrationPlanner.compare(
                 type, ref: ref, sourcePayload: payload, destId: existingDestId, destPayload: destPayload,
@@ -243,16 +243,22 @@ actor MigrationEngine {
                     context.destVersionLocks = MigrationPlanner.versionLocks(in: destJson)
                     context.destPreStageIds = MigrationPlanner.nestedIds(in: destJson)
                 }
+                if type.key == "sso", case .json(let destJson)? = destPayload {
+                    context.destEnabledFlags = ProTransformer.enabledFlags(in: destJson)
+                }
             }
 
+            // what an export must never hold: Settings › Secrets values and
+            // license serial numbers (JTKit's redaction takes the passwords)
+            let hidden = secretValues + Array(secrets.values)
             let outcome: TransformOutcome
             switch payload {
             case .xml(let xml):
-                export?.writeRaw(type: type, ref: ref, payload: Data(xml.utf8), isXML: true)
+                export?.writeRaw(type: type, ref: ref, payload: Data(xml.utf8), isXML: true, hiding: hidden)
                 outcome = ClassicTransformer.transform(type: type, xml: xml, context: context)
             case .json(let json):
                 if let raw = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]) {
-                    export?.writeRaw(type: type, ref: ref, payload: raw, isXML: false)
+                    export?.writeRaw(type: type, ref: ref, payload: raw, isXML: false, hiding: hidden)
                 }
                 outcome = ProTransformer.transform(type: type, json: json, context: context)
             }
@@ -261,33 +267,38 @@ actor MigrationEngine {
             case .blocked(let reason):
                 return (.blocked(reason: reason), [])
             case .write(let object):
-                export?.writeTrimmed(type: type, ref: ref, payload: object.body, isXML: type.api.isClassic)
+                export?.writeTrimmed(type: type, ref: ref, payload: object.body, isXML: type.api.isClassic, hiding: hidden)
                 var warnings = object.warnings
 
                 // benchmarks have no update endpoint: delete, then recreate.
                 // the DELETE can report a misleading status after doing the
-                // work (see DeleteEngine); a follow-up GET decides
+                // work (see DeleteEngine); the destination's list decides
                 var action = context.action
+                var deletedForReplace = false
                 if type.key == "compliancebenchmarks", case .update(let destId) = action {
                     do {
                         _ = try await dest.send(.delete, type.api.detailPath(id: destId))
                     } catch let error as JamfPlatform.APIError where error.status != nil {
-                        guard await objectIsGone(type, id: destId) else { throw error }
+                        guard await benchmarkIsGone(type, id: destId) else { throw error }
                     }
+                    deletedForReplace = true
                     action = .create
                 }
 
                 let destId: String
                 do {
                     destId = try await write(object, type: type, action: action)
-                } catch let error as JamfPlatform.APIError where error.status == 409 && type.key == "compliancebenchmarks" {
-                    // a duplicate title means a benchmark with this name already
-                    // exists: treat it as the match
-                    let refs = try await ObjectLister.list(type, on: dest)
-                    if let existing = refs.first(where: { $0.name == ref.name }) {
-                        return (.unchanged(destId: existing.id), warnings)
+                } catch {
+                    // a planned write that didn't happen is a failure, never
+                    // "unchanged"; and the reason says what was done before it
+                    var reason = Self.blankingOut(hidden, in: error.localizedDescription)
+                    if type.key == "compliancebenchmarks", (error as? JamfPlatform.APIError)?.status == 409 {
+                        reason = "A benchmark with this title already exists on the destination (\(reason))."
                     }
-                    throw error
+                    if deletedForReplace {
+                        reason = "Deleted on the destination, but the new copy couldn’t be created: \(reason) Preview again to create it."
+                    }
+                    return (.failed(reason: reason), warnings)
                 }
                 if let icon = object.icon {
                     await copyIcon(icon, type: type, destObjectId: destId, warnings: &warnings)
@@ -299,14 +310,15 @@ actor MigrationEngine {
                 return (.created(destId: destId), warnings)
             }
         } catch {
-            return (.failed(reason: Self.blankingOut(secretValues, in: error.localizedDescription)), [])
+            return (.failed(reason: Self.blankingOut(secretValues + Array(secrets.values), in: error.localizedDescription)), [])
         }
     }
 
     /// `text` with each of `values` replaced by JTKit's placeholder, so a
     /// reason keeps what went wrong ("Duplicate name") but not the secret.
     static func blankingOut(_ values: [String], in text: String) -> String {
-        values.reduce(text) { $0.replacingOccurrences(of: $1, with: Redaction.placeholder) }
+        values.filter { !$0.isEmpty }.sorted { $0.count > $1.count }
+            .reduce(text) { $0.replacingOccurrences(of: $1, with: Redaction.placeholder) }
     }
 
     /// Creates or updates the object and returns its destination id.
@@ -316,11 +328,15 @@ actor MigrationEngine {
         let accept = object.contentType == "application/merge-patch+json" ? "application/json" : object.contentType
         if case .create = action, let subscription = object.patchSubscription {
             let destId = try await subscribe(to: subscription, privileges: type.access.create)
-            _ = try await dest.send(type.updateMethod, type.updatePath(destId: destId),
-                                    body: object.body,
-                                    contentType: object.contentType,
-                                    accept: accept,
-                                    privileges: type.access.privileges(for: type.updateMethod))
+            do {
+                _ = try await dest.send(type.updateMethod, type.updatePath(destId: destId),
+                                        body: object.body,
+                                        contentType: object.contentType,
+                                        accept: accept,
+                                        privileges: type.access.privileges(for: type.updateMethod))
+            } catch {
+                throw SubscribedButNotWritten(reason: error.localizedDescription)
+            }
             return destId
         }
         switch action {
@@ -351,8 +367,8 @@ actor MigrationEngine {
             return id
         }
         let json = try? JSONSerialization.jsonObject(with: response.data) as? [String: Any]
-        // benchmark create responses name the id "benchmarkId" (verified live
-        // 2026-10-04); everything else uses "id"
+        // benchmark create responses name the id "benchmarkId"; everything
+        // else uses "id"
         guard let id = json?["id"] ?? json?["benchmarkId"] else {
             throw JamfPlatform.APIError(.invalidResponse("The new object’s ID is missing from the answer."))
         }
@@ -362,7 +378,7 @@ actor MigrationEngine {
     /// Subscribes the destination to a patch title through the Classic API,
     /// which creates its configuration, and returns the new id. The Pro
     /// create needs a softwareTitleId, which only exists once the destination
-    /// is subscribed (verified live 2026-10-22).
+    /// is subscribed.
     private func subscribe(to subscription: PatchSubscription, privileges: [JamfPro.Privilege]) async throws -> String {
         let sourceId = try await patchSourceId(named: subscription.sourceName)
         let xml = "<patch_software_title><name>\(ClassicXML.escape(subscription.displayName))</name>"
@@ -399,10 +415,19 @@ actor MigrationEngine {
         return id
     }
 
+    /// A patch title create subscribed the destination, but writing the
+    /// title's settings failed: the subscription stays on the destination.
+    struct SubscribedButNotWritten: LocalizedError {
+        let reason: String
+        var errorDescription: String? {
+            "The destination is now subscribed to this title, but its settings couldn’t be written: \(reason) Preview again; the title then shows as Update."
+        }
+    }
+
     struct MissingPatchSource: LocalizedError {
         let name: String
         var errorDescription: String? {
-            "The patch source \"\(name)\" does not exist on the destination; add it there first."
+            "The patch source “\(name)” doesn’t exist on the destination; add it there first."
         }
     }
 
@@ -423,21 +448,19 @@ actor MigrationEngine {
                 isDone: { $0 != nil },
                 isNotReadyYet: { ($0 as? JamfPlatform.APIError)?.status == 404 })
             if outcome?.isFinished != true {
-                warnings.append("The PreStage's profile UUID did not appear in time; check the PreStage on the destination.")
+                warnings.append("The PreStage’s profile UUID didn’t appear in time; check the PreStage on the destination.")
             }
 
         case "blueprints":
-            // mirror the source's deploy state; a repeat deploy is harmless.
-            // deploymentState is an object: {"state": "DEPLOYED", "lastDeployment": …}
+            // mirror the source's deploy state; a repeat deploy is harmless
             guard case .json(let sourceJson) = sourcePayload else { return }
-            let state: String
-            if let dict = sourceJson["deploymentState"] as? [String: Any] {
-                state = "\(dict["state"] ?? "")"
-            } else {
-                state = "\(sourceJson["deploymentState"] ?? "")"
-            }
-            guard state.localizedCaseInsensitiveContains("DEPLOYED") || state.localizedCaseInsensitiveContains("SUCCEEDED") else {
+            switch Self.blueprintDeployment(sourceJson) {
+            case .leaveUndeployed:
                 return
+            case .deployWithWarning:
+                warnings.append("The Blueprint is out of date on the source; it was deployed on the destination with its latest settings.")
+            case .deploy:
+                break
             }
             // JTKit's deploy-and-watch: it tells the new deployment from an
             // earlier one by its start time and waits until it succeeds or fails
@@ -446,7 +469,7 @@ actor MigrationEngine {
             do {
                 previousStart = try await blueprints.startDeployment(id: destId)
             } catch {
-                warnings.append("The blueprint was created but could not be deployed: \(error.localizedDescription)")
+                warnings.append("The Blueprint was written but couldn’t be deployed: \(error.localizedDescription)")
                 return
             }
             let outcome = try? await blueprints.watchDeployment(id: destId, previousStart: previousStart,
@@ -455,15 +478,14 @@ actor MigrationEngine {
             case .finished(let status)? where status.didSucceed:
                 break
             case .finished?:
-                warnings.append("The blueprint was created but its deployment failed on the destination; check it there.")
+                warnings.append("The Blueprint was written but its deployment failed on the destination; check it there.")
             default:
-                warnings.append("The blueprint was created but its deployment did not confirm in time; check it on the destination.")
+                warnings.append("The Blueprint was written but its deployment didn’t confirm in time; check it on the destination.")
             }
 
         case "compliancebenchmarks":
             // the benchmark syncs in the background; report a sync that fails.
             // syncState only appears on list entries, not the detail
-            // (verified live 2026-10-04)
             let outcome = try? await Self.poller(timeLimit: .seconds(60)).poll(
                 check: { [dest] () -> Bool? in
                     let response = try await dest.send(.get, type.api.listPath)
@@ -479,11 +501,34 @@ actor MigrationEngine {
             if synced == false {
                 warnings.append("The benchmark reports syncState FAILED on the destination.")
             } else if synced == nil {
-                warnings.append("The benchmark sync did not confirm in time; check its syncState on the destination.")
+                warnings.append("The benchmark sync didn’t confirm in time; check its syncState on the destination.")
             }
 
         default:
             break
+        }
+    }
+
+    /// What a Blueprint's run does after the write, from the source's
+    /// deploy state (JTKit's `DeploymentState`): deployed → deploy; out of
+    /// date → deploy with a warning; not deployed or anything else → leave
+    /// it undeployed.
+    enum BlueprintDeployment: Equatable {
+        case deploy
+        case deployWithWarning
+        case leaveUndeployed
+    }
+
+    static func blueprintDeployment(_ sourceJson: [String: Any]) -> BlueprintDeployment {
+        // deploymentState is an object: {"state": "DEPLOYED", "lastDeployment": …}
+        let raw = (sourceJson["deploymentState"] as? [String: Any])?["state"] as? String
+            ?? sourceJson["deploymentState"] as? String
+        guard let raw else { return .leaveUndeployed }
+        let state = JamfPlatform.DeploymentState(state: JamfPlatform.BlueprintState(rawValue: raw)).state
+        switch state {
+        case .deployed: return .deploy
+        case .outOfDate: return .deployWithWarning
+        case .notDeployed, .other: return .leaveUndeployed
         }
     }
 
@@ -493,19 +538,12 @@ actor MigrationEngine {
         JamfPlatform.Poller(policy: JamfPlatform.PollingPolicy(timeLimit: timeLimit))
     }
 
-    /// Whether a GET of the object now fails with "not found" (benchmarks
-    /// answer 403 for a deleted id).
-    private func objectIsGone(_ type: ObjectType, id: String) async -> Bool {
-        do {
-            _ = try await dest.send(.get, type.api.detailPath(id: id),
-                                    accept: type.api.isClassic ? "application/xml" : "application/json",
-                                    privileges: type.access.read)
-            return false
-        } catch let error as JamfPlatform.APIError {
-            return error.status == 404 || error.status == 403
-        } catch {
-            return false
-        }
+    /// Whether the benchmark is no longer in the destination's list. A GET
+    /// can't tell: benchmarks answer 403 for a deleted id, and also for a
+    /// refused one. A list that can't be read counts as "still there".
+    private func benchmarkIsGone(_ type: ObjectType, id: String) async -> Bool {
+        guard let refs = try? await ObjectLister.list(type, on: dest) else { return false }
+        return !refs.contains { $0.id == id }
     }
 
     /// Blueprints and Benchmarks reference device groups by platform UUID.
@@ -524,7 +562,7 @@ actor MigrationEngine {
             try await icons.assign(iconId: destIconId, displayName: icon.displayName,
                                    to: type, destObjectId: destObjectId, on: dest)
         } catch {
-            warnings.append("The self-service icon \"\(icon.name)\" could not be copied: \(error.localizedDescription)")
+            warnings.append("The Self Service icon “\(icon.name)” couldn’t be copied: \(error.localizedDescription)")
         }
     }
 

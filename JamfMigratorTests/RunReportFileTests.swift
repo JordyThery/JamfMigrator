@@ -43,13 +43,13 @@ struct RunReportFileTests {
 
         #expect(text.contains("Copy · Source: Acme Prod → Destination: Acme Test"))
         #expect(text.contains("Jamf Migrator 9.9.9"))
-        #expect(text.contains("Created 1 · Changed 1 · Skipped 2 · Failed 1"))
-        #expect(text.contains("## Failed\n- Scripts › \"Install Rosetta\" (id 12): HTTP 400: bad"))
-        #expect(text.contains("- Scripts › \"Same\" (id 8): unchanged"))
+        #expect(text.contains("Created 1 · Updated 1 · Skipped 2 · Failed 1"))
+        #expect(text.contains("## Failed\n- Scripts › “Install Rosetta” (id 12): HTTP 400: bad"))
+        #expect(text.contains("- Scripts › “Same” (id 8): unchanged"))
         #expect(text.contains("- Blueprints › (all objects): requires the Jamf Platform API gateway"))
-        #expect(text.contains("## Created\n- Categories › \"Utilities\" (id 5) → id 18 on the destination"))
-        #expect(text.contains("## Changed\n- Scripts › \"Dock\" (id 7) → id 9 on the destination"))
-        #expect(text.contains("## Review after the run\n- Scripts › \"Dock\" (id 7): Check the parameters"))
+        #expect(text.contains("## Created\n- Categories › “Utilities” (id 5) → id 18 on the destination"))
+        #expect(text.contains("## Updated\n- Scripts › “Dock” (id 7) → id 9 on the destination"))
+        #expect(text.contains("## Review After the Run\n- Scripts › “Dock” (id 7): Check the parameters"))
         #expect(!text.contains("## Deleted"))
         #expect(!text.contains("stopped"))
     }
@@ -61,7 +61,7 @@ struct RunReportFileTests {
 
         #expect(text.contains("Delete · Tenant: Acme Test"))
         #expect(text.contains("Deleted 1 · Skipped 0 · Failed 0"))
-        #expect(text.contains("## Deleted\n- Scripts › \"Old\" (id 3)\n"))
+        #expect(text.contains("## Deleted\n- Scripts › “Old” (id 3)\n"))
     }
 
     @Test func aStoppedRunSaysSo() {

@@ -49,3 +49,10 @@ enum AppActivity {
         Task { @MainActor in log.append(entry) }
     }
 }
+
+/// A count with its noun: "1 object", "3 objects".
+enum Plural {
+    static func count(_ count: Int, _ singular: String, plural: String? = nil) -> String {
+        "\(count) \(count == 1 ? singular : plural ?? singular + "s")"
+    }
+}

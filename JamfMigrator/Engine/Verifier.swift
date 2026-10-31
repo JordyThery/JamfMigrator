@@ -72,7 +72,7 @@ enum Verifier {
             if let unread = entries.first(where: \.isReadFailure) {
                 if case .blocked(let reason) = unread.change { result.notChecked = reason }
             } else if destCount == nil {
-                result.notChecked = "The destination's list couldn't be read."
+                result.notChecked = "The destination’s list couldn’t be read."
             }
             for entry in entries where !entry.isReadFailure {
                 switch entry.change {
