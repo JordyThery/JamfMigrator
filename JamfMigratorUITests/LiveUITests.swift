@@ -133,9 +133,15 @@ final class LiveUITests: JTKitUITestCase {
         let clean = anyContaining("Verified: a second run would write nothing.")
         let verified = clean.waitForExistence(timeout: 300)
         recordLive(step: step("Verify in the app: nothing left to write"), passed: verified)
-        XCTAssertTrue(verified, "Verify isn't clean: \(anyContaining("missing").label)")
         tap(wizard.buttons["Done"], timeout: 10)
         waitForNetwork()
+        if !verified {
+            // what differs, field by field, from a new Preview's inspector
+            let fields = policyDiffAfterRun(prefix: prefix, policyName: policyName)
+            recordLive(step: step("diagnostic: the copied policy's field-level diff after Run (source → destination)"),
+                       passed: true, note: fields)
+        }
+        XCTAssertTrue(verified, "Verify isn't clean")
 
         // 5. Read back on the destination: all three there, the script and
         //    the policy in the copied category, the policy still off.
@@ -184,6 +190,38 @@ final class LiveUITests: JTKitUITestCase {
     }
 
     // MARK: Helpers
+
+    /// A new Preview in the main window, the copied policy selected: its
+    /// differences as "field: source → destination", one per line. A value
+    /// whose field name could hold a secret is hidden; values are cut to 80
+    /// characters (the app's diff already shows secrets as <redacted>).
+    private func policyDiffAfterRun(prefix: String, policyName: String) -> String {
+        tap(app.toolbars.buttons["Preview"].firstMatch, timeout: 20)
+        guard anyContaining("Per Type").waitForExistence(timeout: 300) else { return "Preview didn't finish" }
+        waitForNetwork()
+        openType("Policies")
+        let search = app.searchFields.firstMatch
+        tap(search, timeout: 10)
+        search.typeText(prefix)
+        let cell = app.outlines.cells.containing(NSPredicate(format: "label == %@ OR value == %@", policyName, policyName)).firstMatch
+        let row = cell.waitForExistence(timeout: 10) ? cell
+            : app.staticTexts.matching(NSPredicate(format: "label == %@ OR value == %@", policyName, policyName)).firstMatch
+        tap(row, timeout: 10)
+        let outcome = ["Create", "Update", "Unchanged", "Blocked"].first { app.staticTexts[$0].exists } ?? "?"
+        guard anyContaining("Differences (source → destination)").waitForExistence(timeout: 10) else {
+            return "Preview shows the policy as \(outcome), with no field-level differences"
+        }
+        let secretWords = ["password", "passwd", "secret", "token", "key", "credential"]
+        var lines = ["Preview: \(outcome)"]
+        for tableRow in app.tables.firstMatch.tableRows.allElementsBoundByIndex {
+            let texts = tableRow.staticTexts.allElementsBoundByIndex.map { (($0.value as? String) ?? $0.label) }
+            guard let field = texts.first else { continue }
+            let hidden = secretWords.contains { field.lowercased().contains($0) }
+            let values = texts.dropFirst().map { hidden ? "<hidden>" : String($0.prefix(80)) }
+            lines.append("\(field): \(values.joined(separator: " → "))")
+        }
+        return lines.joined(separator: "; ")
+    }
 
     /// Source and Destination from the Connection menu (its Source section
     /// lists every tenant first, then its Destination section).
