@@ -4,8 +4,8 @@
 //
 //  The app's own Settings tabs: Connections (JTKit's shared tenants list,
 //  with the Protected toggle), the service-account secrets used by
-//  transforms, and export options. JTKit's `SettingsWindow` adds General
-//  before them and Updates after them.
+//  transforms, and export options. JTKit's `SettingsWindow` adds Updates
+//  after them (the app has no General settings of its own).
 //
 
 import JTKit

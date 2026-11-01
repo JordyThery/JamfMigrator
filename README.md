@@ -160,7 +160,6 @@ zip, quit, and swap the app in Applications.
 
 ### Settings
 
-- **General**: appearance.
 - **Connections**: your tenants and whether each one is Protected.
 - **Secrets**: the passwords the API never returns (directory binding, LDAP,
   file share read/write and read-only, PreStage Recovery Lock).

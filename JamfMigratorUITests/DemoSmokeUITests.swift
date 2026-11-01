@@ -35,7 +35,7 @@ final class DemoSmokeUITests: JTKitUITestCase {
     }
 
     func test3SettingsTabs() {
-        checkSettingsTabs(["General", "Connections", "Secrets", "Export", "Updates"])
+        checkSettingsTabs(["Connections", "Secrets", "Export", "Updates"])
     }
 
     func test4ConnectionsEditor() {
@@ -177,13 +177,7 @@ final class DemoSmokeUITests: JTKitUITestCase {
         let question = settings.sheets.firstMatch
         tap(question.exists ? question.buttons["Save"].firstMatch : dialogButton("Save"), timeout: 5)
         XCTAssertTrue(question.waitForNonExistence(timeout: 5), "The question stayed after Save")
-        // JTKit 1.1.0 saves but may leave the window open: closing again
-        // must not ask, as nothing is unsaved any more
-        if !settings.waitForNonExistence(timeout: 3) {
-            settings.typeKey("w", modifierFlags: .command)
-            XCTAssertFalse(settings.sheets.firstMatch.waitForExistence(timeout: 2), "Closing asked again after Save")
-        }
-        XCTAssertTrue(settings.waitForNonExistence(timeout: 10), "Settings didn't close")
+        XCTAssertTrue(settings.waitForNonExistence(timeout: 10), "Settings didn't close after Save")
 
         // reopened: still Protected; then the throwaway tenant goes
         let again = openSettings()
