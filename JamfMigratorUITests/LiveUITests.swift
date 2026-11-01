@@ -9,8 +9,9 @@ import JTKitUITestSupport
 /// (allow-list, ledger, prefix, access levels). The app holds only the
 /// release check's connections, never the saved ones.
 ///
-/// 1. jamf-test-a → jamf-test-b: the test code makes a JTKTEST category and
-///    a script in it on jamf-test-a; the app copies just those two through
+/// 1. jamf-test-a → jamf-test-b: the test code makes a JTKTEST category, a
+///    script in it and a policy in it (disabled, scoped to nothing, in Self
+///    Service) on jamf-test-a; the app copies just those three through
 ///    Clone Tenant's Preview and a confirmed Run, and Verify finds nothing
 ///    left to write. The test code reads them back on jamf-test-b and
 ///    removes everything from both tenants.
@@ -47,11 +48,15 @@ final class LiveUITests: JTKitUITestCase {
         let prefix = livePrefix
         let categoryName = "\(prefix) – Live UI Category"
         let scriptName = "\(prefix) – Live UI Script"
+        let policyName = "\(prefix) – Live UI Policy"
+        let sourceRaw = try LiveRawAPI(gateway: gateway, role: source)
+        let destinationRaw = try LiveRawAPI(gateway: gateway, role: destination)
 
         // 1. The test's own objects on the source.
         var sourceIDs: [(path: String, id: String)] = []
-        defer { removeTestObjects(sourceAPI: sourceAPI, sourceIDs: sourceIDs, destinationAPI: destinationAPI,
-                                  names: [scriptName, categoryName], step: step) }
+        defer { removeTestObjects(sourceAPI: sourceAPI, sourceRaw: sourceRaw, sourceIDs: sourceIDs,
+                                  destinationAPI: destinationAPI, destinationRaw: destinationRaw,
+                                  names: [policyName, scriptName, categoryName], step: step) }
         let categoryID = try liveCall {
             try await sourceAPI.create("pro/v1/categories", json: ["name": categoryName, "priority": 9])
         }
@@ -64,12 +69,17 @@ final class LiveUITests: JTKitUITestCase {
             ])
         }
         sourceIDs.insert(("pro/v1/scripts", scriptID), at: 0)
-        recordLive(step: step("create a category and a script on the source"), passed: true)
+        // a Classic policy in the category: never enabled, scoped to nothing
+        let policyID = try liveCall {
+            try await sourceRaw.createClassic("policies", xml: Self.policyXML(name: policyName, categoryID: categoryID))
+        }
+        sourceIDs.insert(("proclassic/policies/id", policyID), at: 0)
+        recordLive(step: step("create a category, a script and a policy on the source"), passed: true)
 
         // 2. The real app with the two test tenants' connections.
         try launchLive(roles: [source, destination])
         chooseTenants(source: "\(source) (Jamf Platform API)", destination: "\(destination) (Jamf Platform API)")
-        selectOnly(["Categories", "Scripts"])
+        selectOnly(["Categories", "Scripts", "Policies"])
 
         // 3. Clone Tenant: Connect, Prepare, Preview; then only the test's
         //    two objects stay checked (the tenants hold others).
@@ -87,13 +97,13 @@ final class LiveUITests: JTKitUITestCase {
         let search = app.searchFields.firstMatch
         tap(search, timeout: 10)
         search.typeText(prefix)
-        for (type, name) in [("Categories", categoryName), ("Scripts", scriptName)] {
+        for (type, name) in [("Categories", categoryName), ("Scripts", scriptName), ("Policies", policyName)] {
             openType(type)
             tap(app.toolbars.menuButtons["Select"].firstMatch, timeout: 10)
             tap(app.menuItems["Uncheck All"].firstMatch, timeout: 5)
             tap(app.checkBoxes["Include \(name)"].firstMatch, timeout: 20)
         }
-        recordLive(step: step("Preview in the app: both test objects planned as Create"), passed: true)
+        recordLive(step: step("Preview in the app: the three test objects planned as Create"), passed: true)
 
         // 4. Run from the wizard, confirmed with exactly the two changes,
         //    then Verify.
@@ -104,8 +114,8 @@ final class LiveUITests: JTKitUITestCase {
         tap(continueButton(in: wizard), timeout: 120)
         tap(continueButton(in: wizard), timeout: 30)    // the plan stays loaded
         tap(wizard.buttons["Run"], timeout: 10)
-        let confirm = dialogButton("Copy 2 Changes")
-        XCTAssertTrue(confirm.waitForExistence(timeout: 10), "Run doesn't offer exactly the two test objects")
+        let confirm = dialogButton("Copy 3 Changes")
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10), "Run doesn't offer exactly the three test objects")
         confirm.click()
         tap(wizard.buttons["Continue to Verify"], timeout: 300)
         waitForNetwork()
@@ -118,18 +128,26 @@ final class LiveUITests: JTKitUITestCase {
         tap(wizard.buttons["Done"], timeout: 10)
         waitForNetwork()
 
-        // 5. Read back on the destination: both there, the script in the category.
-        let created = destinationItems(gateway, names: [categoryName, scriptName])
+        // 5. Read back on the destination: all three there, the script and
+        //    the policy in the copied category, the policy still off.
+        let created = destinationItems(gateway, names: [categoryName, scriptName, policyName])
         let destinationCategory = created.first { $0.resource == "categories" }?.id
         let destinationScript = created.first { $0.resource == "scripts" }?.id
+        let destinationPolicy = created.first { $0.resource == "policies" }?.id
         var readBack = false
-        if let destinationCategory, let destinationScript {
+        if let destinationCategory, let destinationScript, let destinationPolicy {
             let category = try liveCall { try await destinationAPI.object("pro/v1/categories/\(destinationCategory)") }
             let script = try liveCall { try await destinationAPI.object("pro/v1/scripts/\(destinationScript)") }
+            let policy = try liveCall { try await destinationRaw.json("proclassic/policies/id/\(destinationPolicy)") }
+            let general = (policy["policy"] as? [String: Any])?["general"] as? [String: Any]
+            let policyCategory = general?["category"] as? [String: Any]
+            let enabled = "\(general?["enabled"] ?? "")"
             readBack = category["name"] as? String == categoryName && script["name"] as? String == scriptName
                 && "\(script["categoryId"] ?? "")" == destinationCategory
+                && general?["name"] as? String == policyName && policyCategory?["name"] as? String == categoryName
+                && (enabled == "false" || enabled == "0")
         }
-        recordLive(step: step("read back on the destination: both there, the script in the copied category"), passed: readBack)
+        recordLive(step: step("read back on the destination: all three there, in the copied category, the policy off"), passed: readBack)
         XCTAssertTrue(readBack, "The copies on the destination aren't what the source has: \(created)")
     }
 
@@ -205,22 +223,135 @@ final class LiveUITests: JTKitUITestCase {
 
     /// Removes the copies on the destination (script first), then the
     /// source's objects, and checks the run left nothing.
-    private func removeTestObjects(sourceAPI: LiveJamfPlatformAPI, sourceIDs: [(path: String, id: String)],
-                                   destinationAPI: LiveJamfPlatformAPI, names: [String], step: (String) -> String) {
+    private func removeTestObjects(sourceAPI: LiveJamfPlatformAPI, sourceRaw: LiveRawAPI, sourceIDs: [(path: String, id: String)],
+                                   destinationAPI: LiveJamfPlatformAPI, destinationRaw: LiveRawAPI,
+                                   names: [String], step: (String) -> String) {
         app?.terminate()
         guard let gateway = try? liveGateway() else { return }
-        let copies = destinationItems(gateway, names: names).sorted { $0.resource == "scripts" && $1.resource != "scripts" }
+        // what refers to the category goes first: the policy, the script, then the category
+        let order = ["policies": 0, "scripts": 1, "categories": 2]
+        let copies = destinationItems(gateway, names: names).sorted { (order[$0.resource] ?? 3) < (order[$1.resource] ?? 3) }
         let removed = (try? liveCall(timeout: 300) {
             for copy in copies {
-                try await destinationAPI.send("DELETE", "pro/v1/\(copy.resource)/\(copy.id)", accepting: [404])
+                if copy.resource == "policies" {
+                    try await destinationRaw.send("DELETE", "proclassic/policies/id/\(copy.id)", accepting: [404])
+                } else {
+                    try await destinationAPI.send("DELETE", "pro/v1/\(copy.resource)/\(copy.id)", accepting: [404])
+                }
             }
             for object in sourceIDs {
-                try await sourceAPI.send("DELETE", "\(object.path)/\(object.id)", accepting: [404])
+                if object.path.hasPrefix("proclassic/") {
+                    try await sourceRaw.send("DELETE", "\(object.path)/\(object.id)", accepting: [404])
+                } else {
+                    try await sourceAPI.send("DELETE", "\(object.path)/\(object.id)", accepting: [404])
+                }
             }
             return true
         }) ?? false
         let nothingLeft = (try? requireRunObjectsGone()) != nil
         recordLive(step: step("remove the test objects from both tenants"), passed: removed && nothingLeft)
         XCTAssertTrue(removed && nothingLeft, "The test objects weren't all removed")
+    }
+}
+
+extension LiveUITests {
+    /// A policy that never runs: disabled, scoped to nothing, offered in
+    /// Self Service under its own name, in the test's category.
+    static func policyXML(name: String, categoryID: String) -> String {
+        let escaped = name.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+        return "<policy><general><name>\(escaped)</name><enabled>false</enabled><trigger_checkin>false</trigger_checkin>"
+            + "<category><id>\(categoryID)</id></category></general>"
+            + "<scope><all_computers>false</all_computers></scope>"
+            + "<self_service><use_for_self_service>true</use_for_self_service>"
+            + "<self_service_display_name>\(escaped)</self_service_display_name></self_service></policy>"
+    }
+}
+
+/// Requests a live UI test needs that `LiveJamfPlatformAPI` (JSON only)
+/// doesn't send: Classic XML creates and deletes, and Classic reads as JSON.
+/// Through the release check's gateway, which decides each by its rules;
+/// the secret comes from the gateway, never this runner's environment.
+final class LiveRawAPI: @unchecked Sendable {
+    private let gateway: LiveGatewayClient
+    private let baseURL: URL
+    private let environmentID: String
+    private let clientID: String
+    private let clientSecret: String
+    private let lock = NSLock()
+    private var token: String?
+
+    struct Failure: Error, CustomStringConvertible {
+        let status: Int
+        let body: String
+        var description: String { "HTTP \(status): \(body.prefix(300))" }
+    }
+
+    init(gateway: LiveGatewayClient, role: String) throws {
+        guard let connection = gateway.launch.connections.first(where: { $0.role == role && $0.connection.service == "jamfPlatform" })?.connection,
+              let secret = try gateway.secretNow(role: role, item: "client-secret"), !secret.isEmpty else {
+            throw Failure(status: 0, body: "\(role) has no Jamf Platform API connection or client secret in this run")
+        }
+        self.gateway = gateway
+        baseURL = URL(string: "https://\(connection.region).api.jamfcloud.com")!
+        environmentID = connection.environmentID
+        clientID = connection.clientID
+        clientSecret = secret
+    }
+
+    @discardableResult
+    func send(_ method: String, _ path: String, body: Data? = nil, contentType: String? = nil,
+              accept: String = "application/json", accepting: Set<Int> = []) async throws -> (status: Int, body: Data) {
+        var request = URLRequest(url: baseURL.appending(path: path))
+        request.httpMethod = method
+        request.setValue(accept, forHTTPHeaderField: "Accept")
+        request.setValue(environmentID, forHTTPHeaderField: "X-Environment-Id")
+        request.setValue("Bearer \(try await bearer())", forHTTPHeaderField: "Authorization")
+        if let body {
+            request.httpBody = body
+            request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        }
+        let (data, response) = try await gateway.session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if status >= 400 && !accepting.contains(status) {
+            throw Failure(status: status, body: String(decoding: data, as: UTF8.self))
+        }
+        return (status, data)
+    }
+
+    /// A Classic create (`proclassic/<resource>/id/0`); returns the new `<id>`.
+    func createClassic(_ resource: String, xml: String) async throws -> String {
+        let answer = try await send("POST", "proclassic/\(resource)/id/0", body: Data(xml.utf8),
+                                    contentType: "application/xml", accept: "application/xml").body
+        let text = String(decoding: answer, as: UTF8.self)
+        guard let start = text.range(of: "<id>"), let end = text.range(of: "</id>", range: start.upperBound..<text.endIndex) else {
+            throw Failure(status: 0, body: "The create answered without an id: \(text.prefix(200))")
+        }
+        return String(text[start.upperBound..<end.lowerBound]).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// A GET, parsed as a JSON object.
+    func json(_ path: String) async throws -> [String: Any] {
+        let body = try await send("GET", path).body
+        return (try JSONSerialization.jsonObject(with: body) as? [String: Any]) ?? [:]
+    }
+
+    private func bearer() async throws -> String {
+        if let token = lock.withLock({ token }) { return token }
+        var request = URLRequest(url: baseURL.appending(path: "auth/token"))
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        var form = URLComponents()
+        form.queryItems = [URLQueryItem(name: "grant_type", value: "client_credentials"),
+                           URLQueryItem(name: "client_id", value: clientID),
+                           URLQueryItem(name: "client_secret", value: clientSecret)]
+        request.httpBody = Data((form.percentEncodedQuery ?? "").utf8)
+        let (data, response) = try await gateway.session.data(for: request)
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard status == 200, let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let value = object["access_token"] as? String else {
+            throw Failure(status: status, body: "The sign-in failed")
+        }
+        lock.withLock { token = value }
+        return value
     }
 }

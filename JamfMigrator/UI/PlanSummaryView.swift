@@ -3,8 +3,8 @@
 //  JamfMigrator
 //
 //  The middle column around a dry run: a prominent progress view while the
-//  planner works, and the summary it lands on afterwards — totals, a legend
-//  for the sidebar badges, and every planned type with its counts.
+//  planner works, and the summary it lands on afterwards — totals and
+//  every planned type with its counts.
 //
 
 import SwiftUI
@@ -75,9 +75,6 @@ struct PlanSummaryView: View {
                             .font(.callout)
                     }
                     perType(plan)
-                    Text(legend(plan.mode))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
                 .padding()
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -181,12 +178,6 @@ struct PlanSummaryView: View {
         }
         if blocked > 0 { parts.append("\(blocked) blocked") }
         return parts.joined(separator: " · ")
-    }
-
-    private func legend(_ mode: RunMode) -> String {
-        mode == .delete
-            ? "In the sidebar, 12− means 12 objects to delete."
-            : "In the sidebar: 12+ to create · 3± to update · 7= unchanged · 2✕ blocked."
     }
 
     private func unchecked(_ plan: MigrationPlan) -> Int {

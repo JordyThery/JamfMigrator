@@ -340,7 +340,7 @@ private struct PrepareStep: View {
                 Button("Continue") { next() }
                     .buttonStyle(.borderedProminent)
                     .disabled(appState.isLoadingMappings)
-                    .help(appState.isLoadingMappings ? "Waiting for the ADE instances and distribution points of both tenants." : "")
+                    .help(appState.isLoadingMappings ? "Waiting for the ADE instances and distribution points of both tenants." : "Goes on to Preview with these mappings.")
             }
             .padding()
         }

@@ -243,11 +243,12 @@ private final class FenceProtocol: URLProtocol, @unchecked Sendable {
 
 /// The kinds of test object, with their paths and the privileges they need.
 enum TestKind: String, CaseIterable {
-    case profile, script, staticGroup, classicGroup, category
+    case policy, profile, script, staticGroup, classicGroup, category
 
     /// The ledger's name for the kind (as the guarded network records it).
     var resource: String {
         switch self {
+        case .policy: "policies"
         case .profile: "osxconfigurationprofiles"
         case .script: "scripts"
         case .staticGroup: "static-groups"
@@ -266,6 +267,7 @@ enum TestKind: String, CaseIterable {
 
     func deletePath(id: String) -> String {
         switch self {
+        case .policy: JamfClassic.path("policies", id: id)
         case .profile: JamfClassic.path("osxconfigurationprofiles", id: id)
         case .script: "pro/v1/scripts/\(id)"
         case .staticGroup: "pro/v3/computer-groups/static-groups/\(id)"
@@ -276,6 +278,7 @@ enum TestKind: String, CaseIterable {
 
     var deletePrivilege: JamfPro.Privilege {
         switch self {
+        case .policy: .deletePolicies
         case .profile: .deleteMacOSConfigurationProfiles
         case .script: .deleteScripts
         case .staticGroup, .classicGroup: .deleteStaticComputerGroups
@@ -286,7 +289,7 @@ enum TestKind: String, CaseIterable {
     /// Removed in an order Jamf accepts: what uses a category or group first.
     var removalRank: Int {
         switch self {
-        case .profile: 0
+        case .policy, .profile: 0
         case .script: 1
         case .staticGroup, .classicGroup: 2
         case .category: 3
@@ -396,7 +399,8 @@ extension LiveConnection {
     func testObjects(_ run: LiveCheckRun) async throws -> [(kind: TestKind, id: String, name: String)] {
         var found: [(TestKind, String, String)] = []
         for (kind, key) in [(TestKind.category, "categories"), (.script, "scripts"),
-                            (.staticGroup, "staticcomputergroups"), (.profile, "osxconfigurationprofiles")] {
+                            (.staticGroup, "staticcomputergroups"), (.profile, "osxconfigurationprofiles"),
+                            (.policy, "policies")] {
             let type = try #require(ObjectRegistry.type(key))
             found += try await ObjectLister.list(type, on: api).filter { run.isSweepable($0.name) }.map { (kind, $0.id, $0.name) }
         }

@@ -136,7 +136,7 @@ struct WipeWizard: View {
                     started = appState.run()
                 }
                 .disabled(!allGatesPass)
-                .help(allGatesPass ? "" : "Finish the preview and the backup, and type the tenant’s name exactly.")
+                .help(allGatesPass ? "Deletes the checked objects from \(tenantName). This can’t be undone." : "Finish the preview and the backup, and type the tenant’s name exactly.")
             }
         }
         .formStyle(.grouped)

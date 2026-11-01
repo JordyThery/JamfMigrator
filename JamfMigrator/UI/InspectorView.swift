@@ -126,13 +126,14 @@ private struct DiffValue: View {
     let text: String?
 
     var body: some View {
-        Text(text ?? "—")
+        // a missing value says so in words, readable at full contrast
+        Text(text ?? "Not set")
             .font(.callout)
-            .foregroundStyle(text == nil ? .tertiary : .primary)
+            .italic(text == nil)
+            .foregroundStyle(text == nil ? .secondary : .primary)
             .textSelection(.enabled)
             .lineLimit(6)
-            .help(text ?? "Not set")
-            .accessibilityLabel(text ?? "Not set")
+            .help(text ?? "The field isn’t set on this side.")
     }
 }
 

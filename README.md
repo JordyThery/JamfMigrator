@@ -99,7 +99,7 @@ The Clone Tenant wizard shows this list before every clone:
 2. Pick Source and Destination in the sidebar, choose object types (Check All
    / Uncheck All), then click **Preview** (⇧⌘P).
 3. Review the plan. Preview opens on a **Summary** page: totals per outcome,
-   every planned type with its counts, and a legend for the sidebar badges.
+   and every planned type with its counts (the sidebar shows them too).
    Select a type to see its objects with their checkboxes, and an object to see
    its diff in the inspector. Uncheck anything to leave it out. To copy one
    script: Uncheck All types → check Scripts → Preview → Select › Uncheck All →
