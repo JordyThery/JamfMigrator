@@ -27,9 +27,12 @@ SIGNIN_TEST="JamfMigratorTests/LiveSignInTests"
 LIVE_TESTS=(
     "JamfMigratorTests/LiveMigrationTests/platformToPlatform()"
     "JamfMigratorTests/LiveMigrationTests/platformToDirect()"
-    "JamfMigratorUITests/LiveUITests/testCopyThroughPreviewRunAndVerify"
-    "JamfMigratorUITests/LiveUITests/testCrossTenantPreviewFromProduction"
 )
+# The live UI tests (JamfMigratorUITests/LiveUITests: testCopyThroughPreviewRunAndVerify,
+# testCrossTenantPreviewFromProduction) wait for JTKit: with TEST_HOST_CONTAINER the
+# live folder is in the app's container, which the sandboxed app needs and the UI
+# test runner can't read ("no live-launch.json in the run folder"). Add them back
+# here once JTKit's release-check-lib.sh gives the runner its own readable copy.
 CLEANUP_TEST="JamfMigratorTests/LiveCleanupTests"
 ROLES=(jamf-test-a jamf-test-b jamfpro-production)
 # whatever the allow-list grants, production is only ever read
