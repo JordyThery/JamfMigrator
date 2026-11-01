@@ -110,7 +110,7 @@ private struct PreflightSummary: View {
             let ok = preflight.isReady && preflight.flaggedTypes.isEmpty
             Label("\(preflight.source.version ?? "?") → \(preflight.destination.version ?? "?")",
                   systemImage: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                .foregroundStyle(ok ? .green : .orange)
+                .statusColor(ok ? .green : .orange)
             ForEach([("No permission", preflight.missingPermissionTypes),
                      ("Not found", preflight.notFoundTypes),
                      ("Couldn’t check", preflight.uncheckedTypes)].filter { !$0.1.isEmpty }, id: \.0) { title, keys in

@@ -104,7 +104,7 @@ struct WipeWizard: View {
                         }
                     } else {
                         Label("The backup didn’t complete.", systemImage: "xmark.circle.fill")
-                            .foregroundStyle(.red)
+                            .statusColor(.red)
                         ForEach(result.errors.prefix(5), id: \.self) { error in
                             Text(error).font(.caption).foregroundStyle(.secondary)
                         }
@@ -112,7 +112,7 @@ struct WipeWizard: View {
                     }
                 } else if backupSkipped {
                     Label("Backup skipped.", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                        .statusColor(.orange)
                 } else {
                     Button("Back Up \(tenantName) First") { appState.backup() }
                         .buttonStyle(.borderedProminent)
@@ -167,7 +167,7 @@ struct WipeWizard: View {
                       ? "Wipe finished: \(Plural.count(report.deletedCount, "object")) deleted."
                       : "Wipe finished, but \(Plural.count(leftovers.count, "object")) couldn’t be deleted.",
                       systemImage: leftovers.isEmpty ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(leftovers.isEmpty ? .green : .orange)
+                    .statusColor(leftovers.isEmpty ? .green : .orange)
                     .font(.headline)
                 if !leftovers.isEmpty {
                     List(leftovers) { entry in

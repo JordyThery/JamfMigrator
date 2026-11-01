@@ -6,6 +6,7 @@
 //  a search field, and per-object checkboxes to exclude objects from the run.
 //
 
+import JTKit
 import SwiftUI
 
 struct ObjectListView: View {
@@ -25,9 +26,17 @@ struct ObjectListView: View {
             } else if appState.selectedTypeKey == nil || appState.selectedTypeKey == AppState.summaryKey {
                 PlanSummaryView()
             } else {
-                List(filteredEntries, selection: $appState.selectedObjectID) { entry in
-                    ObjectRow(entry: entry)
-                        .tag(entry.id)
+                List(selection: $appState.selectedObjectID) {
+                    Section {
+                        ForEach(filteredEntries) { entry in
+                            ObjectRow(entry: entry)
+                                .tag(entry.id)
+                        }
+                    } header: {
+                        if let typeKey = appState.selectedTypeKey {
+                            TypeCounts(typeKey: typeKey, shown: filteredEntries.count)
+                        }
+                    }
                 }
             }
         }
@@ -64,6 +73,51 @@ struct ObjectListView: View {
     }
 }
 
+/// The selected type's outcomes in a line, and how many of its changes
+/// are checked: "2 to create · 1 to update · 4 unchanged — 3 of 3 checked".
+private struct TypeCounts: View {
+    @Environment(AppState.self) private var appState
+    let typeKey: String
+    /// How many rows the filter leaves.
+    let shown: Int
+
+    var body: some View {
+        let entries = appState.plan?.entries(for: typeKey) ?? []
+        Text(Self.summary(entries, checked: entries.filter(appState.isIncluded).count, shown: shown))
+            .font(.callout.monospacedDigit())
+            .foregroundStyle(.secondary)
+            .textCase(nil)
+    }
+
+    static func summary(_ entries: [ObjectPlan], checked: Int, shown: Int) -> String {
+        var create = 0, update = 0, replace = 0, delete = 0, unchanged = 0, blocked = 0, kept = 0
+        for entry in entries {
+            switch entry.change {
+            case .create: create += 1
+            case .update: update += 1
+            case .replace: replace += 1
+            case .delete: delete += 1
+            case .unchanged: unchanged += 1
+            case .blocked: blocked += 1
+            case .keep: kept += 1
+            }
+        }
+        var parts = [String]()
+        if create > 0 { parts.append("\(create) to create") }
+        if update > 0 { parts.append("\(update) to update") }
+        if replace > 0 { parts.append("\(replace) to replace") }
+        if delete > 0 { parts.append("\(delete) to delete") }
+        if unchanged > 0 { parts.append("\(unchanged) unchanged") }
+        if blocked > 0 { parts.append("\(blocked) blocked") }
+        if kept > 0 { parts.append("\(kept) kept") }
+        var line = parts.isEmpty ? "No objects" : parts.joined(separator: " · ")
+        let runnable = create + update + replace + delete
+        if runnable > 0 { line += " — \(checked) of \(runnable) checked" }
+        if shown < entries.count { line += " (\(shown) shown)" }
+        return line
+    }
+}
+
 private struct ObjectRow: View {
     @Environment(AppState.self) private var appState
     let entry: ObjectPlan
@@ -79,14 +133,13 @@ private struct ObjectRow: View {
             Text(entry.name.isEmpty ? "(unnamed)" : entry.name)
                 .lineLimit(1)
             if let needing = appState.waitingOn(entry).first {
-                Label("Needed by “\(needing.name)”", systemImage: "link")
+                StatusLabel("Needed by “\(needing.name)”", systemImage: "link", color: .orange)
                     .font(.caption)
-                    .foregroundStyle(.orange)
                     .help("A checked object refers to this one, which the run would create. Check it, or uncheck the objects that need it.")
             }
             if !entry.warnings.isEmpty {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.yellow)
+                    .symbolRenderingMode(.multicolor)
                     .help(entry.warnings.joined(separator: "\n"))
                     .accessibilityLabel("Warnings")
                     .accessibilityValue(entry.warnings.joined(separator: " "))
@@ -103,19 +156,59 @@ private struct ObjectRow: View {
     }
 }
 
-/// A plan row's outcome as a colored capsule. JTKit's `StatusBadge` has no
-/// per-outcome colors, so the app keeps this one view for plan and run rows.
+/// A plan or run row's outcome: JTKit's `StatusBadge`, primary text on a
+/// wash of the outcome's color (stronger under Increase Contrast), so the
+/// word stays readable; nil color: the neutral badge.
 struct OutcomeBadge: View {
     let label: String
-    let color: Color
+    let color: Color?
 
     var body: some View {
-        Text(label)
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.2), in: .capsule)
-            .foregroundStyle(color)
+        StatusBadge(label, style: color.map { .colored($0) } ?? .neutral)
+    }
+}
+
+/// Labels below it get their status color on the symbol only; the text
+/// stays primary (`StatusLabel` for a single one).
+struct StatusIconLabelStyle: LabelStyle {
+    let color: Color
+
+    func makeBody(configuration: Configuration) -> some View {
+        Label {
+            configuration.title
+        } icon: {
+            configuration.icon.foregroundStyle(color)
+        }
+    }
+}
+
+extension View {
+    /// The status color on the symbols of the labels below, not their text.
+    func statusColor(_ color: Color) -> some View {
+        labelStyle(StatusIconLabelStyle(color: color))
+    }
+}
+
+/// A status line whose symbol carries the color and whose text stays in the
+/// primary color, so it reads at full contrast and doesn't rely on color.
+struct StatusLabel: View {
+    let text: String
+    let systemImage: String
+    let color: Color
+
+    init(_ text: String, systemImage: String, color: Color) {
+        self.text = text
+        self.systemImage = systemImage
+        self.color = color
+    }
+
+    var body: some View {
+        Label {
+            Text(text)
+        } icon: {
+            Image(systemName: systemImage)
+                .foregroundStyle(color)
+        }
     }
 }
 
@@ -139,15 +232,15 @@ struct ChangeBadge: View {
         }
     }
 
-    private var color: Color {
+    private var color: Color? {
         switch change {
         case .create: .green
         case .update: .blue
         case .replace: .purple
-        case .unchanged: .secondary
+        case .unchanged: nil
         case .blocked: .orange
         case .delete: .red
-        case .keep: .secondary
+        case .keep: nil
         }
     }
 }

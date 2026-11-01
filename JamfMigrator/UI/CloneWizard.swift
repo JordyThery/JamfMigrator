@@ -122,15 +122,21 @@ private struct StepIndicator: View {
                           ? "checkmark.circle.fill"
                           : step == current ? "circle.inset.filled" : "circle")
                     Text(step.title)
+                        .fontWeight(step == current ? .semibold : .regular)
                 }
                 .fixedSize()
                 .foregroundStyle(step == current ? .primary : .secondary)
+                .accessibilityHidden(true)
                 if step != .verify {
                     Rectangle().fill(.quaternary).frame(height: 1)
+                        .accessibilityHidden(true)
                 }
             }
         }
         .font(.callout)
+        // one element for VoiceOver: "Step 2 of 5: Prepare"
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Step \(current.rawValue + 1) of \(CloneWizard.Step.allCases.count): \(current.title)")
     }
 }
 
@@ -147,10 +153,10 @@ private struct ConnectStep: View {
             } else if let preflight = appState.preflight {
                 Label(tenantLabel("Source", preflight.source),
                       systemImage: preflight.source.reachable ? "checkmark.circle.fill" : "xmark.circle.fill")
-                    .foregroundStyle(preflight.source.reachable ? .green : .red)
+                    .statusColor(preflight.source.reachable ? .green : .red)
                 Label(tenantLabel("Destination", preflight.destination),
                       systemImage: preflight.destination.reachable ? "checkmark.circle.fill" : "xmark.circle.fill")
-                    .foregroundStyle(preflight.destination.reachable ? .green : .red)
+                    .statusColor(preflight.destination.reachable ? .green : .red)
                 if !preflight.unavailableTypes.isEmpty {
                     Label("Skipped: \(PreflightReport.displayNames(preflight.unavailableTypes)). \(PreflightReport.gatewayOnlyReason)",
                           systemImage: "info.circle")
@@ -158,13 +164,13 @@ private struct ConnectStep: View {
                 }
                 if preflight.flaggedTypes.isEmpty {
                     Label("Both tenants have permission for every selected type.", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                        .statusColor(.green)
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
                         if !preflight.missingPermissionTypes.isEmpty {
                             Label("Missing permission for: \(PreflightReport.displayNames(preflight.missingPermissionTypes)). These types will fail; grant the permission and test again, or leave them out.",
                                   systemImage: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
+                                .statusColor(.orange)
                             ForEach(preflight.grants, id: \.tenant) { grant in
                                 Text("\(grant.tenant): \(grant.text)")
                                     .foregroundStyle(.secondary)
@@ -175,7 +181,7 @@ private struct ConnectStep: View {
                         if !preflight.notFoundTypes.isEmpty {
                             Label("Not found: \(PreflightReport.displayNames(preflight.notFoundTypes)). A tenant doesn’t have these lists, so these types will fail; leave them out.",
                                   systemImage: "folder.badge.questionmark")
-                                .foregroundStyle(.orange)
+                                .statusColor(.orange)
                         }
                         if !preflight.uncheckedTypes.isEmpty {
                             Label("Couldn’t check: \(PreflightReport.displayNames(preflight.uncheckedTypes)). The check got an error or no answer; these types may still work. Choose Test Again to retry.",
@@ -195,7 +201,7 @@ private struct ConnectStep: View {
                 if !preflight.destinationIsEmpty {
                     Label("The destination isn’t empty. Objects with a matching name are updated in place; everything else on the destination is left alone.",
                           systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
+                        .statusColor(.orange)
                 }
             } else {
                 Text("Checks that both tenants answer, and the permissions on both tenants.")
@@ -264,7 +270,7 @@ private struct PrepareStep: View {
                 } else if appState.destADEInstances.isEmpty {
                     Label("The destination has no ADE instance; PreStages will be Blocked until one exists.",
                           systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                        .statusColor(.orange)
                 } else {
                     ForEach(appState.sourceADEInstances, id: \.id) { instance in
                         Picker(instance.name, selection: mappingBinding(\.adeInstances, sourceId: instance.id)) {
@@ -399,10 +405,10 @@ private struct RunStep: View {
                       ? "Run finished: \(Plural.count(report.entries.count, "object")) processed."
                       : "Run finished with \(Plural.count(failures.count, "object")) not migrated. Resume Run retries them.",
                       systemImage: failures.isEmpty ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(failures.isEmpty ? .green : .orange)
+                    .statusColor(failures.isEmpty ? .green : .orange)
             } else if appState.plan?.changeCount == 0 {
                 Label("Nothing to do — every object is already on the destination.", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
+                    .statusColor(.green)
             } else {
                 Text("Copies \(Plural.count(appState.effectiveChangeCount, "change")) to \(appState.destTenant?.name ?? "the destination"), in step order. The run can be stopped and resumed.")
                     .foregroundStyle(.secondary)
@@ -469,7 +475,7 @@ private struct VerifyStep: View {
                         ? "\(Plural.count(report.notCheckedCount, "type")) couldn’t be checked\(report.discrepancyCount > 0 ? "; \(Plural.count(report.discrepancyCount, "object")) \(report.discrepancyCount == 1 ? "differs or is" : "differ or are") missing" : "")."
                         : "\(Plural.count(report.discrepancyCount, "object")) \(report.discrepancyCount == 1 ? "differs or is" : "differ or are") missing.",
                       systemImage: report.isClean ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(report.isClean ? .green : .orange)
+                    .statusColor(report.isClean ? .green : .orange)
                     .font(.headline)
                 List(report.types, id: \.typeKey) { result in
                     VStack(alignment: .leading, spacing: 2) {
@@ -483,12 +489,12 @@ private struct VerifyStep: View {
                         if let reason = result.notChecked {
                             Label("Not checked: \(reason)", systemImage: "questionmark.circle")
                                 .font(.caption)
-                                .foregroundStyle(.orange)
+                                .statusColor(.orange)
                         }
                         ForEach(result.discrepancies, id: \.self) { item in
                             Label(item, systemImage: "xmark.circle")
                                 .font(.caption)
-                                .foregroundStyle(.orange)
+                                .statusColor(.orange)
                         }
                         ForEach(result.blocked, id: \.self) { item in
                             Label(item, systemImage: "hand.raised")

@@ -19,6 +19,7 @@ struct PlanningProgressView: View {
             Image(systemName: "eye")
                 .font(.system(size: 34))
                 .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
             Text("Planning the dry run")
                 .font(.title3.weight(.semibold))
 
@@ -39,7 +40,7 @@ struct PlanningProgressView: View {
                 .lineLimit(1)
             Text("Both tenants are read; nothing is written.")
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -69,10 +70,9 @@ struct PlanSummaryView: View {
                             .foregroundStyle(.secondary)
                     }
                     if warningCount(plan) > 0 {
-                        Label("\(Plural.count(warningCount(plan), "object")) \(warningCount(plan) == 1 ? "has" : "have") warnings to review after the run.",
-                              systemImage: "exclamationmark.triangle.fill")
+                        StatusLabel("\(Plural.count(warningCount(plan), "object")) \(warningCount(plan) == 1 ? "has" : "have") warnings to review after the run.",
+                                    systemImage: "exclamationmark.triangle.fill", color: .orange)
                             .font(.callout)
-                            .foregroundStyle(.orange)
                     }
                     perType(plan)
                     Text(legend(plan.mode))
@@ -93,6 +93,7 @@ struct PlanSummaryView: View {
                  ? "\(appState.sourceTenant?.name ?? "Source") → \(appState.destTenant?.name ?? "Destination")"
                  : "Delete from \(appState.destTenant?.name ?? "the tenant")")
                 .font(.title3.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
             Text(appState.effectiveChangeCount == 0
                  ? "Nothing to do — the destination already matches."
                  : "Select a type below or in the sidebar to review its objects, then Run.")
@@ -128,6 +129,7 @@ struct PlanSummaryView: View {
         return VStack(alignment: .leading, spacing: 0) {
             Text("Per Type")
                 .font(.headline)
+                .accessibilityAddTraits(.isHeader)
                 .padding(.bottom, 6)
             ForEach(rows) { type in
                 Button {
@@ -142,11 +144,13 @@ struct PlanSummaryView: View {
                         Image(systemName: "chevron.right")
                             .font(.caption)
                             .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
                     }
                     .padding(.vertical, 6)
                     .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
+                .accessibilityHint("Shows this type’s objects.")
                 Divider()
             }
         }
@@ -203,16 +207,26 @@ private struct CountTile: View {
 
     var body: some View {
         VStack(spacing: 2) {
+            // the number in the primary color reads at full contrast; the
+            // color is a mark beside the label, never the only cue
             Text("\(value)")
                 .font(.title2.weight(.semibold).monospacedDigit())
-                .foregroundStyle(value == 0 ? Color.secondary : color)
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(value == 0 ? Color.secondary : Color.primary)
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 7, height: 7)
+                    .opacity(value == 0 ? 0.4 : 1)
+                Text(label)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .frame(minWidth: 72)
         .padding(.vertical, 8)
         .padding(.horizontal, 6)
         .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 8))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(value) \(label)")
     }
 }

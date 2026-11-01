@@ -154,17 +154,38 @@ struct ContentView: View {
     private var runConfirmationMessage: String { appState.runConfirmationMessage }
 }
 
+/// Delete mode's banner across the window: which tenant a run deletes
+/// from, and the way back to Copy.
 struct DeleteModeBanner: View {
+    @Environment(AppState.self) private var appState
+
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-            Text("Delete mode — runs remove objects from the selected tenant")
+            Image(systemName: "trash.fill")
+                .accessibilityHidden(true)
+            Text(message)
                 .fontWeight(.semibold)
+                .lineLimit(2)
             Spacer()
+            Button("Switch to Copy") { appState.mode = .copy }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(!appState.canChangeTenants)
+                .help("Leaves delete mode (⌘D).")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(.red, in: .rect)
+        .background(Color.red, in: .rect)
         .foregroundStyle(.white)
+        .environment(\.colorScheme, .dark)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Delete mode")
+    }
+
+    private var message: String {
+        if let tenant = appState.destTenant?.name {
+            return "Delete mode: a run deletes the checked objects from \(tenant)."
+        }
+        return "Delete mode: choose the tenant to delete from."
     }
 }

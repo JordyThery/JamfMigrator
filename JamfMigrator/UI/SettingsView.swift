@@ -125,13 +125,11 @@ private struct ServiceSecretField: View {
                     if !saveFailed { readError = nil }
                 }
             if let readError {
-                Text(readError)
+                StatusLabel(readError, systemImage: "exclamationmark.triangle.fill", color: .red)
                     .font(.caption)
-                    .foregroundStyle(.red)
             } else if saveFailed {
-                Text("The Keychain refused to save this password.")
+                StatusLabel("The Keychain refused to save this password.", systemImage: "exclamationmark.triangle.fill", color: .red)
                     .font(.caption)
-                    .foregroundStyle(.red)
             }
         }
     }

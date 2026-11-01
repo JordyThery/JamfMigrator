@@ -232,11 +232,11 @@ private struct RunStatusBadge: View {
         }
     }
 
-    private var color: Color {
+    private var color: Color? {
         switch status {
         case .created: .green
         case .updated: .blue
-        case .unchanged: .secondary
+        case .unchanged: nil
         case .deleted: .red
         case .blocked: .orange
         case .failed: .red
