@@ -94,14 +94,23 @@ final class LiveUITests: JTKitUITestCase {
         tap(wizard.buttons["Close"], timeout: 10)
         XCTAssertTrue(wizard.waitForNonExistence(timeout: 10))
 
+        // per type: Uncheck All while the search field is empty (a filled
+        // field widens and can push Select out of the toolbar), then filter
+        // by the run's prefix, check the test object, and clear the filter
         let search = app.searchFields.firstMatch
-        tap(search, timeout: 10)
-        search.typeText(prefix)
         for (type, name) in [("Categories", categoryName), ("Scripts", scriptName), ("Policies", policyName)] {
             openType(type)
-            tap(app.toolbars.menuButtons["Select"].firstMatch, timeout: 10)
+            let select = app.toolbars.menuButtons["Select"].firstMatch
+            XCTAssertTrue(select.waitForExistence(timeout: 10), "No Select menu for \(type)")
+            select.click()
             tap(app.menuItems["Uncheck All"].firstMatch, timeout: 5)
+            tap(search, timeout: 10)
+            search.typeText(prefix)
             tap(app.checkBoxes["Include \(name)"].firstMatch, timeout: 20)
+            tap(search, timeout: 5)
+            search.typeKey("a", modifierFlags: .command)
+            search.typeKey(.delete, modifierFlags: [])
+            search.typeKey(.escape, modifierFlags: [])
         }
         recordLive(step: step("Preview in the app: the three test objects planned as Create"), passed: true)
 
