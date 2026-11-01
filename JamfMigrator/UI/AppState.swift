@@ -71,8 +71,10 @@ final class AppState {
     }
 
     /// Where the app keeps journals, backups, exports and run reports:
-    /// Application Support, or demo mode's temporary folder.
+    /// Application Support, or demo mode's temporary folder. Under JTKit's
+    /// live-check switch (live UI tests), the release check's run folder.
     var dataDirectory: URL {
+        if let live = Self.liveDirectory { return live }
         if demo.isOn { return demo.scratchDirectory }
         // a sandbox run (UI tests) never writes into the real folder
         if demo.isSandbox { return Self.sandboxDirectory }
@@ -84,8 +86,13 @@ final class AppState {
     private static let sandboxDirectory = FileManager.default.temporaryDirectory
         .appendingPathComponent("JamfMigrator-sandbox-\(UUID().uuidString)", isDirectory: true)
 
+    /// Under the live-check switch: the run's folder for the app's own files
+    /// (decided once, so Resume finds the journal again); nil otherwise.
+    private static let liveDirectory = LiveLaunch.appFilesFolder("JamfMigrator")
+
     /// Where run reports go, in words, for the run sheet's help.
     var runReportsLocation: String {
+        if Self.liveDirectory != nil { return "the release check’s run folder (Run Reports)" }
         if demo.isOn { return "demo mode’s temporary folder (Run Reports)" }
         if demo.isSandbox { return "this sandbox run’s temporary folder (Run Reports)" }
         return "Application Support › JamfMigrator › Run Reports"
@@ -257,6 +264,8 @@ final class AppState {
     static let summaryKey = "summary"
 
     var isRunning = false
+    /// Set by Stop while a run finishes the object it is writing.
+    var isStopping = false
     var runEvents: [ProgressEvent] = []
     var report: RunReport?
     /// Where the last run's report was saved (Run Reports), or why it wasn't.
@@ -398,7 +407,8 @@ final class AppState {
     }
 
     var canPreview: Bool {
-        guard !isPlanning && !isRunning, tour.index == nil,
+        // a Preview uses the mappings proposed for the pair, so it waits for them
+        guard !isPlanning && !isRunning && !isLoadingMappings, tour.index == nil,
               destTenant != nil, !selectedTypeKeys.isEmpty else { return false }
         if mode == .delete { return true }
         // copying a tenant onto itself is never meaningful
@@ -483,8 +493,10 @@ final class AppState {
         ("recoverylock", "PreStage Recovery Lock password"),
     ]
 
-    func serviceSecret(_ key: String) -> String {
-        secretStore.secret(for: "service-\(key)") ?? ""
+    /// The value, "" when none is stored.
+    /// - Throws: `SecretStoreError` when the Keychain can't read it.
+    func serviceSecret(_ key: String) throws -> String {
+        try secretStore.readSecret(for: "service-\(key)") ?? ""
     }
 
     @discardableResult
@@ -494,14 +506,28 @@ final class AppState {
 
     /// Settings › Secrets; demo runs never read them (the Keychain), so
     /// they write the placeholder.
-    private var serviceSecrets: [String: String] {
+    /// - Throws: `SecretStoreError` when the Keychain can't read one: a
+    ///   Preview or run then stops rather than writing the placeholder.
+    private func serviceSecrets() throws -> [String: String] {
         guard !demo.isOn else { return [:] }
         var secrets = [String: String]()
         for (key, _) in Self.serviceSecretKeys {
-            let value = serviceSecret(key)
+            let value = try serviceSecret(key)
             if !value.isEmpty { secrets[key] = value }
         }
         return secrets
+    }
+
+    /// Settings › Secrets, or nil with `lastError` saying the Keychain
+    /// couldn't be read.
+    private func readServiceSecrets() -> [String: String]? {
+        do {
+            return try serviceSecrets()
+        } catch {
+            lastError = "Settings › Secrets couldn’t be read: \(error.localizedDescription)"
+            AppActivity.record(lastError ?? "", category: "Keychain", level: .error)
+            return nil
+        }
     }
 
     /// A SHA-256 of each Settings › Secrets value, to tell at Run whether
@@ -522,7 +548,7 @@ final class AppState {
     // MARK: Preview
 
     func preview() {
-        guard canPreview, let destTenant else { return }
+        guard canPreview, let destTenant, let secrets = readServiceSecrets() else { return }
         runTask?.cancel()
         let dest = tenantStore.client(for: destTenant)
         isPlanning = true
@@ -531,7 +557,6 @@ final class AppState {
         lastError = nil
         let mode = mode
         let typeKeys = previewTypeKeys
-        let secrets = serviceSecrets
         let mappings = mappings
         // a direct username-and-password tenant's account is never deleted
         let signedInUsername = destTenant.usesGateway ? nil : destTenant.username
@@ -587,7 +612,7 @@ final class AppState {
     private var lastRunExcluded: [String: Set<String>] = [:]
 
     func run() {
-        guard canRun, let destTenant, let plan, let planInputs else { return }
+        guard canRun, let destTenant, let plan, let planInputs, let secrets = readServiceSecrets() else { return }
         guard mode == .copy || !destTenant.isProtected else {
             lastError = "\(destTenant.name) is protected and can’t be wiped or deleted from. Switch protection off in Settings › Connections first."
             return
@@ -599,6 +624,7 @@ final class AppState {
         reportFileURL = nil
         reportSaveError = nil
         runWasStopped = false
+        isStopping = false
         lastError = nil
         // decided now: switching demo mode during the run doesn't move its report
         runReportsFolder = dataDirectory.appendingPathComponent("Run Reports", isDirectory: true)
@@ -610,7 +636,6 @@ final class AppState {
                                        finished: Date(),
                                        wasStopped: false)
         let including = includedObjectIds
-        let secrets = serviceSecrets
         let mappings = mappings
         lastRunTypeKeys = plan.typeKeys
         lastRunExcluded = Dictionary(grouping: plan.entries.filter { $0.change.isRunnable && !isIncluded($0) },
@@ -705,14 +730,19 @@ final class AppState {
     }
 
     /// Stop: a run finishes the object it is writing, then stops (cancelling
-    /// it mid-request would leave that object's state unknown); Preview and
-    /// the backup stop at once.
+    /// it mid-request would leave that object's state unknown); a wait before
+    /// a retry or a watch after a write ends at once. Preview and the backup
+    /// stop at once.
     func cancel() {
         if isRunning {
             runWasStopped = true
+            isStopping = true
         } else {
             runTask?.cancel()
         }
+        // the waits before a retry ("Jamf asked to wait 40 s"): a request
+        // waiting to be sent again isn't sent
+        tenantStore.waits.cancelAll()
         let migration = activeMigration
         let delete = activeDelete
         let exporter = activeExporter
@@ -733,6 +763,7 @@ final class AppState {
         self.report = report
         saveReport(report, file: file)
         self.isRunning = false
+        self.isStopping = false
         self.activeMigration = nil
         self.activeDelete = nil
         if invalidatesAfterRun {
@@ -838,7 +869,8 @@ final class AppState {
             Task { @MainActor [weak self] in self?.planningStatus = name }
         }
         activeExporter = exporter
-        let typeKeys = selectedTypeKeys
+        // the types Preview plans: never the gateway-only ones a direct tenant can't reach
+        let typeKeys = previewTypeKeys
         Task { [weak self] in
             let result = await exporter.backup(typeKeys: typeKeys, to: root)
             guard let self else { return }
@@ -850,7 +882,7 @@ final class AppState {
 
     /// Plans again after a clone; clean means a second run would write nothing.
     func verify() {
-        guard let sourceTenant, let destTenant, !isVerifying else { return }
+        guard let sourceTenant, let destTenant, !isVerifying, let secrets = readServiceSecrets() else { return }
         isVerifying = true
         verifyReport = nil
         let source = tenantStore.client(for: sourceTenant)
@@ -858,7 +890,6 @@ final class AppState {
         // after a run: what it carried out; otherwise the selection
         let typeKeys = lastRunTypeKeys ?? previewTypeKeys
         let excluding = lastRunTypeKeys == nil ? [:] : lastRunExcluded
-        let secrets = serviceSecrets
         let mappings = mappings
         let progress: @Sendable (String) -> Void = { [weak self] name in
             Task { @MainActor [weak self] in self?.planningStatus = name }

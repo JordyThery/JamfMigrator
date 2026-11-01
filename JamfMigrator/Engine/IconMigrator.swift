@@ -31,15 +31,19 @@ actor IconMigrator {
         let imageData: Data
         if icon.sourceId.allSatisfy(\.isNumber) {
             imageData = try await source.send(.get, "pro/v1/icon/download/\(icon.sourceId)", accept: "*/*").data
-        } else if let url = URL(string: icon.uri), icon.uri.hasPrefix("https://") {
-            // recorded in the activity log with the source tenant's requests;
-            // as always, the image itself is not recorded
-            let (data, response) = try await source.recorder.send(URLRequest(url: url), category: "Icons")
-            guard response.statusCode == 200 else {
-                let answer = HTTPResponse(status: response.statusCode, data: data)
-                throw JamfPlatform.APIError(HTTPError.status(answer, method: "GET", path: url.path(), duringSignIn: false))
+        } else if let url = URL(string: icon.uri), url.scheme == "https", let host = url.host(),
+                  let base = URL(string: "https://\(host)\(url.port.map { ":\($0)" } ?? "")") {
+            // JTKit's HTTP client: https only, retries, and recorded in the
+            // activity log with the source tenant's requests; as always, the
+            // image itself is not recorded
+            var recorder = source.recorder
+            recorder.category = "Icons"
+            let cdn = HTTPClient(baseURL: base, recorder: recorder)
+            do {
+                imageData = try await cdn.send(HTTPRequest(path: url.path(), accept: "*/*", encodedQuery: url.query())).data
+            } catch let error as HTTPError {
+                throw JamfPlatform.APIError(error)
             }
-            imageData = data
         } else {
             throw JamfPlatform.APIError(.invalidResponse("No usable icon source for \(icon.name)."))
         }

@@ -40,6 +40,10 @@ enum ProTransformer {
                             ?? context.sourceName(typeKey, id: sourceId),
                           let destId = context.destId(typeKey, named: name) else {
                         let label = (item["entityName"] as? String) ?? "with id \(sourceId)"
+                        if let typeKey = onboardingTypeKey(kind), let reason = context.unreadableLists[typeKey] {
+                            let list = ObjectRegistry.type(typeKey)?.displayName ?? typeKey
+                            return .blocked(reason: "The onboarding item “\(label)” can’t be matched: the list of \(list) couldn’t be read (\(reason))")
+                        }
                         return .blocked(reason: "The onboarding item “\(label)” isn’t on the destination; migrate it first, or remove it from onboarding on the source.")
                     }
                     items.append(["entityId": destId, "selfServiceEntityType": kind,

@@ -29,6 +29,8 @@ actor MigrationPlanner {
     /// planned creates), so later steps aren't Blocked on dependencies this
     /// same run creates.
     private var plannedNames = [String: Set<String>]()
+    /// Dependency lists a type may do without that couldn't be read, with why.
+    private var unreadableLists = [String: String]()
 
     /// The sentinel id used for references to objects this run will create.
     static let plannedId = "(planned)"
@@ -73,7 +75,13 @@ actor MigrationPlanner {
             return
         }
         for dependency in type.dependencies + ["sites"] {
-            try await loadLookups(for: dependency)
+            do {
+                try await loadLookups(for: dependency)
+                unreadableLists[dependency] = nil
+            } catch where Self.mayDoWithout(dependency, for: type) && !(error is CancellationError) {
+                // only what refers to this list is Blocked, by the transform
+                unreadableLists[dependency] = error.localizedDescription
+            }
         }
         try await loadLookups(for: type.key)
         if ["blueprints", "compliancebenchmarks"].contains(type.key) {
@@ -117,7 +125,8 @@ actor MigrationPlanner {
                                 inputs: ComparisonInputs(destIdsByName: destIdsByName, destNamesById: destNamesById,
                                                          sourceNamesById: sourceNamesById,
                                                          plannedCreates: Self.creates(in: plannedNames, existing: destIdsByName),
-                                                         secrets: secrets, included: included, mappings: mappings))
+                                                         secrets: secrets, included: included, mappings: mappings,
+                                                         unreadable: unreadableLists))
         } catch {
             var entry = ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
                                    change: .blocked(reason: error.localizedDescription))
@@ -151,6 +160,15 @@ actor MigrationPlanner {
         var secrets: [String: String]
         var included: Set<String>
         var mappings: TenantMappings
+        /// Dependency lists the type may do without that couldn't be read.
+        var unreadable: [String: String] = [:]
+    }
+
+    /// Whether `type` can be planned without the `dependency` list: only
+    /// Onboarding, whose items each name one object (an item that needs an
+    /// unreadable list is what's Blocked, not the whole setting).
+    static func mayDoWithout(_ dependency: String, for type: ObjectType) -> Bool {
+        type.key == "onboarding" && type.dependencies.contains(dependency)
     }
 
     /// Decides one object's outcome from its payloads: Create, Update,
@@ -179,6 +197,7 @@ actor MigrationPlanner {
         context.includedTypes = inputs.included
         context.mappings = inputs.mappings
         context.plannedReferences = references
+        context.unreadableLists = inputs.unreadable
 
         if let existingDestId {
             context.action = .update(destId: existingDestId)
@@ -220,6 +239,7 @@ actor MigrationPlanner {
             destContext.secrets = inputs.secrets
             destContext.includedTypes = inputs.included
             destContext.mappings = inputs.mappings.identity
+            destContext.unreadableLists = inputs.unreadable
             destContext.destVersionLocks = context.destVersionLocks
             destContext.destPreStageIds = context.destPreStageIds
             destContext.destEnabledFlags = context.destEnabledFlags
@@ -258,10 +278,13 @@ actor MigrationPlanner {
         deviceGroupKeys.reduce(into: Set<String>()) { $0.formUnion(plannedCreates[$1] ?? []) }
     }
 
-    /// A SHA-256 of a compared payload (sorted keys), so Run can tell whether
-    /// an object is still what Preview saw without keeping its contents.
+    /// A SHA-256 of a compared payload, so Run can tell whether an object is
+    /// still what Preview saw without keeping its contents. It is taken of
+    /// the form `PayloadDiff` compares (empty and missing alike, true and 1
+    /// alike), so a field Preview treats as equal never stops a run.
     static func digest(_ dictionary: [String: Any]) -> String {
-        let data = (try? JSONSerialization.data(withJSONObject: dictionary, options: [.sortedKeys, .fragmentsAllowed])) ?? Data()
+        let form = PayloadDiff.comparedForm(dictionary)
+        let data = (try? JSONSerialization.data(withJSONObject: form, options: [.sortedKeys])) ?? Data()
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 

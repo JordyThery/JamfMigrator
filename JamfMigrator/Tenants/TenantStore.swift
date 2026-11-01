@@ -52,6 +52,9 @@ final class TenantStore {
     @ObservationIgnored private let savedTenantGuard: SavedTenantGuard?
     /// Each tenant's client, with the tenant as it was when the client was made.
     @ObservationIgnored private var clients: [Tenant.ID: (tenant: Tenant, client: JamfPlatform.Client)] = [:]
+    /// The waits before a retry that every tenant's client is making now
+    /// ("Jamf asked to wait 40 s"), for the run view, with a way to end them.
+    let waits = RequestWaits()
 
     init(directory: URL = URL(fileURLWithPath: AppInfo.appSupportPath, isDirectory: true),
          secrets: any SecretStore = TenantStore.keychain(),
@@ -60,7 +63,9 @@ final class TenantStore {
          demo: DemoMode? = nil,
          storage: (any ConnectionStorage<Tenant>)? = nil,
          savedTenantGuard: SavedTenantGuard? = nil) {
-        self.secrets = secrets
+        // under JTKit's live-check switch (live UI tests) only the release
+        // check's tenants and secrets, never the saved ones
+        self.secrets = LiveLaunch.isSwitched ? LiveLaunch.secrets : secrets
         self.savedTenantGuard = savedTenantGuard
             ?? (TestRun.isActive && Self.holdsSavedTenants(directory: directory, storage: storage, secrets: secrets)
                 ? .shared : nil)
@@ -70,7 +75,8 @@ final class TenantStore {
         connections = ConnectionStore(
             storage: storage ?? JSONFileConnectionStorage<Tenant>(fileURL: directory.appendingPathComponent("tenants.json")),
             secrets: [.main: SecretLocation(store: secrets)],
-            log: { AppActivity.record($0, category: "Tenants", level: .warning) })
+            log: { AppActivity.record($0, category: "Tenants", level: .warning) },
+            liveRecord: { Tenant(connection: $0) })
     }
 
     /// Whether a store with these parts holds the saved tenants: the real
@@ -120,10 +126,12 @@ final class TenantStore {
         var recorder = RequestRecorder(session: session,
                                        log: log,
                                        service: connection.service.displayName,
-                                       connection: tenant.name)
+                                       connection: tenant.name,
+                                       waits: waits)
 
+        // a Keychain that can't be read says so, rather than "no secret"
         @Sendable func storedSecret() throws -> String {
-            guard let secret = secretOverride ?? secrets.secret(for: account), !secret.isEmpty else {
+            guard let secret = try secretOverride ?? secrets.readSecret(for: account), !secret.isEmpty else {
                 throw MissingSecret()
             }
             return secret
@@ -137,7 +145,8 @@ final class TenantStore {
             connection = source.connection
             secret = source.secret
             recorder = RequestRecorder(session: source.session, log: log,
-                                       service: connection.service.displayName, connection: connection.name)
+                                       service: connection.service.displayName, connection: connection.name,
+                                       waits: waits)
         } else if let savedTenantGuard {
             // under tests a saved tenant is never reached
             return savedTenantGuard.refusingClient(for: tenant)

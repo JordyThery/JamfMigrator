@@ -27,10 +27,8 @@ struct WipeWizard: View {
                 Label("Wipe \(tenantName)", systemImage: "trash.fill")
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(.red)
+                    .accessibilityAddTraits(.isHeader)
                 Spacer()
-                Button("Close") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(appState.isRunning || appState.isBackingUp)
             }
             .padding()
 
@@ -46,6 +44,14 @@ struct WipeWizard: View {
                 runSection
             } else {
                 gatesForm
+            }
+
+            if !(started || appState.isRunning || appState.report != nil) {
+                WizardFooter {}
+                    .padding()
+                    .environment(\.wizardNavigation, WizardNavigation(
+                        close: { dismiss() },
+                        canLeave: !appState.isRunning && !appState.isBackingUp))
             }
         }
         .frame(minWidth: 620, minHeight: 500)
@@ -149,17 +155,11 @@ struct WipeWizard: View {
     private var runSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             if appState.isRunning {
-                if let latest = appState.runEvents.last {
-                    let typeName = ObjectRegistry.type(latest.type)?.displayName ?? latest.type
-                    ProgressView(value: Double(latest.completed), total: Double(max(latest.total, 1))) {
-                        Text("Deleting \(typeName): \(latest.objectName)").lineLimit(1)
-                    }
-                } else {
-                    ProgressView("Starting…")
-                }
+                RunProgress(verb: "Deleting")
+                Spacer()
                 HStack {
                     Spacer()
-                    Button("Stop", role: .destructive) { appState.cancel() }
+                    StopButton()
                 }
             } else if let report = appState.report {
                 let leftovers = report.retryableFailures

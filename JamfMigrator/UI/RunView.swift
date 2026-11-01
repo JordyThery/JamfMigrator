@@ -16,23 +16,9 @@ struct RunView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(appState.isRunning ? "Running…" : "Results")
-                    .font(.title2.weight(.semibold))
-                Spacer()
-                if appState.isRunning {
-                    Button("Stop", role: .destructive) { appState.cancel() }
-                } else {
-                    if let url = appState.reportFileURL {
-                        Button("Show Report in Finder") {
-                            NSWorkspace.shared.activateFileViewerSelecting([url])
-                        }
-                        .help("The report of this run is saved in \(appState.runReportsLocation).")
-                    }
-                    Button("Close") { dismiss() }
-                        .keyboardShortcut(.defaultAction)
-                }
-            }
+            Text(appState.isRunning ? "Running…" : "Results")
+                .font(.title2.weight(.semibold))
+                .accessibilityAddTraits(.isHeader)
 
             if !appState.isRunning, let reason = appState.report?.stopReason {
                 Label(reason, systemImage: "exclamationmark.octagon.fill")
@@ -48,15 +34,7 @@ struct RunView: View {
             }
 
             if appState.isRunning {
-                if let latest = appState.runEvents.last {
-                    let typeName = ObjectRegistry.type(latest.type)?.displayName ?? latest.type
-                    ProgressView(value: Double(latest.completed), total: Double(max(latest.total, 1))) {
-                        Text("\(typeName): \(latest.objectName) (\(latest.completed)/\(latest.total))")
-                            .lineLimit(1)
-                    }
-                } else {
-                    ProgressView("Starting…")
-                }
+                RunProgress(showsCount: true)
             }
 
             if let report = appState.report {
@@ -64,9 +42,74 @@ struct RunView: View {
             } else {
                 EventLog(events: appState.runEvents)
             }
+
+            // the sheet's buttons at the bottom, the default one last
+            HStack {
+                if !appState.isRunning, let url = appState.reportFileURL {
+                    Button("Show Report in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([url])
+                    }
+                    .help("The report of this run is saved in \(appState.runReportsLocation).")
+                }
+                Spacer()
+                if appState.isRunning {
+                    StopButton()
+                } else {
+                    Button("Close") { dismiss() }
+                        .keyboardShortcut(.defaultAction)
+                }
+            }
         }
         .padding()
         .frame(minWidth: 520, minHeight: 400)
+    }
+}
+
+/// A run's progress: the object being written, then, after Stop, that the
+/// run stops once it is written; and any wait before a retry ("Jamf asked
+/// to wait 40 s"), which Stop ends at once.
+struct RunProgress: View {
+    @Environment(AppState.self) private var appState
+    /// Shows "(3/10)" after the object's name.
+    var showsCount = false
+    /// Put before the type's name, e.g. "Deleting".
+    var verb: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let latest = appState.runEvents.last {
+                let typeName = ObjectRegistry.type(latest.type)?.displayName ?? latest.type
+                let what = [verb, "\(typeName): \(latest.objectName)"].compactMap { $0 }.joined(separator: " ")
+                ProgressView(value: Double(latest.completed), total: Double(max(latest.total, 1))) {
+                    Text(showsCount ? "\(what) (\(latest.completed)/\(latest.total))" : what)
+                        .lineLimit(1)
+                }
+            } else {
+                ProgressView("Starting…")
+            }
+            if appState.isStopping {
+                Label("Stopping after the current object…", systemImage: "stop.circle")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            if let wait = appState.tenantStore.waits.statusText {
+                Label(wait, systemImage: "hourglass")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .help("Stop ends the wait at once; the request isn’t sent again.")
+            }
+        }
+    }
+}
+
+/// Stop for a run: the object being written finishes; off once pressed.
+struct StopButton: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        Button(appState.isStopping ? "Stopping…" : "Stop", role: .destructive) { appState.cancel() }
+            .disabled(appState.isStopping)
+            .help("Stops after the object being written. A wait before a retry ends at once.")
     }
 }
 

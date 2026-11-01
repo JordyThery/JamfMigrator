@@ -103,15 +103,32 @@ private struct ServiceSecretField: View {
     let label: String
     @State private var value = ""
     @State private var saveFailed = false
+    @State private var readError: String?
+    /// Off until the stored value is shown, so showing it doesn't save it.
+    @State private var isLoaded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             SecureField(label, text: $value)
-                .onAppear { value = appState.serviceSecret(key) }
-                .onChange(of: value) {
-                    saveFailed = !appState.setServiceSecret(value, for: key)
+                .onAppear {
+                    do {
+                        value = try appState.serviceSecret(key)
+                        readError = nil
+                    } catch {
+                        readError = error.localizedDescription
+                    }
+                    isLoaded = true
                 }
-            if saveFailed {
+                .onChange(of: value) {
+                    guard isLoaded else { return }
+                    saveFailed = !appState.setServiceSecret(value, for: key)
+                    if !saveFailed { readError = nil }
+                }
+            if let readError {
+                Text(readError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            } else if saveFailed {
                 Text("The Keychain refused to save this password.")
                     .font(.caption)
                     .foregroundStyle(.red)

@@ -34,10 +34,8 @@ struct CloneWizard: View {
             HStack {
                 Text("Clone \(appState.sourceTenant?.name ?? "?") → \(appState.destTenant?.name ?? "?")")
                     .font(.title2.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
                 Spacer()
-                Button("Close") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(appState.isRunning || appState.isBackingUp)
             }
             .padding()
 
@@ -51,11 +49,15 @@ struct CloneWizard: View {
                 case .connect: ConnectStep(next: advance)
                 case .prepare: PrepareStep(next: advance)
                 case .preview: PreviewStep(next: advance)
-                case .run: RunStep(next: advance)
+                case .run: RunStep(next: advance, backToPreview: { step = .preview })
                 case .verify: VerifyStep(done: { dismiss() })
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .environment(\.wizardNavigation, WizardNavigation(
+                close: { dismiss() },
+                back: Self.previous(of: step).map { previous in { step = previous } },
+                canLeave: canLeave))
         }
         .frame(minWidth: 620, minHeight: 480)
     }
@@ -63,6 +65,48 @@ struct CloneWizard: View {
     private func advance() {
         if let next = Step(rawValue: step.rawValue + 1) {
             step = next
+        }
+    }
+
+    /// The step Back goes to; none from the first step.
+    static func previous(of step: Step) -> Step? {
+        Step(rawValue: step.rawValue - 1)
+    }
+
+    /// Close and Back are off while something is going on.
+    private var canLeave: Bool {
+        !appState.isRunning && !appState.isBackingUp && !appState.isPlanning && !appState.isVerifying
+    }
+}
+
+/// Close and Back for a wizard's steps, given by the wizard.
+struct WizardNavigation {
+    var close: () -> Void = {}
+    var back: (() -> Void)?
+    var canLeave = true
+}
+
+extension EnvironmentValues {
+    @Entry var wizardNavigation = WizardNavigation()
+}
+
+/// A wizard step's buttons: Close at the leading edge, then Back and the
+/// step's own buttons at the trailing edge, the default one last.
+struct WizardFooter<Actions: View>: View {
+    @Environment(\.wizardNavigation) private var navigation
+    @ViewBuilder var actions: Actions
+
+    var body: some View {
+        HStack {
+            Button("Close", action: navigation.close)
+                .keyboardShortcut(.cancelAction)
+                .disabled(!navigation.canLeave)
+            Spacer()
+            if let back = navigation.back {
+                Button("Back", action: back)
+                    .disabled(!navigation.canLeave)
+            }
+            actions
         }
     }
 }
@@ -158,8 +202,7 @@ private struct ConnectStep: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            HStack {
-                Spacer()
+            WizardFooter {
                 if appState.preflight == nil || appState.isPlanning {
                     Button("Test Connections") { runPreflight() }
                         .buttonStyle(.borderedProminent)
@@ -235,7 +278,9 @@ private struct PrepareStep: View {
             }
 
             Section("Distribution Points") {
-                if appState.sourceDistributionPoints.isEmpty {
+                if appState.isLoadingMappings {
+                    ProgressView().controlSize(.small)
+                } else if appState.sourceDistributionPoints.isEmpty {
                     Text("The source has no file-share distribution points.").foregroundStyle(.secondary)
                 } else {
                     ForEach(appState.sourceDistributionPoints, id: \.id) { dp in
@@ -260,10 +305,12 @@ private struct PrepareStep: View {
         }
         .formStyle(.grouped)
         .safeAreaInset(edge: .bottom) {
-            HStack {
-                Spacer()
+            WizardFooter {
+                // Preview must use the mappings proposed for this pair
                 Button("Continue") { next() }
                     .buttonStyle(.borderedProminent)
+                    .disabled(appState.isLoadingMappings)
+                    .help(appState.isLoadingMappings ? "Waiting for the ADE instances and distribution points of both tenants." : "")
             }
             .padding()
         }
@@ -307,12 +354,11 @@ private struct PreviewStep: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            HStack {
-                Spacer()
+            WizardFooter {
                 if appState.plan == nil || appState.isPlanning {
                     Button("Preview") { appState.preview() }
                         .buttonStyle(.borderedProminent)
-                        .disabled(appState.isPlanning)
+                        .disabled(!appState.canPreview)
                 } else {
                     Button("Preview Again") { appState.preview() }
                     Button("Continue") { next() }
@@ -330,6 +376,8 @@ private struct PreviewStep: View {
 private struct RunStep: View {
     @Environment(AppState.self) private var appState
     let next: () -> Void
+    /// After a run stopped because something changed since Preview.
+    let backToPreview: () -> Void
     @State private var started = false
     /// Run and Resume Run confirm with the tenant's name and the counts,
     /// exactly as the toolbar's Run does.
@@ -338,14 +386,7 @@ private struct RunStep: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if appState.isRunning {
-                if let latest = appState.runEvents.last {
-                    let typeName = ObjectRegistry.type(latest.type)?.displayName ?? latest.type
-                    ProgressView(value: Double(latest.completed), total: Double(max(latest.total, 1))) {
-                        Text("\(typeName): \(latest.objectName)").lineLimit(1)
-                    }
-                } else {
-                    ProgressView("Starting…")
-                }
+                RunProgress()
                 Text("\(Plural.count(appState.runEvents.count, "object")) processed")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -366,11 +407,24 @@ private struct RunStep: View {
                 Text("Copies \(Plural.count(appState.effectiveChangeCount, "change")) to \(appState.destTenant?.name ?? "the destination"), in step order. The run can be stopped and resumed.")
                     .foregroundStyle(.secondary)
             }
+            if !appState.isRunning, appState.plan != nil, let reason = appState.runBlockedReason {
+                Label(reason, systemImage: "info.circle")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
             Spacer()
-            HStack {
-                Spacer()
+            WizardFooter {
                 if appState.isRunning {
-                    Button("Stop", role: .destructive) { appState.cancel() }
+                    StopButton()
+                } else if appState.report?.stopReason != nil || appState.planIsStale {
+                    // the run stopped before writing something that changed:
+                    // the next step is a new Preview
+                    Button("Preview Again") {
+                        backToPreview()
+                        appState.preview()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!appState.canPreview)
                 } else if started || appState.plan?.changeCount == 0 {
                     if appState.report?.retryableFailures.isEmpty == false {
                         Button("Resume Run") { showRunConfirmation = true }
@@ -449,8 +503,7 @@ private struct VerifyStep: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            HStack {
-                Spacer()
+            WizardFooter {
                 if appState.verifyReport == nil {
                     Button("Verify") { appState.verify() }
                         .buttonStyle(.borderedProminent)

@@ -38,6 +38,34 @@ enum PayloadDiff {
         }
     }
 
+    /// The value as `diff` sees it: every leaf by its path, with empty and
+    /// missing left out, true and 1 alike; arrays with their count, and a
+    /// mark for each dictionary and array. Two values have the same form
+    /// exactly when `diff` finds no difference between them, so Run's check
+    /// before writing (a digest of it) treats as equal what Preview does.
+    static func comparedForm(_ value: Any?) -> [String: String] {
+        var form = [String: String]()
+        collect(value, path: "", into: &form)
+        return form
+    }
+
+    private static func collect(_ value: Any?, path: String, into form: inout [String: String]) {
+        switch value {
+        case let dictionary as [String: Any]:
+            form[path + "#dictionary"] = ""
+            for (key, child) in dictionary {
+                collect(child, path: path.isEmpty ? key : "\(path)/\(key)", into: &form)
+            }
+        case let array as [Any]:
+            form[path + "#count"] = "\(array.count)"
+            for (index, child) in array.enumerated() {
+                collect(child, path: "\(path)[\(index)]", into: &form)
+            }
+        default:
+            if let leaf = leaf(value) { form[path] = leaf }
+        }
+    }
+
     private static func compare(_ source: Any?, _ destination: Any?, path: String, into entries: inout [DiffEntry]) {
         switch (source, destination) {
         case (nil, nil), (is NSNull, is NSNull):
