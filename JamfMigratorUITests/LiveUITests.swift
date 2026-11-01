@@ -213,7 +213,11 @@ final class LiveUITests: JTKitUITestCase {
         let typeRow = row.exists ? row
             : app.outlines["Sidebar"].outlineRows.containing(NSPredicate(format: "label == %@", type)).firstMatch
         XCTAssertTrue(typeRow.waitForExistence(timeout: 10), "No \(type) row")
+        // the sidebar may have scrolled past it (choosing the types)
+        scrollIntoView(typeRow)
         typeRow.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).click()
+        XCTAssertTrue(app.windows.firstMatch.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", type, type))
+                        .firstMatch.waitForExistence(timeout: 10), "\(type) didn't open")
     }
 
     /// The wizard's "Continue" (or "Continue Anyway"), not "Continue to Verify".
