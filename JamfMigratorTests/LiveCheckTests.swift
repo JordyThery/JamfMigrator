@@ -482,6 +482,8 @@ func readOnlyNetwork(_ run: LiveCheckRun) -> LiveCheckNetwork {
 enum LiveRoles {
     static let source = "jamf-test-a"
     static let destination = "jamf-test-b"
+    /// Read only: the source of the live UI test's cross-tenant Preview.
+    static let productionRead = "jamfpro-production"
 }
 
 // MARK: Stage 1: sign in
@@ -499,17 +501,20 @@ struct LiveSignInTests {
         checkNoSavedTenantRequests(run, when: "start")
         let connections: [(String, AllowList.Service)] = [(LiveRoles.source, .jamfPlatform),
                                                           (LiveRoles.destination, .jamfPlatform),
-                                                          (LiveRoles.destination, .jamfPro)]
+                                                          (LiveRoles.destination, .jamfPro),
+                                                          (LiveRoles.productionRead, .jamfPlatform)]
         for (role, service) in connections where run.roles.contains(role) {
             let name = "sign in: \(role) (\(service == .jamfPlatform ? "Platform API" : "Jamf Pro direct"))"
             do {
                 let connection = try LiveConnection(run: run, role: role, service: service, folder: folder,
                                                     appSession: run.network.session)
-                let leftovers = try await connection.testObjects(run).count
+                // production is only read: its version, never a list of test objects
+                let leftovers = role == LiveRoles.productionRead ? nil : try await connection.testObjects(run).count
                 let version = await Preflight.check(connection.api).version ?? "unknown"
                 let cancelled = try await connection.cancelTokens()
                 run.record(step: name, passed: true,
-                           note: "Jamf Pro \(version); \(leftovers) left-over test objects" + (cancelled.map { "; token cancelled (\($0))" } ?? ""))
+                           note: "Jamf Pro \(version)" + (leftovers.map { "; \($0) left-over test objects" } ?? "; read only")
+                               + (cancelled.map { "; token cancelled (\($0))" } ?? ""))
             } catch {
                 run.record(step: name, passed: false, note: failure(error))
                 throw error

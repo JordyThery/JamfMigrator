@@ -1,5 +1,32 @@
 # Change log
 
+## v1.2.0 (2026-11-01)
+- Settings asks to save or discard unsaved tenant changes, the Protected
+  switch included, before it closes or another tab opens.
+- Clone Tenant: Continue and Preview wait until the ADE instance and
+  distribution point mappings have loaded; every step has a Back button, and
+  after a run stops because something changed, Preview Again leads straight
+  back to Preview.
+- A field Preview treats as unchanged (an empty value, or the same number
+  written differently) no longer stops a run as “changed since Preview”.
+- Stop shows “Stopping after the current object…” and ends a wait before a
+  retry or a Blueprint deployment watch at once; the object being written
+  still finishes. The run view shows when Jamf asks the app to wait.
+- Onboarding: a list the API client can’t read (policies, profiles, Mac apps
+  or App Installers) only blocks the onboarding items that need it.
+- Wipe Tenant’s backup covers the types Preview planned, so a tenant that
+  connects directly to Jamf Pro is no longer refused because of Blueprints
+  and Compliance Benchmarks.
+- A Keychain that can’t be read is reported as such, instead of as a
+  missing client secret, password or Settings › Secrets value.
+- A server address saved without https:// gets it added; an http:// address
+  asks for https.
+- The object list shows each type’s counts and how many changes are checked;
+  the inspector’s differences can be sorted by field, source or destination.
+- The delete-mode banner names the tenant and has a Switch to Copy button;
+  the wizards’ Close button is at the bottom.
+- Clearer badges and status lines for VoiceOver and in high contrast.
+
 ## v1.1.0 (2026-10-31)
 - Fixed: a Blueprint that isn’t deployed on the source was deployed on the
   destination, and an out-of-date one wasn’t deployed. Now only a deployed
