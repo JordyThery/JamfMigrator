@@ -105,4 +105,4 @@ Demo mode (JTKit step 10): `AppState.demo` (JTKit `DemoMode`, key `demoMode`) wi
 3. Follow the release gate in JTKit/ROADMAP.md (release check, design review, code review, Jordy's check by hand). Update the JTKit package version first if needed.
 4. Build, sign (Developer ID), notarize and staple with `scripts/release.sh <notary profile>`, or Xcode's Archive › Distribute App and then `ditto -c -k --keepParent`. The zip is `JamfMigrator-<version>.zip`.
 5. Tag `vX.Y.Z`, create the GitHub release with the zip attached. The in-app updater reads `releases/latest` and needs the zip.
-6. Website: only when the app has its own page on jordythery.be and the release changes the app enough to make that page untrue or incomplete, update the page.
+6. Website: follow ../jordythery.be/CLAUDE.md, section “When an app is released”. Every release checks this app's card on apps.html, and its own page if it has one, against the released README and CHANGELOG, and changes them on a branch with a pull request. Jordy merges, which publishes the site.
