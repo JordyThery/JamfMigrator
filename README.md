@@ -175,6 +175,10 @@ zip, quit, and swap the app in Applications.
 - Tenants, journals, backups, exports and run reports:
   `~/Library/Containers/be.jordythery.jamfmigrator/Data/Library/Application Support/JamfMigrator/`
 
+## Disclaimer
+
+This tool is provided as-is, without warranty of any kind. Use it at your own risk. This is a personal project. It is not affiliated with or endorsed by my employer or Jamf. Issues and pull requests are appreciated. Support is best-effort.
+
 ## License
 
 MIT — see [LICENSE](LICENSE). Based on Replicator, © Jamf.
