@@ -101,7 +101,7 @@ Demo mode (JTKit step 10): `AppState.demo` (JTKit `DemoMode`, key `demoMode`) wi
 ## Releasing
 
 1. Bump `MARKETING_VERSION` (app and tests). The build number is stamped into the built app by a build phase (UTC date-time); the tracked `Info.plist` keeps its placeholder, so a build leaves nothing to commit.
-2. Add an entry to `ChangeLog.md` (short, user-facing).
+2. Add an entry to `ChangeLog.md` (short, user-facing). Release notes (CHANGELOG entries and GitHub release notes) are for the end user: professional and concise, saying what changed for them, and never mentioning the release check, reviews, tests, test targets, AI tools, JTKit step numbers or how a problem was found (decided by Jordy on 2026-11-01).
 3. Follow the release gate in JTKit/ROADMAP.md (release check, design review, code review, Jordy's check by hand). Update the JTKit package version first if needed.
 4. Build, sign (Developer ID), notarize and staple with `scripts/release.sh <notary profile>`, or Xcode's Archive › Distribute App and then `ditto -c -k --keepParent`. The zip is `JamfMigrator-<version>.zip`.
 5. Tag `vX.Y.Z`, create the GitHub release with the zip attached. The in-app updater reads `releases/latest` and needs the zip.
