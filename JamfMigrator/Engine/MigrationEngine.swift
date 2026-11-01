@@ -325,7 +325,11 @@ actor MigrationEngine {
                 do {
                     destId = try await write(object, type: type, action: action)
                 } catch is CancellationError {
-                    return (.failed(reason: Self.stoppedDuringWait), warnings)
+                    // the benchmark's delete for the Replace already happened
+                    let reason = deletedForReplace
+                        ? "Deleted on the destination, but the new copy wasn’t created: Stop ended the wait before it was tried again. Preview again to create it."
+                        : Self.stoppedDuringWait
+                    return (.failed(reason: reason), warnings)
                 } catch {
                     // a planned write that didn't happen is a failure, never
                     // "unchanged"; and the reason says what was done before it

@@ -92,6 +92,9 @@ actor DeleteEngine {
                     progress?(ProgressEvent(type: type.key, objectName: ref.name,
                                             completed: completed, total: refs.count, status: status))
                 }
+            } catch is CancellationError where isCancelled {
+                // Stop ended a wait before a retry while the type's list was read
+                break
             } catch {
                 report.add(type: type, ref: ObjectRef(id: "-", name: "(all objects)"),
                            status: .failed(reason: error.localizedDescription))
@@ -135,6 +138,10 @@ actor DeleteEngine {
     /// Why the run stopped because an object changed since Preview; nil otherwise.
     private var stopReason: String?
 
+    /// The reason of an object whose delete was waiting to be tried again
+    /// when Stop ended the wait.
+    static let stoppedDuringWait = "Stopped while waiting to try again: it may not have been deleted. Preview again to check."
+
     private func deleteObject(_ type: ObjectType, ref: ObjectRef) async -> ObjectStatus {
         do {
             _ = try await client.send(.delete, type.api.detailPath(id: ref.id), privileges: type.access.delete)
@@ -149,6 +156,8 @@ actor DeleteEngine {
                 }
             }
             return .failed(reason: error.localizedDescription)
+        } catch is CancellationError {
+            return .failed(reason: Self.stoppedDuringWait)
         } catch {
             return .failed(reason: error.localizedDescription)
         }

@@ -31,19 +31,8 @@ actor IconMigrator {
         let imageData: Data
         if icon.sourceId.allSatisfy(\.isNumber) {
             imageData = try await source.send(.get, "pro/v1/icon/download/\(icon.sourceId)", accept: "*/*").data
-        } else if let url = URL(string: icon.uri), url.scheme == "https", let host = url.host(),
-                  let base = URL(string: "https://\(host)\(url.port.map { ":\($0)" } ?? "")") {
-            // JTKit's HTTP client: https only, retries, and recorded in the
-            // activity log with the source tenant's requests; as always, the
-            // image itself is not recorded
-            var recorder = source.recorder
-            recorder.category = "Icons"
-            let cdn = HTTPClient(baseURL: base, recorder: recorder)
-            do {
-                imageData = try await cdn.send(HTTPRequest(path: url.path(), accept: "*/*", encodedQuery: url.query())).data
-            } catch let error as HTTPError {
-                throw JamfPlatform.APIError(error)
-            }
+        } else if let url = URL(string: icon.uri), url.scheme == "https" {
+            imageData = try await Self.download(url, recorder: source.recorder)
         } else {
             throw JamfPlatform.APIError(.invalidResponse("No usable icon source for \(icon.name)."))
         }
@@ -58,6 +47,39 @@ actor IconMigrator {
         let destIconId = "\(id)"
         copied[icon.sourceId] = destIconId
         return destIconId
+    }
+
+    /// How many redirects an icon download follows.
+    static let maximumRedirects = 3
+
+    /// Downloads an icon from its own address (Jamf's icon server), with no
+    /// token: JTKit's HTTP client (https only, retries), recorded in the
+    /// activity log with the source tenant's requests; as always, the image
+    /// itself is not recorded. A redirect to https is followed, also to
+    /// another host (nothing secret is sent); one to http is refused.
+    static func download(_ url: URL, recorder: RequestRecorder) async throws -> Data {
+        var recorder = recorder
+        recorder.category = "Icons"
+        var next = url
+        for _ in 0...maximumRedirects {
+            guard next.scheme?.lowercased() == "https", let host = next.host(),
+                  let base = URL(string: "https://\(host)\(next.port.map { ":\($0)" } ?? "")") else {
+                throw JamfPlatform.APIError(.invalidResponse("The icon’s address isn’t an https:// address."))
+            }
+            // the client follows nothing itself: every hop is checked here
+            let client = HTTPClient(baseURL: base, recorder: recorder, redirects: .refuse)
+            do {
+                return try await client.send(HTTPRequest(path: next.path(), accept: "*/*", encodedQuery: next.query())).data
+            } catch let error as HTTPError {
+                guard case .status(let answer, _, _, _) = error, (300..<400).contains(answer.status),
+                      let location = answer.headers.first(where: { $0.key.caseInsensitiveCompare("Location") == .orderedSame })?.value,
+                      let target = URL(string: location, relativeTo: next)?.absoluteURL else {
+                    throw JamfPlatform.APIError(error)
+                }
+                next = target
+            }
+        }
+        throw JamfPlatform.APIError(.invalidResponse("The icon’s address redirected more than \(maximumRedirects) times."))
     }
 
     /// Points a freshly written Classic object at the destination icon.

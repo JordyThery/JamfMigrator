@@ -107,8 +107,9 @@ struct StopButton: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
+        // stays clickable while stopping: a second click ends any wait again
         Button(appState.isStopping ? "Stopping…" : "Stop", role: .destructive) { appState.cancel() }
-            .disabled(appState.isStopping)
+            .disabled(!appState.canStop)
             .help("Stops after the object being written. A wait before a retry ends at once.")
     }
 }

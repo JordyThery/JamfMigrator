@@ -33,6 +33,7 @@ struct WipeWizard: View {
             .padding()
 
             Divider()
+            WizardProblem()
 
             if let tenant = appState.destTenant, tenant.isProtected {
                 ContentUnavailableView {
@@ -132,8 +133,7 @@ struct WipeWizard: View {
                 TextField("Type the tenant’s name: \(tenantName)", text: $typedName)
                     .autocorrectionDisabled()
                 Button("Delete \(Plural.count(deleteCount, "Object")) from \(tenantName)", role: .destructive) {
-                    started = true
-                    appState.run()
+                    started = appState.run()
                 }
                 .disabled(!allGatesPass)
                 .help(allGatesPass ? "" : "Finish the preview and the backup, and type the tenant’s name exactly.")

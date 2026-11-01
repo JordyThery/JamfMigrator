@@ -14,12 +14,31 @@ import Testing
 @testable import JamfMigrator
 
 @MainActor
-struct RegressionTests {
+final class RegressionTests {
+
+    /// The preference suites this test made, removed when it ends, so no
+    /// test leaves a preferences file behind.
+    private let suites = Locked<[String]>([])
+
+    deinit {
+        for name in suites.value { RegressionTests.removeDefaults(named: name) }
+    }
+
+    /// A fresh preference suite for one test.
+    private func testDefaults() -> UserDefaults {
+        let name = "jamfmigrator-regression-\(UUID().uuidString)"
+        suites.withLock { $0.append(name) }
+        return UserDefaults(suiteName: name)!
+    }
+
+    nonisolated static func removeDefaults(named name: String) {
+        UserDefaults.standard.removePersistentDomain(forName: name)
+    }
 
     /// An app on a fresh sandbox, in demo mode: the two demo tenants, which
     /// connect directly to Jamf Pro and have ADE instances and distribution points.
     private func demoApp() -> AppState {
-        let defaults = UserDefaults(suiteName: "jamfmigrator-regression-\(UUID().uuidString)")!
+        let defaults = testDefaults()
         let mode = DemoMode(key: "demoMode", defaults: defaults, arguments: ["app", "-JTKitSandbox", "YES", "-JTKitDemo", "YES"])
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("Regression-\(UUID().uuidString)")
         let store = TenantStore(directory: directory, secrets: InMemorySecretStore(), log: nil, demo: mode,
@@ -61,19 +80,20 @@ struct RegressionTests {
         #expect(app.report?.stopReason == nil, "the mappings are the ones Preview used")
     }
 
-    @Test("After a run stops for changed mappings, the wizard can go back to Preview and run again")
-    func aStoppedRunLeadsBackToPreview() async throws {
+    @Test("A mapping changed after Preview turns Run off at once; Back and Preview Again turn it on")
+    func changedMappingsTurnRunOff() async throws {
         let app = demoApp()
         app.selectedTypeKeys = ["categories"]
         app.loadMappingCandidates()
         try await waitUntil { !app.isLoadingMappings }
         app.preview()
         try await waitUntil { !app.isPlanning }
+        #expect(app.canRun)
+        // review finding 9: Back to Prepare, a mapping changed
         app.mappings.adeInstances["1"] = nil
-        app.run()
-        try await waitUntil { !app.isRunning }
-        #expect(app.report?.stopReason?.hasPrefix("Mappings changed since Preview.") == true)
-        #expect(app.planIsStale && !app.canRun)
+        #expect(!app.canRun, "Run stays on with mappings Preview didn't use")
+        #expect(app.runBlockedReason?.contains("mappings changed since Preview") == true, "\(app.runBlockedReason ?? "")")
+        #expect(app.run() == false)
 
         // the Run step offers Preview Again; Back goes to Preview too
         #expect(CloneWizard.previous(of: .run) == .preview)
@@ -81,7 +101,7 @@ struct RegressionTests {
         #expect(app.canPreview)
         app.preview()
         try await waitUntil { !app.isPlanning }
-        #expect(!app.planIsStale && app.canRun)
+        #expect(app.runBlockedReason == nil && app.canRun)
     }
 
     // MARK: #4 Run's check before writing
@@ -213,15 +233,8 @@ struct RegressionTests {
                 "\(report.entries.first?.warnings ?? [])")
     }
 
-    @Test("The app shows Stopping after Stop and ends the waits of every tenant's client")
-    func stopShowsStopping() {
-        let app = demoApp()
-        app.isRunning = true
-        app.cancel()
-        #expect(app.isStopping)
-        #expect(app.tenantStore.waits.current.isEmpty)
-        app.isRunning = false
-    }
+    // stopShowsStopping and the other Stop tests of the 1.2.0 review are in
+    // ReviewFixTests below.
 
     // MARK: #7 Onboarding
 
@@ -308,7 +321,7 @@ struct RegressionTests {
 
     @Test("Preview doesn't start when Settings › Secrets can't be read, and says why")
     func serviceSecretKeychainError() throws {
-        let defaults = UserDefaults(suiteName: "jamfmigrator-regression-\(UUID().uuidString)")!
+        let defaults = testDefaults()
         let mode = DemoMode(key: "demoMode", defaults: defaults, arguments: ["app", "-JTKitSandbox", "YES"])
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("Regression-\(UUID().uuidString)")
         let store = TenantStore(directory: directory, secrets: InMemorySecretStore(), log: nil, demo: mode,

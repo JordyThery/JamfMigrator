@@ -116,8 +116,7 @@ struct ContentView: View {
         }
         .confirmationDialog(runConfirmationTitle, isPresented: $showRunConfirmation) {
             Button(appState.runConfirmationButton, role: appState.mode == .delete ? .destructive : nil) {
-                appState.run()
-                if appState.lastError == nil {
+                if appState.run() {
                     showRunSheet = true
                 }
             }

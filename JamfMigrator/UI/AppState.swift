@@ -428,6 +428,9 @@ final class AppState {
         if planIsStale {
             return "Something changed since Preview. Preview again before running."
         }
+        if plan.mode == .copy, let planInputs, mappings != planInputs.mappings {
+            return "The ADE instance or distribution point mappings changed since Preview. Preview again before running."
+        }
         if previewTypeKeys != plan.typeKeys {
             return "The selected types changed since Preview. Preview again before running."
         }
@@ -502,6 +505,24 @@ final class AppState {
     @discardableResult
     func setServiceSecret(_ value: String, for key: String) -> Bool {
         secretStore.setSecret(value.isEmpty ? nil : value, for: "service-\(key)")
+    }
+
+    /// Settings › Secrets: saves `value` only when it differs from what the
+    /// Keychain holds (`stored`, the value shown or last saved), so opening
+    /// the tab never writes. Nil: there was nothing to save.
+    func saveServiceSecretIfChanged(_ value: String, for key: String, stored: inout String?) -> Bool? {
+        guard let shown = stored, value != shown else {
+            // not read yet (a Keychain that couldn't be read): typing saves
+            if stored == nil, !value.isEmpty { return saveAndRemember(value, for: key, stored: &stored) }
+            return nil
+        }
+        return saveAndRemember(value, for: key, stored: &stored)
+    }
+
+    private func saveAndRemember(_ value: String, for key: String, stored: inout String?) -> Bool {
+        let saved = setServiceSecret(value, for: key)
+        if saved { stored = value }
+        return saved
     }
 
     /// Settings › Secrets; demo runs never read them (the Keychain), so
@@ -611,11 +632,14 @@ final class AppState {
     private var lastRunTypeKeys: Set<String>?
     private var lastRunExcluded: [String: Set<String>] = [:]
 
-    func run() {
-        guard canRun, let destTenant, let plan, let planInputs, let secrets = readServiceSecrets() else { return }
+    /// - Returns: whether the run started (false: `lastError` says why, or
+    ///   Run isn't possible now).
+    @discardableResult
+    func run() -> Bool {
+        guard canRun, let destTenant, let plan, let planInputs, let secrets = readServiceSecrets() else { return false }
         guard mode == .copy || !destTenant.isProtected else {
             lastError = "\(destTenant.name) is protected and can’t be wiped or deleted from. Switch protection off in Settings › Connections first."
-            return
+            return false
         }
         let dest = tenantStore.client(for: destTenant)
         isRunning = true
@@ -650,7 +674,7 @@ final class AppState {
             Task { [weak self] in
                 await self?.finishRun(report: stopped, journal: nil, file: reportFile)
             }
-            return
+            return true
         }
         let journal = JournalStore(url: journalURL(destTenant: destTenant),
                                    mode: mode,
@@ -662,7 +686,7 @@ final class AppState {
 
         switch mode {
         case .copy:
-            guard let sourceTenant else { return }
+            guard let sourceTenant else { return false }
             let source = tenantStore.client(for: sourceTenant)
             let export = exportWriterIfEnabled()
             let engine = MigrationEngine(source: source, dest: dest, journal: journal,
@@ -680,6 +704,7 @@ final class AppState {
                 await self?.finishRun(report: report, journal: journal, file: reportFile)
             }
         }
+        return true
     }
 
     /// Wipe's last gate: delete mode, a tenant that isn't protected, a delete
@@ -740,16 +765,45 @@ final class AppState {
         } else {
             runTask?.cancel()
         }
-        // the waits before a retry ("Jamf asked to wait 40 s"): a request
-        // waiting to be sent again isn't sent
-        tenantStore.waits.cancelAll()
         let migration = activeMigration
         let delete = activeDelete
         let exporter = activeExporter
-        Task {
-            await migration?.cancel()
-            await delete?.cancel()
-            await exporter?.cancel()
+        let waits = tenantStore.waits
+        Task { [weak self] in
+            await Self.stop(cancelEngines: {
+                await migration?.cancel()
+                await delete?.cancel()
+                await exporter?.cancel()
+            }, endWaits: {
+                waits.cancelAll()
+                // and, until the run has ended, any wait that begins later
+                self?.endWaitsWhileStopping()
+            })
+        }
+    }
+
+    /// Stop's order: the engines first, so an object whose wait ends next
+    /// is the last one and the run doesn't go on to the next object; then
+    /// the waits before a retry ("Jamf asked to wait 40 s"), so a request
+    /// waiting to be sent again isn't sent.
+    static func stop(cancelEngines: () async -> Void, endWaits: () -> Void) async {
+        await cancelEngines()
+        endWaits()
+    }
+
+    /// Stop is clickable while a run stops: a second click ends the waits again.
+    var canStop: Bool { isRunning }
+
+    /// While a stopped run finishes its object, ends every wait before a
+    /// retry as soon as it begins (that object's write, icon or watch).
+    private func endWaitsWhileStopping() {
+        guard isRunning, isStopping else { return }
+        let waits = tenantStore.waits
+        if !waits.current.isEmpty { waits.cancelAll() }
+        withObservationTracking {
+            _ = waits.current
+        } onChange: {
+            Task { @MainActor [weak self] in self?.endWaitsWhileStopping() }
         }
     }
 
@@ -828,6 +882,12 @@ final class AppState {
             mappings = TenantMappings()
         }
         isLoadingMappings = true
+        // a load belongs to this pair and is the newest one: a slower,
+        // earlier load (Back and Continue), or one for tenants chosen since,
+        // is dropped when it ends
+        mappingLoad += 1
+        let load = mappingLoad
+        let pair = Self.connectionKey(sourceTenant) + ">" + Self.connectionKey(destTenant)
         let source = tenantStore.client(for: sourceTenant)
         let dest = tenantStore.client(for: destTenant)
         Task { [weak self] in
@@ -835,7 +895,12 @@ final class AppState {
             let destADE = (try? await MappingCatalog.adeInstances(on: dest)) ?? []
             let sourceDPs = (try? await MappingCatalog.distributionPoints(on: source)) ?? []
             let destDPs = (try? await MappingCatalog.distributionPoints(on: dest)) ?? []
-            guard let self else { return }
+            guard let self, load == self.mappingLoad else { return }
+            guard pair == Self.connectionKey(self.sourceTenant) + ">" + Self.connectionKey(self.destTenant) else {
+                // the tenants changed while it loaded: none of this is theirs
+                self.isLoadingMappings = false
+                return
+            }
             self.sourceADEInstances = sourceADE
             self.destADEInstances = destADE
             self.sourceDistributionPoints = sourceDPs
@@ -847,6 +912,9 @@ final class AppState {
             self.isLoadingMappings = false
         }
     }
+
+    /// Counts mapping loads, so only the newest one applies its result.
+    @ObservationIgnored private var mappingLoad = 0
 
     private func saveMappings() {
         guard let key = mappingsKey, let data = try? JSONEncoder().encode(mappings) else { return }
@@ -881,8 +949,10 @@ final class AppState {
     }
 
     /// Plans again after a clone; clean means a second run would write nothing.
-    func verify() {
-        guard let sourceTenant, let destTenant, !isVerifying, let secrets = readServiceSecrets() else { return }
+    /// - Returns: whether Verify started (false: `lastError` says why).
+    @discardableResult
+    func verify() -> Bool {
+        guard let sourceTenant, let destTenant, !isVerifying, let secrets = readServiceSecrets() else { return false }
         isVerifying = true
         verifyReport = nil
         let source = tenantStore.client(for: sourceTenant)
@@ -903,6 +973,7 @@ final class AppState {
             self.verifyReport = report
             self.isVerifying = false
         }
+        return true
     }
 
     // MARK: Paths

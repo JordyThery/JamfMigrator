@@ -54,6 +54,7 @@ struct CloneWizard: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .safeAreaInset(edge: .top, spacing: 0) { WizardProblem() }
             .environment(\.wizardNavigation, WizardNavigation(
                 close: { dismiss() },
                 back: Self.previous(of: step).map { previous in { step = previous } },
@@ -76,6 +77,29 @@ struct CloneWizard: View {
     /// Close and Back are off while something is going on.
     private var canLeave: Bool {
         !appState.isRunning && !appState.isBackingUp && !appState.isPlanning && !appState.isVerifying
+    }
+}
+
+/// Why Run or Verify didn't start (a Keychain that can't be read, a
+/// protected tenant), inside the wizard: the main window's alert is behind
+/// the sheet.
+struct WizardProblem: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        if let problem = appState.lastError {
+            HStack(alignment: .firstTextBaseline) {
+                StatusLabel(problem, systemImage: "exclamationmark.triangle.fill", color: .red)
+                    .font(.callout)
+                    .textSelection(.enabled)
+                Spacer()
+                Button("OK") { appState.lastError = nil }
+                    .help("Hides this message.")
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+            .background(.bar)
+        }
     }
 }
 
@@ -448,8 +472,8 @@ private struct RunStep: View {
         .padding()
         .confirmationDialog(appState.runConfirmationTitle, isPresented: $showRunConfirmation) {
             Button(appState.runConfirmationButton, role: appState.mode == .delete ? .destructive : nil) {
-                started = true
-                appState.run()
+                // only a run that started moves the step on; the reason shows below
+                started = appState.run()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
