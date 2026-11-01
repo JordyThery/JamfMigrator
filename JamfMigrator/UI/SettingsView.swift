@@ -47,6 +47,7 @@ struct ConnectionsSettings: View {
         ) { $tenant in
             Section {
                 Toggle("Protected", isOn: $tenant.isProtected)
+                    .accessibilityIdentifier("tenant-protected")
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("A protected tenant can never be wiped. Recommended for the source tenant.")
