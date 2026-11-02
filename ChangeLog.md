@@ -1,6 +1,6 @@
 # Change log
 
-## v1.2.0 (2026-11-01)
+## v1.2.0 (2026-11-02)
 - Settings asks to save or discard unsaved tenant changes, the Protected
   switch included, before it closes or another tab opens.
 - Clone Tenant: Continue and Preview wait until the ADE instance and
