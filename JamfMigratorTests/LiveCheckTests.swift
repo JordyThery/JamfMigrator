@@ -243,11 +243,12 @@ private final class FenceProtocol: URLProtocol, @unchecked Sendable {
 
 /// The kinds of test object, with their paths and the privileges they need.
 enum TestKind: String, CaseIterable {
-    case profile, script, staticGroup, classicGroup, category
+    case policy, profile, script, staticGroup, classicGroup, category
 
     /// The ledger's name for the kind (as the guarded network records it).
     var resource: String {
         switch self {
+        case .policy: "policies"
         case .profile: "osxconfigurationprofiles"
         case .script: "scripts"
         case .staticGroup: "static-groups"
@@ -266,6 +267,7 @@ enum TestKind: String, CaseIterable {
 
     func deletePath(id: String) -> String {
         switch self {
+        case .policy: JamfClassic.path("policies", id: id)
         case .profile: JamfClassic.path("osxconfigurationprofiles", id: id)
         case .script: "pro/v1/scripts/\(id)"
         case .staticGroup: "pro/v3/computer-groups/static-groups/\(id)"
@@ -276,6 +278,7 @@ enum TestKind: String, CaseIterable {
 
     var deletePrivilege: JamfPro.Privilege {
         switch self {
+        case .policy: .deletePolicies
         case .profile: .deleteMacOSConfigurationProfiles
         case .script: .deleteScripts
         case .staticGroup, .classicGroup: .deleteStaticComputerGroups
@@ -286,7 +289,7 @@ enum TestKind: String, CaseIterable {
     /// Removed in an order Jamf accepts: what uses a category or group first.
     var removalRank: Int {
         switch self {
-        case .profile: 0
+        case .policy, .profile: 0
         case .script: 1
         case .staticGroup, .classicGroup: 2
         case .category: 3
@@ -396,7 +399,8 @@ extension LiveConnection {
     func testObjects(_ run: LiveCheckRun) async throws -> [(kind: TestKind, id: String, name: String)] {
         var found: [(TestKind, String, String)] = []
         for (kind, key) in [(TestKind.category, "categories"), (.script, "scripts"),
-                            (.staticGroup, "staticcomputergroups"), (.profile, "osxconfigurationprofiles")] {
+                            (.staticGroup, "staticcomputergroups"), (.profile, "osxconfigurationprofiles"),
+                            (.policy, "policies")] {
             let type = try #require(ObjectRegistry.type(key))
             found += try await ObjectLister.list(type, on: api).filter { run.isSweepable($0.name) }.map { (kind, $0.id, $0.name) }
         }
@@ -482,6 +486,8 @@ func readOnlyNetwork(_ run: LiveCheckRun) -> LiveCheckNetwork {
 enum LiveRoles {
     static let source = "jamf-test-a"
     static let destination = "jamf-test-b"
+    /// Read only: the source of the live UI test's cross-tenant Preview.
+    static let productionRead = "jamfpro-production"
 }
 
 // MARK: Stage 1: sign in
@@ -499,17 +505,20 @@ struct LiveSignInTests {
         checkNoSavedTenantRequests(run, when: "start")
         let connections: [(String, AllowList.Service)] = [(LiveRoles.source, .jamfPlatform),
                                                           (LiveRoles.destination, .jamfPlatform),
-                                                          (LiveRoles.destination, .jamfPro)]
+                                                          (LiveRoles.destination, .jamfPro),
+                                                          (LiveRoles.productionRead, .jamfPlatform)]
         for (role, service) in connections where run.roles.contains(role) {
             let name = "sign in: \(role) (\(service == .jamfPlatform ? "Platform API" : "Jamf Pro direct"))"
             do {
                 let connection = try LiveConnection(run: run, role: role, service: service, folder: folder,
                                                     appSession: run.network.session)
-                let leftovers = try await connection.testObjects(run).count
+                // production is only read: its version, never a list of test objects
+                let leftovers = role == LiveRoles.productionRead ? nil : try await connection.testObjects(run).count
                 let version = await Preflight.check(connection.api).version ?? "unknown"
                 let cancelled = try await connection.cancelTokens()
                 run.record(step: name, passed: true,
-                           note: "Jamf Pro \(version); \(leftovers) left-over test objects" + (cancelled.map { "; token cancelled (\($0))" } ?? ""))
+                           note: "Jamf Pro \(version)" + (leftovers.map { "; \($0) left-over test objects" } ?? "; read only")
+                               + (cancelled.map { "; token cancelled (\($0))" } ?? ""))
             } catch {
                 run.record(step: name, passed: false, note: failure(error))
                 throw error
@@ -719,13 +728,15 @@ struct LiveMigrationTests {
         let differences = again.entries.flatMap { entry in
             entry.diff.map { (typeKey: entry.typeKey, field: $0) }
         }
-        // The one known Jamf difference, accepted only on a Jamf Pro 11.34.0
-        // beta destination (decided by Jordy on 2026-10-28): the beta drops a
-        // profile's Self Service notification settings on save; the app sends
-        // them. Anything else must match. Recheck when 11.34 is released.
+        // The one known Jamf difference, accepted only on a Jamf Pro 11.34.x
+        // destination (decided by Jordy on 2026-10-28 for the 11.34.0 beta,
+        // widened to 11.34.x on 2026-11-02 as the 11.34.0 release does the
+        // same): it drops a profile's Self Service notification settings on
+        // save; the app sends them. Anything else must match. Recheck with
+        // every 11.34.x and 11.35 (WATCHLIST.md).
         let version = await Preflight.check(destination.api).version ?? ""
         let betaQuirk = { (difference: (typeKey: String, field: DiffEntry)) -> Bool in
-            version.hasPrefix("11.34.0-b") && difference.typeKey == "osxconfigurationprofiles"
+            ClassicTransformer.dropsSelfServiceNotifications(version) && difference.typeKey == "osxconfigurationprofiles"
                 && difference.field.path == "os_x_configuration_profile/self_service/notification"
                 && difference.field.destination == nil
         }
@@ -747,7 +758,7 @@ struct LiveMigrationTests {
                            + describe(unexpected)).joined(separator: "; "))
         if !accepted.isEmpty {
             run.record(step: step("known Jamf difference accepted"), passed: true,
-                       note: "Jamf Pro \(version) (beta) drops the profile's Self Service notification settings on save; the app sent them: \(describe(accepted).joined(separator: "; "))")
+                       note: "Jamf Pro \(version) drops the profile's Self Service notification settings on save; the app sent them: \(describe(accepted).joined(separator: "; "))")
         }
         try require("Verify made no write", fence.refusals.isEmpty && sourceNetwork.refusals.isEmpty)
 
@@ -766,7 +777,7 @@ struct LiveMigrationTests {
         try require("a second Preview shows Unchanged and its Run writes nothing",
                     onlyQuirk && second.entries.count == wanted.count && nothing.entries.isEmpty
                         && nothing.stopReason == nil && fence.writes == writesBefore && fence.refusals.isEmpty,
-                    note: describePlan(second) + (secondDiffers.isEmpty ? "" : "; left unchecked (accepted 11.34 beta difference): \(secondDiffers.map(\.name))"))
+                    note: describePlan(second) + (secondDiffers.isEmpty ? "" : "; left unchecked (accepted Jamf Pro 11.34 difference): \(secondDiffers.map(\.name))"))
 
         // 7. Remove the objects from both tenants.
         let problems = await destination.removeOutstanding(run) + (await source.removeOutstanding(run))

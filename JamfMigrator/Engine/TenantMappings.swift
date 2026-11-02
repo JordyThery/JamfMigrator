@@ -43,12 +43,11 @@ let platformGroupsKey = "platformgroups"
 
 enum MappingCatalog {
 
-    /// Device groups as the platform namespaces see them: id = groupPlatformId.
+    /// Device groups as the platform namespaces see them: id = groupPlatformId
+    /// (JTKit's `platformGroups()`, `pro/v2/groups`; a refusal names the
+    /// group read privileges).
     static func platformGroups(on client: JamfPlatform.Client) async throws -> [ObjectRef] {
-        try await client.allPages("pro/v2/groups", pageSize: 200) { entry in
-            guard let uuid = entry["groupPlatformId"]?.stringValue else { return nil }
-            return ObjectRef(id: uuid, name: entry["groupName"]?.stringValue ?? "")
-        }
+        try await client.platformGroups().map { ObjectRef(id: $0.id, name: $0.name) }
     }
 
     /// The tenant's ADE instances (/pro/v1/device-enrollments).

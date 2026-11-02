@@ -34,6 +34,19 @@ enum ClassicXML {
         return String(xml[start.upperBound..<end.lowerBound])
     }
 
+    /// The raw content of every `<tag>` … `</tag>`, in order (Classic XML
+    /// may repeat an element, e.g. a profile's `notification`).
+    static func values(of tag: String, in xml: String) -> [String] {
+        var found = [String]()
+        var rest = xml[...]
+        while let start = rest.range(of: "<\(tag)>"),
+              let end = rest.range(of: "</\(tag)>", range: start.upperBound..<rest.endIndex) {
+            found.append(String(rest[start.upperBound..<end.lowerBound]))
+            rest = rest[end.upperBound...]
+        }
+        return found
+    }
+
     /// Regex replace; case-insensitive and `.` matches newlines.
     static func replacing(pattern: String, in xml: String, with template: String) -> String {
         guard let regex = try? NSRegularExpression(pattern: pattern,

@@ -71,8 +71,10 @@ final class AppState {
     }
 
     /// Where the app keeps journals, backups, exports and run reports:
-    /// Application Support, or demo mode's temporary folder.
+    /// Application Support, or demo mode's temporary folder. Under JTKit's
+    /// live-check switch (live UI tests), the release check's run folder.
     var dataDirectory: URL {
+        if let live = Self.liveDirectory { return live }
         if demo.isOn { return demo.scratchDirectory }
         // a sandbox run (UI tests) never writes into the real folder
         if demo.isSandbox { return Self.sandboxDirectory }
@@ -84,8 +86,13 @@ final class AppState {
     private static let sandboxDirectory = FileManager.default.temporaryDirectory
         .appendingPathComponent("JamfMigrator-sandbox-\(UUID().uuidString)", isDirectory: true)
 
+    /// Under the live-check switch: the run's folder for the app's own files
+    /// (decided once, so Resume finds the journal again); nil otherwise.
+    private static let liveDirectory = LiveLaunch.appFilesFolder("JamfMigrator")
+
     /// Where run reports go, in words, for the run sheet's help.
     var runReportsLocation: String {
+        if Self.liveDirectory != nil { return "the release check’s run folder (Run Reports)" }
         if demo.isOn { return "demo mode’s temporary folder (Run Reports)" }
         if demo.isSandbox { return "this sandbox run’s temporary folder (Run Reports)" }
         return "Application Support › JamfMigrator › Run Reports"
@@ -257,6 +264,8 @@ final class AppState {
     static let summaryKey = "summary"
 
     var isRunning = false
+    /// Set by Stop while a run finishes the object it is writing.
+    var isStopping = false
     var runEvents: [ProgressEvent] = []
     var report: RunReport?
     /// Where the last run's report was saved (Run Reports), or why it wasn't.
@@ -398,7 +407,8 @@ final class AppState {
     }
 
     var canPreview: Bool {
-        guard !isPlanning && !isRunning, tour.index == nil,
+        // a Preview uses the mappings proposed for the pair, so it waits for them
+        guard !isPlanning && !isRunning && !isLoadingMappings, tour.index == nil,
               destTenant != nil, !selectedTypeKeys.isEmpty else { return false }
         if mode == .delete { return true }
         // copying a tenant onto itself is never meaningful
@@ -417,6 +427,9 @@ final class AppState {
         guard let plan else { return nil }
         if planIsStale {
             return "Something changed since Preview. Preview again before running."
+        }
+        if plan.mode == .copy, let planInputs, mappings != planInputs.mappings {
+            return "The ADE instance or distribution point mappings changed since Preview. Preview again before running."
         }
         if previewTypeKeys != plan.typeKeys {
             return "The selected types changed since Preview. Preview again before running."
@@ -483,8 +496,10 @@ final class AppState {
         ("recoverylock", "PreStage Recovery Lock password"),
     ]
 
-    func serviceSecret(_ key: String) -> String {
-        secretStore.secret(for: "service-\(key)") ?? ""
+    /// The value, "" when none is stored.
+    /// - Throws: `SecretStoreError` when the Keychain can't read it.
+    func serviceSecret(_ key: String) throws -> String {
+        try secretStore.readSecret(for: "service-\(key)") ?? ""
     }
 
     @discardableResult
@@ -492,16 +507,48 @@ final class AppState {
         secretStore.setSecret(value.isEmpty ? nil : value, for: "service-\(key)")
     }
 
+    /// Settings › Secrets: saves `value` only when it differs from what the
+    /// Keychain holds (`stored`, the value shown or last saved), so opening
+    /// the tab never writes. Nil: there was nothing to save.
+    func saveServiceSecretIfChanged(_ value: String, for key: String, stored: inout String?) -> Bool? {
+        guard let shown = stored, value != shown else {
+            // not read yet (a Keychain that couldn't be read): typing saves
+            if stored == nil, !value.isEmpty { return saveAndRemember(value, for: key, stored: &stored) }
+            return nil
+        }
+        return saveAndRemember(value, for: key, stored: &stored)
+    }
+
+    private func saveAndRemember(_ value: String, for key: String, stored: inout String?) -> Bool {
+        let saved = setServiceSecret(value, for: key)
+        if saved { stored = value }
+        return saved
+    }
+
     /// Settings › Secrets; demo runs never read them (the Keychain), so
     /// they write the placeholder.
-    private var serviceSecrets: [String: String] {
+    /// - Throws: `SecretStoreError` when the Keychain can't read one: a
+    ///   Preview or run then stops rather than writing the placeholder.
+    private func serviceSecrets() throws -> [String: String] {
         guard !demo.isOn else { return [:] }
         var secrets = [String: String]()
         for (key, _) in Self.serviceSecretKeys {
-            let value = serviceSecret(key)
+            let value = try serviceSecret(key)
             if !value.isEmpty { secrets[key] = value }
         }
         return secrets
+    }
+
+    /// Settings › Secrets, or nil with `lastError` saying the Keychain
+    /// couldn't be read.
+    private func readServiceSecrets() -> [String: String]? {
+        do {
+            return try serviceSecrets()
+        } catch {
+            lastError = "Settings › Secrets couldn’t be read: \(error.localizedDescription)"
+            AppActivity.record(lastError ?? "", category: "Keychain", level: .error)
+            return nil
+        }
     }
 
     /// A SHA-256 of each Settings › Secrets value, to tell at Run whether
@@ -522,7 +569,7 @@ final class AppState {
     // MARK: Preview
 
     func preview() {
-        guard canPreview, let destTenant else { return }
+        guard canPreview, let destTenant, let secrets = readServiceSecrets() else { return }
         runTask?.cancel()
         let dest = tenantStore.client(for: destTenant)
         isPlanning = true
@@ -531,7 +578,6 @@ final class AppState {
         lastError = nil
         let mode = mode
         let typeKeys = previewTypeKeys
-        let secrets = serviceSecrets
         let mappings = mappings
         // a direct username-and-password tenant's account is never deleted
         let signedInUsername = destTenant.usesGateway ? nil : destTenant.username
@@ -559,7 +605,8 @@ final class AppState {
             } else if let sourceTenant {
                 let source = tenantStore.client(for: sourceTenant)
                 let preflight = await Preflight.run(source: source, dest: dest, typeKeys: typeKeys)
-                let planner = MigrationPlanner(source: source, dest: dest, secrets: secrets, mappings: mappings, progress: progress)
+                let planner = MigrationPlanner(source: source, dest: dest, secrets: secrets, mappings: mappings,
+                                               destinationVersion: preflight.destination.version, progress: progress)
                 let plan = await planner.plan(typeKeys: typeKeys)
                 guard !Task.isCancelled, self.mode == mode else { return }
                 self.preflight = preflight
@@ -586,11 +633,14 @@ final class AppState {
     private var lastRunTypeKeys: Set<String>?
     private var lastRunExcluded: [String: Set<String>] = [:]
 
-    func run() {
-        guard canRun, let destTenant, let plan, let planInputs else { return }
+    /// - Returns: whether the run started (false: `lastError` says why, or
+    ///   Run isn't possible now).
+    @discardableResult
+    func run() -> Bool {
+        guard canRun, let destTenant, let plan, let planInputs, let secrets = readServiceSecrets() else { return false }
         guard mode == .copy || !destTenant.isProtected else {
             lastError = "\(destTenant.name) is protected and can’t be wiped or deleted from. Switch protection off in Settings › Connections first."
-            return
+            return false
         }
         let dest = tenantStore.client(for: destTenant)
         isRunning = true
@@ -599,6 +649,7 @@ final class AppState {
         reportFileURL = nil
         reportSaveError = nil
         runWasStopped = false
+        isStopping = false
         lastError = nil
         // decided now: switching demo mode during the run doesn't move its report
         runReportsFolder = dataDirectory.appendingPathComponent("Run Reports", isDirectory: true)
@@ -610,7 +661,6 @@ final class AppState {
                                        finished: Date(),
                                        wasStopped: false)
         let including = includedObjectIds
-        let secrets = serviceSecrets
         let mappings = mappings
         lastRunTypeKeys = plan.typeKeys
         lastRunExcluded = Dictionary(grouping: plan.entries.filter { $0.change.isRunnable && !isIncluded($0) },
@@ -625,7 +675,7 @@ final class AppState {
             Task { [weak self] in
                 await self?.finishRun(report: stopped, journal: nil, file: reportFile)
             }
-            return
+            return true
         }
         let journal = JournalStore(url: journalURL(destTenant: destTenant),
                                    mode: mode,
@@ -637,11 +687,12 @@ final class AppState {
 
         switch mode {
         case .copy:
-            guard let sourceTenant else { return }
+            guard let sourceTenant else { return false }
             let source = tenantStore.client(for: sourceTenant)
             let export = exportWriterIfEnabled()
             let engine = MigrationEngine(source: source, dest: dest, journal: journal,
-                                         export: export, secrets: secrets, mappings: mappings, progress: progress)
+                                         export: export, secrets: secrets, mappings: mappings,
+                                         destinationVersion: preflight?.destination.version, progress: progress)
             activeMigration = engine
             runTask = Task { [weak self] in
                 let report = await engine.run(plan, including: including)
@@ -655,6 +706,7 @@ final class AppState {
                 await self?.finishRun(report: report, journal: journal, file: reportFile)
             }
         }
+        return true
     }
 
     /// Wipe's last gate: delete mode, a tenant that isn't protected, a delete
@@ -705,21 +757,55 @@ final class AppState {
     }
 
     /// Stop: a run finishes the object it is writing, then stops (cancelling
-    /// it mid-request would leave that object's state unknown); Preview and
-    /// the backup stop at once.
+    /// it mid-request would leave that object's state unknown); a wait before
+    /// a retry or a watch after a write ends at once. Preview and the backup
+    /// stop at once.
     func cancel() {
         if isRunning {
             runWasStopped = true
+            isStopping = true
         } else {
             runTask?.cancel()
         }
         let migration = activeMigration
         let delete = activeDelete
         let exporter = activeExporter
-        Task {
-            await migration?.cancel()
-            await delete?.cancel()
-            await exporter?.cancel()
+        let waits = tenantStore.waits
+        Task { [weak self] in
+            await Self.stop(cancelEngines: {
+                await migration?.cancel()
+                await delete?.cancel()
+                await exporter?.cancel()
+            }, endWaits: {
+                waits.cancelAll()
+                // and, until the run has ended, any wait that begins later
+                self?.endWaitsWhileStopping()
+            })
+        }
+    }
+
+    /// Stop's order: the engines first, so an object whose wait ends next
+    /// is the last one and the run doesn't go on to the next object; then
+    /// the waits before a retry ("Jamf asked to wait 40 s"), so a request
+    /// waiting to be sent again isn't sent.
+    static func stop(cancelEngines: () async -> Void, endWaits: () -> Void) async {
+        await cancelEngines()
+        endWaits()
+    }
+
+    /// Stop is clickable while a run stops: a second click ends the waits again.
+    var canStop: Bool { isRunning }
+
+    /// While a stopped run finishes its object, ends every wait before a
+    /// retry as soon as it begins (that object's write, icon or watch).
+    private func endWaitsWhileStopping() {
+        guard isRunning, isStopping else { return }
+        let waits = tenantStore.waits
+        if !waits.current.isEmpty { waits.cancelAll() }
+        withObservationTracking {
+            _ = waits.current
+        } onChange: {
+            Task { @MainActor [weak self] in self?.endWaitsWhileStopping() }
         }
     }
 
@@ -733,6 +819,7 @@ final class AppState {
         self.report = report
         saveReport(report, file: file)
         self.isRunning = false
+        self.isStopping = false
         self.activeMigration = nil
         self.activeDelete = nil
         if invalidatesAfterRun {
@@ -797,6 +884,12 @@ final class AppState {
             mappings = TenantMappings()
         }
         isLoadingMappings = true
+        // a load belongs to this pair and is the newest one: a slower,
+        // earlier load (Back and Continue), or one for tenants chosen since,
+        // is dropped when it ends
+        mappingLoad += 1
+        let load = mappingLoad
+        let pair = Self.connectionKey(sourceTenant) + ">" + Self.connectionKey(destTenant)
         let source = tenantStore.client(for: sourceTenant)
         let dest = tenantStore.client(for: destTenant)
         Task { [weak self] in
@@ -804,7 +897,12 @@ final class AppState {
             let destADE = (try? await MappingCatalog.adeInstances(on: dest)) ?? []
             let sourceDPs = (try? await MappingCatalog.distributionPoints(on: source)) ?? []
             let destDPs = (try? await MappingCatalog.distributionPoints(on: dest)) ?? []
-            guard let self else { return }
+            guard let self, load == self.mappingLoad else { return }
+            guard pair == Self.connectionKey(self.sourceTenant) + ">" + Self.connectionKey(self.destTenant) else {
+                // the tenants changed while it loaded: none of this is theirs
+                self.isLoadingMappings = false
+                return
+            }
             self.sourceADEInstances = sourceADE
             self.destADEInstances = destADE
             self.sourceDistributionPoints = sourceDPs
@@ -816,6 +914,9 @@ final class AppState {
             self.isLoadingMappings = false
         }
     }
+
+    /// Counts mapping loads, so only the newest one applies its result.
+    @ObservationIgnored private var mappingLoad = 0
 
     private func saveMappings() {
         guard let key = mappingsKey, let data = try? JSONEncoder().encode(mappings) else { return }
@@ -838,7 +939,8 @@ final class AppState {
             Task { @MainActor [weak self] in self?.planningStatus = name }
         }
         activeExporter = exporter
-        let typeKeys = selectedTypeKeys
+        // the types Preview plans: never the gateway-only ones a direct tenant can't reach
+        let typeKeys = previewTypeKeys
         Task { [weak self] in
             let result = await exporter.backup(typeKeys: typeKeys, to: root)
             guard let self else { return }
@@ -849,8 +951,10 @@ final class AppState {
     }
 
     /// Plans again after a clone; clean means a second run would write nothing.
-    func verify() {
-        guard let sourceTenant, let destTenant, !isVerifying else { return }
+    /// - Returns: whether Verify started (false: `lastError` says why).
+    @discardableResult
+    func verify() -> Bool {
+        guard let sourceTenant, let destTenant, !isVerifying, let secrets = readServiceSecrets() else { return false }
         isVerifying = true
         verifyReport = nil
         let source = tenantStore.client(for: sourceTenant)
@@ -858,7 +962,6 @@ final class AppState {
         // after a run: what it carried out; otherwise the selection
         let typeKeys = lastRunTypeKeys ?? previewTypeKeys
         let excluding = lastRunTypeKeys == nil ? [:] : lastRunExcluded
-        let secrets = serviceSecrets
         let mappings = mappings
         let progress: @Sendable (String) -> Void = { [weak self] name in
             Task { @MainActor [weak self] in self?.planningStatus = name }
@@ -872,6 +975,7 @@ final class AppState {
             self.verifyReport = report
             self.isVerifying = false
         }
+        return true
     }
 
     // MARK: Paths

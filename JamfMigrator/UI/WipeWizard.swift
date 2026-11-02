@@ -27,14 +27,13 @@ struct WipeWizard: View {
                 Label("Wipe \(tenantName)", systemImage: "trash.fill")
                     .font(.title2.weight(.semibold))
                     .foregroundStyle(.red)
+                    .accessibilityAddTraits(.isHeader)
                 Spacer()
-                Button("Close") { dismiss() }
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(appState.isRunning || appState.isBackingUp)
             }
             .padding()
 
             Divider()
+            WizardProblem()
 
             if let tenant = appState.destTenant, tenant.isProtected {
                 ContentUnavailableView {
@@ -46,6 +45,14 @@ struct WipeWizard: View {
                 runSection
             } else {
                 gatesForm
+            }
+
+            if !(started || appState.isRunning || appState.report != nil) {
+                WizardFooter {}
+                    .padding()
+                    .environment(\.wizardNavigation, WizardNavigation(
+                        close: { dismiss() },
+                        canLeave: !appState.isRunning && !appState.isBackingUp))
             }
         }
         .frame(minWidth: 620, minHeight: 500)
@@ -98,7 +105,7 @@ struct WipeWizard: View {
                         }
                     } else {
                         Label("The backup didn’t complete.", systemImage: "xmark.circle.fill")
-                            .foregroundStyle(.red)
+                            .statusColor(.red)
                         ForEach(result.errors.prefix(5), id: \.self) { error in
                             Text(error).font(.caption).foregroundStyle(.secondary)
                         }
@@ -106,7 +113,7 @@ struct WipeWizard: View {
                     }
                 } else if backupSkipped {
                     Label("Backup skipped.", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
+                        .statusColor(.orange)
                 } else {
                     Button("Back Up \(tenantName) First") { appState.backup() }
                         .buttonStyle(.borderedProminent)
@@ -126,11 +133,10 @@ struct WipeWizard: View {
                 TextField("Type the tenant’s name: \(tenantName)", text: $typedName)
                     .autocorrectionDisabled()
                 Button("Delete \(Plural.count(deleteCount, "Object")) from \(tenantName)", role: .destructive) {
-                    started = true
-                    appState.run()
+                    started = appState.run()
                 }
                 .disabled(!allGatesPass)
-                .help(allGatesPass ? "" : "Finish the preview and the backup, and type the tenant’s name exactly.")
+                .help(allGatesPass ? "Deletes the checked objects from \(tenantName). This can’t be undone." : "Finish the preview and the backup, and type the tenant’s name exactly.")
             }
         }
         .formStyle(.grouped)
@@ -149,17 +155,11 @@ struct WipeWizard: View {
     private var runSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             if appState.isRunning {
-                if let latest = appState.runEvents.last {
-                    let typeName = ObjectRegistry.type(latest.type)?.displayName ?? latest.type
-                    ProgressView(value: Double(latest.completed), total: Double(max(latest.total, 1))) {
-                        Text("Deleting \(typeName): \(latest.objectName)").lineLimit(1)
-                    }
-                } else {
-                    ProgressView("Starting…")
-                }
+                RunProgress(verb: "Deleting")
+                Spacer()
                 HStack {
                     Spacer()
-                    Button("Stop", role: .destructive) { appState.cancel() }
+                    StopButton()
                 }
             } else if let report = appState.report {
                 let leftovers = report.retryableFailures
@@ -167,7 +167,7 @@ struct WipeWizard: View {
                       ? "Wipe finished: \(Plural.count(report.deletedCount, "object")) deleted."
                       : "Wipe finished, but \(Plural.count(leftovers.count, "object")) couldn’t be deleted.",
                       systemImage: leftovers.isEmpty ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                    .foregroundStyle(leftovers.isEmpty ? .green : .orange)
+                    .statusColor(leftovers.isEmpty ? .green : .orange)
                     .font(.headline)
                 if !leftovers.isEmpty {
                     List(leftovers) { entry in

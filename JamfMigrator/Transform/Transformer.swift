@@ -48,6 +48,13 @@ struct TransformContext: Sendable {
     /// Set by the comparison: notes each reference that resolves to an
     /// object the run will create (Preview's "will exist").
     var plannedReferences: PlannedReferenceRecorder? = nil
+    /// Lists a type may do without that couldn't be read (Onboarding's items:
+    /// policies, profiles, Mac apps, App Installers), with the reason. Only
+    /// what refers to such a list is Blocked.
+    var unreadableLists: [String: String] = [:]
+    /// The destination's Jamf Pro version, when known (from the permission
+    /// check), for warnings about what that version doesn't keep.
+    var destinationVersion: String? = nil
 
     func destId(_ typeKey: String, named name: String) -> String? {
         let id = destIdsByName[typeKey]?[name]

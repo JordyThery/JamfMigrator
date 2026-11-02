@@ -9,7 +9,10 @@
 #
 # Tenants are roles on the local allow-list (never named here): jamf-test-a,
 # the source, over the Jamf Platform API; jamf-test-b, the destination, over
-# the Jamf Platform API and over its direct Jamf Pro connection.
+# the Jamf Platform API and over its direct Jamf Pro connection; and
+# jamfpro-production, read only (a cross-tenant Preview into jamf-test-b,
+# never a Run), when the allow-list's productionReads or --include-production
+# lets it take part.
 cd "$(dirname "$0")/.." || exit 1
 
 APP_NAME="Jamf Migrator"
@@ -24,9 +27,13 @@ SIGNIN_TEST="JamfMigratorTests/LiveSignInTests"
 LIVE_TESTS=(
     "JamfMigratorTests/LiveMigrationTests/platformToPlatform()"
     "JamfMigratorTests/LiveMigrationTests/platformToDirect()"
+    "JamfMigratorUITests/LiveUITests/testCopyThroughPreviewRunAndVerify"
+    "JamfMigratorUITests/LiveUITests/testCrossTenantPreviewFromProduction"
 )
 CLEANUP_TEST="JamfMigratorTests/LiveCleanupTests"
-ROLES=(jamf-test-a jamf-test-b)
+ROLES=(jamf-test-a jamf-test-b jamfpro-production)
+# whatever the allow-list grants, production is only ever read
+READ_ONLY_ROLES=(jamfpro-production)
 # role:service:item, read from the Keychain service the allow-list names
 CREDENTIALS=(
     "jamf-test-a:jamfPlatform:client-id"
@@ -35,6 +42,8 @@ CREDENTIALS=(
     "jamf-test-b:jamfPlatform:client-secret"
     "jamf-test-b:jamfPro:jamfpro-username"
     "jamf-test-b:jamfPro:jamfpro-password"
+    "jamfpro-production:jamfPlatform:client-id"
+    "jamfpro-production:jamfPlatform:client-secret"
 )
 DOMAIN="be.jordythery.jamfmigrator"
 CONTAINER="$HOME/Library/Containers/$DOMAIN/Data"

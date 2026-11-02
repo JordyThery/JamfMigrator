@@ -110,7 +110,7 @@ private struct PreflightSummary: View {
             let ok = preflight.isReady && preflight.flaggedTypes.isEmpty
             Label("\(preflight.source.version ?? "?") → \(preflight.destination.version ?? "?")",
                   systemImage: ok ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                .foregroundStyle(ok ? .green : .orange)
+                .statusColor(ok ? .green : .orange)
             ForEach([("No permission", preflight.missingPermissionTypes),
                      ("Not found", preflight.notFoundTypes),
                      ("Couldn’t check", preflight.uncheckedTypes)].filter { !$0.1.isEmpty }, id: \.0) { title, keys in
@@ -165,12 +165,13 @@ private struct TypeRow: View {
         .foregroundStyle(unavailable ? .secondary : .primary)
         .help(unavailable
               ? PreflightReport.gatewayOnlyReason
-              : "")
+              : "Check to include \(type.displayName) in Preview; click the row to see its objects.")
         .tag(type.key)
     }
 }
 
-/// Compact counts for a type: "3+ 1± 7=" in copy mode, "12−" in delete mode.
+/// A type's counts in words: "3 create · 1 update · 7 unchanged" in copy
+/// mode, "12 delete" in delete mode; the full sentence in its help.
 private struct PlanBadge: View {
     let entries: [ObjectPlan]
     let mode: RunMode
@@ -180,7 +181,9 @@ private struct PlanBadge: View {
             Text(summary)
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
-                // VoiceOver reads the counts in words, not "3 plus"
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .help(spokenSummary)
                 .accessibilityLabel(spokenSummary)
         }
     }
@@ -214,12 +217,12 @@ private struct PlanBadge: View {
             case .keep: break
             }
         }
-        if mode == .delete { return "\(delete)−" }
+        if mode == .delete { return "\(delete) delete" }
         var parts = [String]()
-        if create > 0 { parts.append("\(create)+") }
-        if update > 0 { parts.append("\(update)±") }
-        if unchanged > 0 { parts.append("\(unchanged)=") }
-        if blocked > 0 { parts.append("\(blocked)✕") }
-        return parts.joined(separator: " ")
+        if create > 0 { parts.append("\(create) create") }
+        if update > 0 { parts.append("\(update) update") }
+        if unchanged > 0 { parts.append("\(unchanged) unchanged") }
+        if blocked > 0 { parts.append("\(blocked) blocked") }
+        return parts.joined(separator: " · ")
     }
 }

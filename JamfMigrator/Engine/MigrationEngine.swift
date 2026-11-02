@@ -18,6 +18,8 @@ actor MigrationEngine {
     private let export: ExportWriter?
     let secrets: [String: String]
     let mappings: TenantMappings
+    /// The destination's Jamf Pro version, from Preview's permission check.
+    let destinationVersion: String?
     private let progress: (@Sendable (ProgressEvent) -> Void)?
     private let icons: IconMigrator
 
@@ -29,6 +31,8 @@ actor MigrationEngine {
     private var destNamesById = [String: [String: String]]()
     private var destDuplicateNames = [String: Set<String>]()
     private var sourceNamesById = [String: [String: String]]()
+    /// Dependency lists a type may do without that couldn't be read, as in Preview.
+    private var unreadableLists = [String: String]()
     /// Stops the run before writing `ref`, because it changed since Preview.
     private func stop(_ type: ObjectType, _ ref: ObjectRef, _ change: String) {
         stopReason = "\(type.displayName) › “\(ref.name)”: \(change). The run stopped before writing it. Preview again before running."
@@ -44,7 +48,9 @@ actor MigrationEngine {
          export: ExportWriter? = nil,
          secrets: [String: String] = [:],
          mappings: TenantMappings = TenantMappings(),
+         destinationVersion: String? = nil,
          progress: (@Sendable (ProgressEvent) -> Void)? = nil) {
+        self.destinationVersion = destinationVersion
         self.source = source
         self.dest = dest
         self.journal = journal
@@ -55,9 +61,33 @@ actor MigrationEngine {
         self.icons = IconMigrator(source: source, dest: dest)
     }
 
+    /// Stop: the object being written finishes, then the run stops. A
+    /// watch after a write (a Blueprint deploy, a benchmark sync, a PreStage's
+    /// profile UUID) ends at once; the write itself is never interrupted.
     func cancel() {
         isCancelled = true
+        cancelWatch?()
     }
+
+    /// Ends the watch after a write that is going on now.
+    private var cancelWatch: (@Sendable () -> Void)?
+
+    /// Runs a watch after a write so that Stop can end it at once.
+    /// - Throws: `CancellationError` when Stop ended it, or the watch's own error.
+    private func watch<T: Sendable>(_ body: @escaping @Sendable () async throws -> T) async throws -> T {
+        let task = Task { try await body() }
+        cancelWatch = { task.cancel() }
+        defer { cancelWatch = nil }
+        if isCancelled { task.cancel() }
+        return try await task.value
+    }
+
+    /// The warning of a watch Stop ended.
+    static let watchStopped = "Stopped before Jamf confirmed it; check it on the destination."
+
+    /// The reason of an object whose request was waiting to be tried again
+    /// when Stop ended the wait.
+    static let stoppedDuringWait = "Stopped while waiting to try again: it may not have been written. Preview again to check."
 
     /// Carries out exactly the plan Preview showed: the ticked Create,
     /// Update and Replace rows, in step order; Unchanged and Blocked rows are
@@ -89,6 +119,9 @@ actor MigrationEngine {
             do {
                 try await runType(type, entries: entries, ticked: Set(ticked.map(\.objectId)), plan: plan,
                                   precedingCreates: precedingCreates, report: &report)
+            } catch is CancellationError where isCancelled {
+                // Stop ended a wait before a retry while the type's lists were read
+                break
             } catch {
                 AppActivity.record("\(type.displayName) failed: \(error.localizedDescription)",
                                    category: "Migration", level: .error)
@@ -108,7 +141,12 @@ actor MigrationEngine {
                          precedingCreates: [String: Set<String>], report: inout RunReport) async throws {
         // lookups the transform needs, even when those types aren't being migrated
         for dependency in type.dependencies + ["sites"] {
-            try await loadLookups(for: dependency, destination: true, source: true)
+            do {
+                try await loadLookups(for: dependency, destination: true, source: true)
+                unreadableLists[dependency] = nil
+            } catch where MigrationPlanner.mayDoWithout(dependency, for: type) && !(error is CancellationError) {
+                unreadableLists[dependency] = error.localizedDescription
+            }
         }
         if ["blueprints", "compliancebenchmarks"].contains(type.key) {
             try await loadPlatformGroupLookups()
@@ -217,7 +255,8 @@ actor MigrationEngine {
                 type, ref: ref, sourcePayload: payload, destId: existingDestId, destPayload: destPayload,
                 inputs: MigrationPlanner.ComparisonInputs(destIdsByName: asPreviewSaw, destNamesById: destNamesById,
                                                           sourceNamesById: sourceNamesById, plannedCreates: plannedCreates,
-                                                          secrets: secrets, included: plan.typeKeys, mappings: mappings))
+                                                          secrets: secrets, included: plan.typeKeys, mappings: mappings,
+                                                          unreadable: unreadableLists, destinationVersion: destinationVersion))
             if let change = Self.changeSincePreview(planned: entry, now: now) {
                 stop(type, ref, change)
                 return (.failed(reason: "Not written"), [])
@@ -229,6 +268,8 @@ actor MigrationEngine {
             context.secrets = secrets
             context.includedTypes = plan.typeKeys
             context.mappings = mappings
+            context.unreadableLists = unreadableLists
+            context.destinationVersion = destinationVersion
 
             if let existingDestId {
                 context.action = .update(destId: existingDestId)
@@ -288,6 +329,12 @@ actor MigrationEngine {
                 let destId: String
                 do {
                     destId = try await write(object, type: type, action: action)
+                } catch is CancellationError {
+                    // the benchmark's delete for the Replace already happened
+                    let reason = deletedForReplace
+                        ? "Deleted on the destination, but the new copy wasn’t created: Stop ended the wait before it was tried again. Preview again to create it."
+                        : Self.stoppedDuringWait
+                    return (.failed(reason: reason), warnings)
                 } catch {
                     // a planned write that didn't happen is a failure, never
                     // "unchanged"; and the reason says what was done before it
@@ -309,6 +356,8 @@ actor MigrationEngine {
                 }
                 return (.created(destId: destId), warnings)
             }
+        } catch is CancellationError {
+            return (.failed(reason: Self.stoppedDuringWait), [])
         } catch {
             return (.failed(reason: Self.blankingOut(secretValues + Array(secrets.values), in: error.localizedDescription)), [])
         }
@@ -438,16 +487,21 @@ actor MigrationEngine {
         case "computerprestages", "mobiledeviceprestages":
             // further changes need the profileUuid, which lags the write; a
             // 404 just after the create means the PreStage isn't there yet
-            let outcome = try? await Self.poller(timeLimit: .seconds(30)).poll(
-                check: { [dest] () -> String? in
-                    let detail = try await ObjectLister.detail(type, id: destId, on: dest)
-                    guard case .json(let json) = detail,
-                          let uuid = json["profileUuid"] as? String, !uuid.isEmpty else { return nil }
-                    return uuid
-                },
-                isDone: { $0 != nil },
-                isNotReadyYet: { ($0 as? JamfPlatform.APIError)?.status == 404 })
-            if outcome?.isFinished != true {
+            let dest = dest
+            let outcome = try? await watch {
+                try await Self.poller(timeLimit: .seconds(30)).poll(
+                    check: { () -> String? in
+                        let detail = try await ObjectLister.detail(type, id: destId, on: dest)
+                        guard case .json(let json) = detail,
+                              let uuid = json["profileUuid"] as? String, !uuid.isEmpty else { return nil }
+                        return uuid
+                    },
+                    isDone: { $0 != nil },
+                    isNotReadyYet: { ($0 as? JamfPlatform.APIError)?.status == 404 })
+            }
+            if outcome == nil && isCancelled {
+                warnings.append("The PreStage’s profile UUID: " + Self.watchStopped)
+            } else if outcome?.isFinished != true {
                 warnings.append("The PreStage’s profile UUID didn’t appear in time; check the PreStage on the destination.")
             }
 
@@ -472,8 +526,14 @@ actor MigrationEngine {
                 warnings.append("The Blueprint was written but couldn’t be deployed: \(error.localizedDescription)")
                 return
             }
-            let outcome = try? await blueprints.watchDeployment(id: destId, previousStart: previousStart,
-                                                                poller: Self.poller(timeLimit: .seconds(60)))
+            let outcome = try? await watch {
+                try await blueprints.watchDeployment(id: destId, previousStart: previousStart,
+                                                     poller: Self.poller(timeLimit: .seconds(60)))
+            }
+            if outcome == nil && isCancelled {
+                warnings.append("The Blueprint’s deployment was started. " + Self.watchStopped)
+                return
+            }
             switch outcome {
             case .finished(let status)? where status.didSucceed:
                 break
@@ -486,17 +546,24 @@ actor MigrationEngine {
         case "compliancebenchmarks":
             // the benchmark syncs in the background; report a sync that fails.
             // syncState only appears on list entries, not the detail
-            let outcome = try? await Self.poller(timeLimit: .seconds(60)).poll(
-                check: { [dest] () -> Bool? in
-                    let response = try await dest.send(.get, type.api.listPath)
-                    let root = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]
-                    let entries = root["benchmarks"] as? [[String: Any]] ?? []
-                    guard let entry = entries.first(where: { "\($0["id"] ?? "")" == destId }) else { return nil }
-                    let state = "\(entry["syncState"] ?? "")"
-                    if state.localizedCaseInsensitiveContains("FAILED") { return false }
-                    return state.localizedCaseInsensitiveContains("SYNCED") ? true : nil
-                },
-                isDone: { $0 != nil })
+            let dest = dest
+            let outcome = try? await watch {
+                try await Self.poller(timeLimit: .seconds(60)).poll(
+                    check: { () -> Bool? in
+                        let response = try await dest.send(.get, type.api.listPath)
+                        let root = try JSONSerialization.jsonObject(with: response.data) as? [String: Any] ?? [:]
+                        let entries = root["benchmarks"] as? [[String: Any]] ?? []
+                        guard let entry = entries.first(where: { "\($0["id"] ?? "")" == destId }) else { return nil }
+                        let state = "\(entry["syncState"] ?? "")"
+                        if state.localizedCaseInsensitiveContains("FAILED") { return false }
+                        return state.localizedCaseInsensitiveContains("SYNCED") ? true : nil
+                    },
+                    isDone: { $0 != nil })
+            }
+            if outcome == nil && isCancelled {
+                warnings.append("The benchmark’s sync: " + Self.watchStopped)
+                return
+            }
             let synced = outcome?.isFinished == true ? outcome?.value ?? nil : nil
             if synced == false {
                 warnings.append("The benchmark reports syncState FAILED on the destination.")
