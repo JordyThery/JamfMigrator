@@ -83,6 +83,7 @@ final class LiveUITests: JTKitUITestCase {
 
         // 3. Clone Tenant: Connect, Prepare, Preview; then only the test's
         //    two objects stay checked (the tenants hold others).
+        app.activate()
         tap(app.toolbars.buttons["Clone Tenant"].firstMatch, timeout: 20)
         var wizard = app.sheets.firstMatch
         XCTAssertTrue(wizard.waitForExistence(timeout: 10), "The Clone Tenant wizard did not open")
@@ -116,6 +117,7 @@ final class LiveUITests: JTKitUITestCase {
 
         // 4. Run from the wizard, confirmed with exactly the two changes,
         //    then Verify.
+        app.activate()
         tap(app.toolbars.buttons["Clone Tenant"].firstMatch, timeout: 10)
         wizard = app.sheets.firstMatch
         XCTAssertTrue(wizard.waitForExistence(timeout: 10))
@@ -129,6 +131,7 @@ final class LiveUITests: JTKitUITestCase {
         tap(wizard.buttons["Continue to Verify"], timeout: 300)
         waitForNetwork()
         recordLive(step: step("Run in the app: confirmed, finished"), passed: true)
+        app.activate()
         tap(wizard.buttons["Verify"], timeout: 10)
         let clean = anyContaining("Verified: a second run would write nothing.")
         let verified = clean.waitForExistence(timeout: 300)
@@ -210,6 +213,7 @@ final class LiveUITests: JTKitUITestCase {
     /// whose field name could hold a secret is hidden; values are cut to 80
     /// characters (the app's diff already shows secrets as <redacted>).
     private func policyDiffAfterRun(prefix: String, policyName: String) -> (summary: String, rows: [(field: String, source: String, destination: String)]) {
+        app.activate()
         tap(app.toolbars.buttons["Preview"].firstMatch, timeout: 20)
         guard anyContaining("Per Type").waitForExistence(timeout: 300) else { return ("Preview didn't finish", []) }
         waitForNetwork()
@@ -251,6 +255,7 @@ final class LiveUITests: JTKitUITestCase {
     /// Source and Destination from the Connection menu (its Source section
     /// lists every tenant first, then its Destination section).
     private func chooseTenants(source: String, destination: String) {
+        app.activate()
         tap(app.menuBars.menuBarItems["Connection"], timeout: 10)
         tap(app.menuBars.menuItems.matching(NSPredicate(format: "title == %@", source)).element(boundBy: 0), timeout: 10)
         tap(app.menuBars.menuBarItems["Connection"], timeout: 10)
@@ -262,6 +267,7 @@ final class LiveUITests: JTKitUITestCase {
 
     /// Only these object types checked in the sidebar.
     private func selectOnly(_ types: [String]) {
+        app.activate()
         tap(app.links["Uncheck All"].firstMatch, timeout: 20)
         for type in types {
             let box = app.checkBoxes[type].firstMatch
@@ -272,6 +278,8 @@ final class LiveUITests: JTKitUITestCase {
 
     /// Shows a type's objects (the sidebar row, not its checkbox).
     private func openType(_ type: String) {
+        // another app (Xcode) may have come to the front during the run
+        app.activate()
         let row = app.outlines["Sidebar"].outlineRows.containing(.checkBox, identifier: type).firstMatch
         let typeRow = row.exists ? row
             : app.outlines["Sidebar"].outlineRows.containing(NSPredicate(format: "label == %@", type)).firstMatch
