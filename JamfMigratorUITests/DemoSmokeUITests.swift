@@ -238,6 +238,12 @@ final class DemoSmokeUITests: JTKitUITestCase {
         let row = update.exists ? update : app.staticTexts["Contoso Security"].firstMatch
         tap(row, timeout: 10)
         XCTAssertTrue(anyContaining("Differences (source → destination)").waitForExistence(timeout: 10), "No differences for an Update row")
+        // the cells can be read by their identifiers (the live UI test records them)
+        let fields = app.descendants(matching: .any).matching(identifier: "diff-field").allElementsBoundByIndex
+        let destinations = app.descendants(matching: .any).matching(identifier: "diff-destination").allElementsBoundByIndex
+        XCTAssertFalse(fields.isEmpty, "The diff's field cells can't be read")
+        XCTAssertEqual(fields.count, destinations.count, "Every diff row has a destination cell")
+        print("DIFF-CELLS: \(fields.map { ($0.value as? String) ?? $0.label }) / \(destinations.map { ($0.value as? String) ?? $0.label })")
         let field = app.buttons["Field"].firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5), "The differences have no sortable Field column")
         // a table's column header reports itself as not hittable; its middle is

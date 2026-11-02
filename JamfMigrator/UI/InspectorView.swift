@@ -105,12 +105,15 @@ private struct DiffTable: View {
                     .font(.callout.monospaced())
                     .textSelection(.enabled)
                     .help(diff.path)
+                    .accessibilityIdentifier("diff-field")
             }
             TableColumn("Source", value: \.sourceText) { diff in
                 DiffValue(text: diff.source)
+                    .accessibilityIdentifier("diff-source")
             }
             TableColumn("Destination", value: \.destinationText) { diff in
                 DiffValue(text: diff.destination)
+                    .accessibilityIdentifier("diff-destination")
             }
         }
         .tableStyle(.bordered(alternatesRowBackgrounds: true))
