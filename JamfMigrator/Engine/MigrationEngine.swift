@@ -18,6 +18,8 @@ actor MigrationEngine {
     private let export: ExportWriter?
     let secrets: [String: String]
     let mappings: TenantMappings
+    /// The destination's Jamf Pro version, from Preview's permission check.
+    let destinationVersion: String?
     private let progress: (@Sendable (ProgressEvent) -> Void)?
     private let icons: IconMigrator
 
@@ -46,7 +48,9 @@ actor MigrationEngine {
          export: ExportWriter? = nil,
          secrets: [String: String] = [:],
          mappings: TenantMappings = TenantMappings(),
+         destinationVersion: String? = nil,
          progress: (@Sendable (ProgressEvent) -> Void)? = nil) {
+        self.destinationVersion = destinationVersion
         self.source = source
         self.dest = dest
         self.journal = journal
@@ -252,7 +256,7 @@ actor MigrationEngine {
                 inputs: MigrationPlanner.ComparisonInputs(destIdsByName: asPreviewSaw, destNamesById: destNamesById,
                                                           sourceNamesById: sourceNamesById, plannedCreates: plannedCreates,
                                                           secrets: secrets, included: plan.typeKeys, mappings: mappings,
-                                                          unreadable: unreadableLists))
+                                                          unreadable: unreadableLists, destinationVersion: destinationVersion))
             if let change = Self.changeSincePreview(planned: entry, now: now) {
                 stop(type, ref, change)
                 return (.failed(reason: "Not written"), [])
@@ -265,6 +269,7 @@ actor MigrationEngine {
             context.includedTypes = plan.typeKeys
             context.mappings = mappings
             context.unreadableLists = unreadableLists
+            context.destinationVersion = destinationVersion
 
             if let existingDestId {
                 context.action = .update(destId: existingDestId)

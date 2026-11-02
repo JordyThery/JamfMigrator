@@ -387,3 +387,68 @@ final class ReviewFixTests {
         #expect(UserDefaults(suiteName: name)?.object(forKey: "check") == nil)
     }
 }
+
+/// Jamf Pro 11.34.x drops a macOS profile's Self Service notification
+/// settings on save (decided by Jordy on 2026-11-02): Preview and the run
+/// report say so once, on that profile only, for an 11.34.x destination only.
+struct SelfServiceNotificationWarningTests {
+
+    private static let profile = """
+        <os_x_configuration_profile><general><id>3</id><name>Wi-Fi</name><uuid>SRC-UUID</uuid></general>\
+        <self_service><notification>false</notification><notification>Self Service</notification>\
+        <notification_subject>Wi-Fi</notification_subject><notification_message/></self_service>\
+        <payloads>PayloadUUID SRC-UUID</payloads></os_x_configuration_profile>
+        """
+
+    private static let plainProfile = """
+        <os_x_configuration_profile><general><id>3</id><name>Wi-Fi</name><uuid>SRC-UUID</uuid></general>\
+        <self_service><self_service_display_name>Wi-Fi</self_service_display_name></self_service>\
+        <payloads>PayloadUUID SRC-UUID</payloads></os_x_configuration_profile>
+        """
+
+    private func gateway(_ xml: String) -> FakeGateway {
+        FakeGateway { env, method, path, _ in
+            switch (env, method, path) {
+            case ("src", "GET", "/proclassic/osxconfigurationprofiles"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["os_x_configuration_profiles": [["id": 3, "name": "Wi-Fi"]]]))
+            case ("src", "GET", "/proclassic/osxconfigurationprofiles/id/3"):
+                return MockHTTP.Reply(status: 200, data: Data(xml.utf8))
+            case ("dst", "POST", "/proclassic/osxconfigurationprofiles/id/0"):
+                return MockHTTP.Reply(status: 201, data: Data("<os_x_configuration_profile><id>13</id></os_x_configuration_profile>".utf8))
+            default:
+                return nil
+            }
+        }
+    }
+
+    private let warning = ClassicTransformer.selfServiceNotificationsWarning
+
+    @Test("An 11.34.x destination: one warning on the profile's row and in the run report")
+    func warnsForJamfPro1134() async throws {
+        for version in ["11.34.0-t1793383479089", "11.34.0-b.1.t1791987365570", "11.34.2"] {
+            let gateway = gateway(Self.profile)
+            let plan = await MigrationPlanner(source: gateway.source, dest: gateway.dest, destinationVersion: version)
+                .plan(typeKeys: ["osxconfigurationprofiles"])
+            let entry = try #require(plan.entries.first { $0.typeKey == "osxconfigurationprofiles" })
+            #expect(entry.warnings.filter { $0 == warning }.count == 1, "\(version): \(entry.warnings)")
+
+            let report = await MigrationEngine(source: gateway.source, dest: gateway.dest, journal: makeJournal(),
+                                               destinationVersion: version)
+                .run(plan, including: plan.runnableIds)
+            #expect(report.entries.first?.status == .created(destId: "13"))
+            #expect(report.entries.first?.warnings.filter { $0 == warning }.count == 1, "\(version): \(report.entries.first?.warnings ?? [])")
+        }
+    }
+
+    @Test("No warning for another version, an unknown one, or a profile without notification settings")
+    func noWarningOtherwise() async throws {
+        for (xml, version) in [(Self.profile, "11.33.3-t1793127642444"), (Self.profile, "11.35.0"), (Self.profile, nil),
+                               (Self.plainProfile, "11.34.0-t1793383479089")] as [(String, String?)] {
+            let gateway = gateway(xml)
+            let plan = await MigrationPlanner(source: gateway.source, dest: gateway.dest, destinationVersion: version)
+                .plan(typeKeys: ["osxconfigurationprofiles"])
+            let entry = try #require(plan.entries.first { $0.typeKey == "osxconfigurationprofiles" })
+            #expect(!entry.warnings.contains(warning), "\(String(describing: version)): \(entry.warnings)")
+        }
+    }
+}

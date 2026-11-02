@@ -728,13 +728,15 @@ struct LiveMigrationTests {
         let differences = again.entries.flatMap { entry in
             entry.diff.map { (typeKey: entry.typeKey, field: $0) }
         }
-        // The one known Jamf difference, accepted only on a Jamf Pro 11.34.0
-        // beta destination (decided by Jordy on 2026-10-28): the beta drops a
-        // profile's Self Service notification settings on save; the app sends
-        // them. Anything else must match. Recheck when 11.34 is released.
+        // The one known Jamf difference, accepted only on a Jamf Pro 11.34.x
+        // destination (decided by Jordy on 2026-10-28 for the 11.34.0 beta,
+        // widened to 11.34.x on 2026-11-02 as the 11.34.0 release does the
+        // same): it drops a profile's Self Service notification settings on
+        // save; the app sends them. Anything else must match. Recheck with
+        // every 11.34.x and 11.35 (WATCHLIST.md).
         let version = await Preflight.check(destination.api).version ?? ""
         let betaQuirk = { (difference: (typeKey: String, field: DiffEntry)) -> Bool in
-            version.hasPrefix("11.34.0-b") && difference.typeKey == "osxconfigurationprofiles"
+            ClassicTransformer.dropsSelfServiceNotifications(version) && difference.typeKey == "osxconfigurationprofiles"
                 && difference.field.path == "os_x_configuration_profile/self_service/notification"
                 && difference.field.destination == nil
         }
@@ -756,7 +758,7 @@ struct LiveMigrationTests {
                            + describe(unexpected)).joined(separator: "; "))
         if !accepted.isEmpty {
             run.record(step: step("known Jamf difference accepted"), passed: true,
-                       note: "Jamf Pro \(version) (beta) drops the profile's Self Service notification settings on save; the app sent them: \(describe(accepted).joined(separator: "; "))")
+                       note: "Jamf Pro \(version) drops the profile's Self Service notification settings on save; the app sent them: \(describe(accepted).joined(separator: "; "))")
         }
         try require("Verify made no write", fence.refusals.isEmpty && sourceNetwork.refusals.isEmpty)
 
@@ -775,7 +777,7 @@ struct LiveMigrationTests {
         try require("a second Preview shows Unchanged and its Run writes nothing",
                     onlyQuirk && second.entries.count == wanted.count && nothing.entries.isEmpty
                         && nothing.stopReason == nil && fence.writes == writesBefore && fence.refusals.isEmpty,
-                    note: describePlan(second) + (secondDiffers.isEmpty ? "" : "; left unchecked (accepted 11.34 beta difference): \(secondDiffers.map(\.name))"))
+                    note: describePlan(second) + (secondDiffers.isEmpty ? "" : "; left unchecked (accepted Jamf Pro 11.34 difference): \(secondDiffers.map(\.name))"))
 
         // 7. Remove the objects from both tenants.
         let problems = await destination.removeOutstanding(run) + (await source.removeOutstanding(run))

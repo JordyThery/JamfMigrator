@@ -19,6 +19,8 @@ actor MigrationPlanner {
     private let secrets: [String: String]
     private let mappings: TenantMappings
     private let progress: (@Sendable (String) -> Void)?
+    /// The destination's Jamf Pro version, from the permission check.
+    private let destinationVersion: String?
 
     /// Real destination lookups per registry key.
     private var destIdsByName = [String: [String: String]]()
@@ -39,11 +41,13 @@ actor MigrationPlanner {
          dest: JamfPlatform.Client,
          secrets: [String: String] = [:],
          mappings: TenantMappings = TenantMappings(),
+         destinationVersion: String? = nil,
          progress: (@Sendable (String) -> Void)? = nil) {
         self.source = source
         self.dest = dest
         self.secrets = secrets
         self.mappings = mappings
+        self.destinationVersion = destinationVersion
         self.progress = progress
     }
 
@@ -126,7 +130,7 @@ actor MigrationPlanner {
                                                          sourceNamesById: sourceNamesById,
                                                          plannedCreates: Self.creates(in: plannedNames, existing: destIdsByName),
                                                          secrets: secrets, included: included, mappings: mappings,
-                                                         unreadable: unreadableLists))
+                                                         unreadable: unreadableLists, destinationVersion: destinationVersion))
         } catch {
             var entry = ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
                                    change: .blocked(reason: error.localizedDescription))
@@ -162,6 +166,8 @@ actor MigrationPlanner {
         var mappings: TenantMappings
         /// Dependency lists the type may do without that couldn't be read.
         var unreadable: [String: String] = [:]
+        /// The destination's Jamf Pro version, when known.
+        var destinationVersion: String? = nil
     }
 
     /// Whether `type` can be planned without the `dependency` list: only
@@ -198,6 +204,7 @@ actor MigrationPlanner {
         context.mappings = inputs.mappings
         context.plannedReferences = references
         context.unreadableLists = inputs.unreadable
+        context.destinationVersion = inputs.destinationVersion
 
         if let existingDestId {
             context.action = .update(destId: existingDestId)

@@ -11,6 +11,27 @@ import Foundation
 enum ClassicTransformer {
 
     /// Rewrites a source object's Classic XML for the destination.
+    /// The warning on a macOS profile with Self Service notification
+    /// settings copied to a Jamf Pro 11.34.x destination.
+    static let selfServiceNotificationsWarning =
+        "Jamf Pro 11.34 doesn’t keep Self Service notification settings; set them in Jamf Pro after copying."
+
+    /// Whether a destination of this Jamf Pro version drops a macOS
+    /// profile's Self Service notification settings on save: 11.34.x
+    /// (seen on the 11.34.0 beta and release; see WATCHLIST.md).
+    static func dropsSelfServiceNotifications(_ version: String?) -> Bool {
+        guard let version else { return false }
+        return version.hasPrefix("11.34.")
+    }
+
+    /// Whether the profile's Self Service section has notification settings.
+    static func hasSelfServiceNotifications(_ xml: String) -> Bool {
+        let selfService = ClassicXML.value(of: "self_service", in: xml)
+        return ["notification", "notification_subject", "notification_message"].contains {
+            !ClassicXML.value(of: $0, in: selfService).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+
     static func transform(type: ObjectType, xml: String, context: TransformContext) -> TransformOutcome {
         var out = xml
         var warnings = [String]()
@@ -95,6 +116,12 @@ enum ClassicTransformer {
             if type.key == "osxconfigurationprofiles",
                ClassicXML.value(of: "payloads", in: out).range(of: "com.apple.security.FDERecoveryKeyEscrow", options: .caseInsensitive) != nil {
                 return .blocked(reason: "FileVault payloads aren’t migrated and must be recreated manually.")
+            }
+            // Jamf Pro 11.34 drops these on save (decided by Jordy on 2026-11-02:
+            // say so on the row and in the run report)
+            if type.key == "osxconfigurationprofiles", Self.dropsSelfServiceNotifications(context.destinationVersion),
+               Self.hasSelfServiceNotifications(xml) {
+                warnings.append(Self.selfServiceNotificationsWarning)
             }
             // double-encoded & in profile names breaks the payload
             out = out.replacingOccurrences(of: "&amp;amp;", with: "%26;")

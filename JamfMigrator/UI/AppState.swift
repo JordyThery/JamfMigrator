@@ -605,7 +605,8 @@ final class AppState {
             } else if let sourceTenant {
                 let source = tenantStore.client(for: sourceTenant)
                 let preflight = await Preflight.run(source: source, dest: dest, typeKeys: typeKeys)
-                let planner = MigrationPlanner(source: source, dest: dest, secrets: secrets, mappings: mappings, progress: progress)
+                let planner = MigrationPlanner(source: source, dest: dest, secrets: secrets, mappings: mappings,
+                                               destinationVersion: preflight.destination.version, progress: progress)
                 let plan = await planner.plan(typeKeys: typeKeys)
                 guard !Task.isCancelled, self.mode == mode else { return }
                 self.preflight = preflight
@@ -690,7 +691,8 @@ final class AppState {
             let source = tenantStore.client(for: sourceTenant)
             let export = exportWriterIfEnabled()
             let engine = MigrationEngine(source: source, dest: dest, journal: journal,
-                                         export: export, secrets: secrets, mappings: mappings, progress: progress)
+                                         export: export, secrets: secrets, mappings: mappings,
+                                         destinationVersion: preflight?.destination.version, progress: progress)
             activeMigration = engine
             runTask = Task { [weak self] in
                 let report = await engine.run(plan, including: including)
