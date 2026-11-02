@@ -29,9 +29,10 @@
 - Opening Settings › Secrets no longer saves the stored passwords again.
 - Self Service icons are copied also when their address redirects to another
   secure (https) address.
-- Jamf Pro 11.34 doesn’t keep a macOS profile’s Self Service notification
-  settings: Preview and the run report now say so on each such profile copied
-  to an 11.34 server, so you can set them in Jamf Pro after copying.
+- Jamf Pro 11.34 doesn’t keep the Self Service notification settings of
+  policies and macOS profiles: when a copied policy or profile has Self
+  Service notifications turned on, Preview and the run report say so for an
+  11.34 server, so you can set them in Jamf Pro after copying.
 - The app follows the Mac’s Light or Dark appearance; Settings no longer has
   an Appearance choice or a General tab.
 - The delete-mode banner names the tenant and has a Switch to Copy button;

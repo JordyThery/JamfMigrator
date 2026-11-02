@@ -388,33 +388,48 @@ final class ReviewFixTests {
     }
 }
 
-/// Jamf Pro 11.34.x drops a macOS profile's Self Service notification
-/// settings on save (decided by Jordy on 2026-11-02): Preview and the run
-/// report say so once, on that profile only, for an 11.34.x destination only.
+/// Jamf Pro 11.34.x drops the Self Service notification settings of a
+/// policy or macOS profile on save (decided by Jordy on 2026-11-02): Preview
+/// and the run report say so once, only when the source has notifications
+/// turned on, and only for an 11.34.x destination.
 struct SelfServiceNotificationWarningTests {
 
-    private static let profile = """
-        <os_x_configuration_profile><general><id>3</id><name>Wi-Fi</name><uuid>SRC-UUID</uuid></general>\
-        <self_service><notification>false</notification><notification>Self Service</notification>\
-        <notification_subject>Wi-Fi</notification_subject><notification_message/></self_service>\
-        <payloads>PayloadUUID SRC-UUID</payloads></os_x_configuration_profile>
-        """
+    /// Turned on: true, or a subject or message. Jamf's defaults: false,
+    /// type "Self Service", nothing else.
+    private static func profile(_ selfService: String) -> String {
+        "<os_x_configuration_profile><general><id>3</id><name>Wi-Fi</name><uuid>SRC-UUID</uuid></general>"
+            + "<self_service>\(selfService)</self_service><payloads>PayloadUUID SRC-UUID</payloads></os_x_configuration_profile>"
+    }
 
-    private static let plainProfile = """
-        <os_x_configuration_profile><general><id>3</id><name>Wi-Fi</name><uuid>SRC-UUID</uuid></general>\
-        <self_service><self_service_display_name>Wi-Fi</self_service_display_name></self_service>\
-        <payloads>PayloadUUID SRC-UUID</payloads></os_x_configuration_profile>
-        """
+    private static func policy(_ selfService: String) -> String {
+        "<policy><general><id>8</id><name>Install Notes</name><enabled>false</enabled></general>"
+            + "<scope><all_computers>false</all_computers></scope>"
+            + "<self_service><use_for_self_service>true</use_for_self_service>\(selfService)</self_service></policy>"
+    }
 
-    private func gateway(_ xml: String) -> FakeGateway {
+    private static let profileOn = profile("<notification>true</notification><notification>Self Service</notification>")
+    private static let profileWorded = profile("<notification>false</notification><notification>Self Service</notification><notification_subject>Wi-Fi</notification_subject>")
+    private static let profileDefaults = profile("<notification>false</notification><notification>Self Service</notification><notification_subject/><notification_message/>")
+    private static let policyOn = policy("<notification>true</notification><notification_type>Self Service</notification_type>")
+    private static let policyWorded = policy("<notification>false</notification><notification_type>Self Service</notification_type><notification_message>Notes is installed</notification_message>")
+    private static let policyDefaults = policy("<notification>false</notification><notification_type>Self Service</notification_type>")
+
+    private enum Kind { case profile, policy }
+
+    private func gateway(_ kind: Kind, _ xml: String) -> FakeGateway {
         FakeGateway { env, method, path, _ in
-            switch (env, method, path) {
-            case ("src", "GET", "/proclassic/osxconfigurationprofiles"):
+            switch (kind, env, method, path) {
+            case (.profile, "src", "GET", "/proclassic/osxconfigurationprofiles"):
                 return MockHTTP.Reply(status: 200, data: MockHTTP.json(["os_x_configuration_profiles": [["id": 3, "name": "Wi-Fi"]]]))
-            case ("src", "GET", "/proclassic/osxconfigurationprofiles/id/3"):
+            case (.profile, "src", "GET", "/proclassic/osxconfigurationprofiles/id/3"),
+                 (.policy, "src", "GET", "/proclassic/policies/id/8"):
                 return MockHTTP.Reply(status: 200, data: Data(xml.utf8))
-            case ("dst", "POST", "/proclassic/osxconfigurationprofiles/id/0"):
+            case (.policy, "src", "GET", "/proclassic/policies"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["policies": [["id": 8, "name": "Install Notes"]]]))
+            case (.profile, "dst", "POST", "/proclassic/osxconfigurationprofiles/id/0"):
                 return MockHTTP.Reply(status: 201, data: Data("<os_x_configuration_profile><id>13</id></os_x_configuration_profile>".utf8))
+            case (.policy, "dst", "POST", "/proclassic/policies/id/0"):
+                return MockHTTP.Reply(status: 201, data: Data("<policy><id>18</id></policy>".utf8))
             default:
                 return nil
             }
@@ -423,32 +438,42 @@ struct SelfServiceNotificationWarningTests {
 
     private let warning = ClassicTransformer.selfServiceNotificationsWarning
 
-    @Test("An 11.34.x destination: one warning on the profile's row and in the run report")
-    func warnsForJamfPro1134() async throws {
-        for version in ["11.34.0-t1793383479089", "11.34.0-b.1.t1791987365570", "11.34.2"] {
-            let gateway = gateway(Self.profile)
-            let plan = await MigrationPlanner(source: gateway.source, dest: gateway.dest, destinationVersion: version)
-                .plan(typeKeys: ["osxconfigurationprofiles"])
-            let entry = try #require(plan.entries.first { $0.typeKey == "osxconfigurationprofiles" })
-            #expect(entry.warnings.filter { $0 == warning }.count == 1, "\(version): \(entry.warnings)")
+    private func typeKey(_ kind: Kind) -> String { kind == .profile ? "osxconfigurationprofiles" : "policies" }
 
-            let report = await MigrationEngine(source: gateway.source, dest: gateway.dest, journal: makeJournal(),
-                                               destinationVersion: version)
-                .run(plan, including: plan.runnableIds)
-            #expect(report.entries.first?.status == .created(destId: "13"))
-            #expect(report.entries.first?.warnings.filter { $0 == warning }.count == 1, "\(version): \(report.entries.first?.warnings ?? [])")
+    @Test("Notifications on, to an 11.34.x destination: one warning on the row and in the run report, for a policy and a profile")
+    func warnsWhenNotificationsAreOn() async throws {
+        let cases: [(Kind, String)] = [(.profile, Self.profileOn), (.profile, Self.profileWorded),
+                                       (.policy, Self.policyOn), (.policy, Self.policyWorded)]
+        for (kind, xml) in cases {
+            for version in ["11.34.0-t1793383479089", "11.34.0-b.1.t1791987365570", "11.34.2"] {
+                let gateway = gateway(kind, xml)
+                let plan = await MigrationPlanner(source: gateway.source, dest: gateway.dest, destinationVersion: version)
+                    .plan(typeKeys: [typeKey(kind)])
+                let entry = try #require(plan.entries.first { $0.typeKey == typeKey(kind) })
+                #expect(entry.warnings.filter { $0 == warning }.count == 1, "\(kind) \(version): \(entry.warnings)")
+
+                let report = await MigrationEngine(source: gateway.source, dest: gateway.dest, journal: makeJournal(),
+                                                   destinationVersion: version)
+                    .run(plan, including: plan.runnableIds)
+                #expect(report.entries.first?.warnings.filter { $0 == warning }.count == 1,
+                        "\(kind) \(version): \(report.entries.first?.status as Any) \(report.entries.first?.warnings ?? [])")
+            }
         }
     }
 
-    @Test("No warning for another version, an unknown one, or a profile without notification settings")
+    @Test("Jamf's defaults (notifications off), another version or an unknown one: no warning, for a policy and a profile")
     func noWarningOtherwise() async throws {
-        for (xml, version) in [(Self.profile, "11.33.3-t1793127642444"), (Self.profile, "11.35.0"), (Self.profile, nil),
-                               (Self.plainProfile, "11.34.0-t1793383479089")] as [(String, String?)] {
-            let gateway = gateway(xml)
+        let cases: [(Kind, String, String?)] = [
+            (.profile, Self.profileDefaults, "11.34.0-t1793383479089"), (.policy, Self.policyDefaults, "11.34.0-t1793383479089"),
+            (.profile, Self.profileOn, "11.33.3-t1793127642444"), (.policy, Self.policyOn, "11.35.0"),
+            (.profile, Self.profileOn, nil), (.policy, Self.policyOn, nil),
+        ]
+        for (kind, xml, version) in cases {
+            let gateway = gateway(kind, xml)
             let plan = await MigrationPlanner(source: gateway.source, dest: gateway.dest, destinationVersion: version)
-                .plan(typeKeys: ["osxconfigurationprofiles"])
-            let entry = try #require(plan.entries.first { $0.typeKey == "osxconfigurationprofiles" })
-            #expect(!entry.warnings.contains(warning), "\(String(describing: version)): \(entry.warnings)")
+                .plan(typeKeys: [typeKey(kind)])
+            let entry = try #require(plan.entries.first { $0.typeKey == typeKey(kind) })
+            #expect(!entry.warnings.contains(warning), "\(kind) \(String(describing: version)): \(entry.warnings)")
         }
     }
 }

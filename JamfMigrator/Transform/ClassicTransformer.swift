@@ -11,25 +11,34 @@ import Foundation
 enum ClassicTransformer {
 
     /// Rewrites a source object's Classic XML for the destination.
-    /// The warning on a macOS profile with Self Service notification
-    /// settings copied to a Jamf Pro 11.34.x destination.
+    /// The warning on a policy or macOS profile with Self Service
+    /// notifications turned on, copied to a Jamf Pro 11.34.x destination.
     static let selfServiceNotificationsWarning =
         "Jamf Pro 11.34 doesn’t keep Self Service notification settings; set them in Jamf Pro after copying."
 
-    /// Whether a destination of this Jamf Pro version drops a macOS
-    /// profile's Self Service notification settings on save: 11.34.x
-    /// (seen on the 11.34.0 beta and release; see WATCHLIST.md).
+    /// Whether a destination of this Jamf Pro version drops the Self
+    /// Service notification settings of a policy or macOS profile on save:
+    /// 11.34.x (seen on the 11.34.0 beta and release; see WATCHLIST.md).
     static func dropsSelfServiceNotifications(_ version: String?) -> Bool {
         guard let version else { return false }
         return version.hasPrefix("11.34.")
     }
 
-    /// Whether the profile's Self Service section has notification settings.
+    /// Whether the Self Service section has notifications turned on: a
+    /// `notification` that is true, or a notification subject or message.
+    /// Jamf's defaults (notification false, type "Self Service", nothing
+    /// else) are off: an 11.34 destination dropping them loses nothing
+    /// (decided by Jordy on 2026-11-02). A profile repeats `notification`
+    /// (on/off, then the type), so every one is read.
     static func hasSelfServiceNotifications(_ xml: String) -> Bool {
         let selfService = ClassicXML.value(of: "self_service", in: xml)
-        return ["notification", "notification_subject", "notification_message"].contains {
-            !ClassicXML.value(of: $0, in: selfService).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let turnedOn = ClassicXML.values(of: "notification", in: selfService).contains {
+            ClassicXML.unescape($0).trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "true"
         }
+        let worded = ["notification_subject", "notification_message"].contains {
+            !ClassicXML.text(of: $0, in: selfService).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        return turnedOn || worded
     }
 
     static func transform(type: ObjectType, xml: String, context: TransformContext) -> TransformOutcome {
@@ -118,7 +127,7 @@ enum ClassicTransformer {
                 return .blocked(reason: "FileVault payloads aren’t migrated and must be recreated manually.")
             }
             // Jamf Pro 11.34 drops these on save (decided by Jordy on 2026-11-02:
-            // say so on the row and in the run report)
+            // say so on the row and in the run report when they're on)
             if type.key == "osxconfigurationprofiles", Self.dropsSelfServiceNotifications(context.destinationVersion),
                Self.hasSelfServiceNotifications(xml) {
                 warnings.append(Self.selfServiceNotificationsWarning)
@@ -148,6 +157,12 @@ enum ClassicTransformer {
             out = ClassicXML.strippingTag("attachments", from: out)
 
         case "policies", "macapplications", "mobiledeviceapplications":
+            // Jamf Pro 11.34 drops a policy's Self Service notification settings
+            // on save, as a profile's (decided by Jordy on 2026-11-02)
+            if type.key == "policies", Self.dropsSelfServiceNotifications(context.destinationVersion),
+               Self.hasSelfServiceNotifications(xml) {
+                warnings.append(Self.selfServiceNotificationsWarning)
+            }
             // self-service icon: captured here, copied by the engine after the write
             if out.contains("</self_service_icon>") {
                 let iconXml = ClassicXML.value(of: "self_service_icon", in: xml)
