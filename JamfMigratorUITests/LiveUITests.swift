@@ -1,3 +1,4 @@
+import AppKit
 import XCTest
 import JTKitLiveCheck
 import JTKitUITestSupport
@@ -270,6 +271,7 @@ final class LiveUITests: JTKitUITestCase {
         for type in types {
             let box = app.checkBoxes[type].firstMatch
             scrollIntoView(box)
+            keepClearOfBottom(box, in: app.outlines["Sidebar"])
             tap(box, timeout: 10)
         }
     }
@@ -284,6 +286,9 @@ final class LiveUITests: JTKitUITestCase {
         XCTAssertTrue(typeRow.waitForExistence(timeout: 10), "No \(type) row")
         // the sidebar may have scrolled past it (choosing the types)
         scrollIntoView(typeRow)
+        // and keep it clear of the screen's bottom edge, where a hidden Dock
+        // appears under the pointer and takes the click
+        keepClearOfBottom(typeRow, in: app.outlines["Sidebar"])
         let title = app.windows.firstMatch.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", type, type)).firstMatch
         // the row, not its checkbox's label: the far end, or (a long counts
         // text there) the empty space mid-row
@@ -292,6 +297,20 @@ final class LiveUITests: JTKitUITestCase {
             _ = title.waitForExistence(timeout: 5)
         }
         XCTAssertTrue(title.exists, "\(type) didn't open")
+    }
+
+    /// Scrolls `list` until `element` is at least 200 points above the bottom
+    /// of the screen.
+    private func keepClearOfBottom(_ element: XCUIElement, in list: XCUIElement) {
+        // UI test frames count from the top of the screen
+        let bottom = NSScreen.main?.frame.height ?? 1000
+        var direction: CGFloat = -120
+        for _ in 0..<12 where element.exists && element.frame.maxY > bottom - 200 {
+            let before = element.frame.minY
+            list.scroll(byDeltaX: 0, deltaY: direction)
+            // the other way, if that moved it down
+            if element.frame.minY > before { direction = -direction }
+        }
     }
 
     /// The wizard's "Continue" (or "Continue Anyway"), not "Continue to Verify".
