@@ -8,6 +8,20 @@ Jamf Migrator started as a fork of [Replicator](https://github.com/jamf/Replicat
 by Jamf Professional Services (MIT license) and has been rewritten as a SwiftUI
 app for macOS 26 on top of the Jamf Platform API and the Jamf Pro APIs.
 
+## Requirements
+
+- macOS 26 or later
+- Per tenant: a Jamf Platform API integration from Jamf Account, or a Jamf Pro
+  API client or user account, with the permissions in
+  [Permissions](docs/PERMISSIONS.md)
+
+## Install
+
+Download `JamfMigrator-<version>.zip` from
+[Releases](https://github.com/JordyThery/JamfMigrator/releases/latest), unzip
+it, and move Jamf Migrator to Applications. It's signed with Developer ID and
+notarized.
+
 ## Connections
 
 Each tenant is added in **Settings › Connections** with one of two connection
@@ -26,7 +40,8 @@ destination and the reverse. **Blueprints and Compliance Benchmarks exist only
 behind the Jamf Platform API gateway**; while a selected tenant connects
 directly to Jamf Pro, those types are grayed out and left out of Preview.
 
-Client secrets and passwords are stored in the macOS Keychain, never on disk.
+Client secrets and passwords are stored in the macOS Keychain (service
+`JamfMigrator-tenant`), never on disk.
 
 ### Permissions
 
@@ -72,7 +87,8 @@ is off on the destination stays off.
 
 ### What can’t be copied (the manual checklist)
 
-The Clone Tenant wizard shows this list before every clone:
+Before every clone, the Clone Tenant wizard lists the tokens, certificates,
+API roles and clients, and package files below.
 
 - **ADE tokens**: create one per tenant in Apple Business or Apple School
   Manager with the destination’s public key. The wizard maps the instances.
@@ -114,8 +130,8 @@ The Clone Tenant wizard shows this list before every clone:
 Every run, also a stopped one, saves a report to the **Run Reports** folder;
 **Show Report in Finder** in the run window opens it. Turn on **Settings ›
 Export** to save every source payload and every written payload per run;
-passwords, Settings › Secrets values and license serial numbers are replaced
-by `<redacted>` in those files.
+passwords, password hashes, Settings › Secrets values and license serial
+numbers are replaced by `<redacted>` in those files.
 
 ### Clone Tenant
 
@@ -126,10 +142,12 @@ again and shows that a second run would write nothing.
 
 ### Delete mode and Wipe Tenant
 
-**⌘D** turns on delete mode for the session (the app always starts in Copy):
-a red banner appears, Run turns red, and every run confirms with the tenant
-name and counts. The red **Wipe Tenant** button deletes every selected object
-type from a tenant behind gates that must all pass, in order: the tenant isn’t
+**⌘D**, **Migration › Enter Delete Mode** or the toolbar's Copy/Delete switch
+turns on delete mode for the session (the app always starts in Copy): a red
+banner names the tenant and offers **Switch to Copy**, Run turns red, and every
+run confirms with the tenant name and counts. In delete mode the toolbar's red
+**Wipe Tenant** button deletes every selected object type from a tenant behind
+gates that must all pass, in order: delete mode is on, the tenant isn’t
 Protected, a Preview, a verified backup of the selected types (skippable only
 through an extra confirmation), and typing the tenant’s name. Deletes run in
 reverse dependency order, retry objects held by dependencies, and end with a
@@ -139,7 +157,8 @@ access and the Administrator privilege set.
 
 ### Demo Mode
 
-**Try Demo Mode** in the sidebar (or **Connection › Demo Mode**) swaps your
+**Try Demo Mode** in the sidebar (shown while no tenants are added) or
+**Connection › Demo Mode** swaps your
 tenants for two made-up ones, Contoso Source (Demo) and Contoso Destination
 (Demo), so you can try every flow without a Jamf tenant. Demo Mode never reads
 your Keychain or Settings › Secrets, and its run reports, journals, backups and
@@ -158,6 +177,14 @@ Migrator › Check for Updates…** checks on demand; **Settings › Updates** t
 the daily check off. The app is sandboxed and can’t replace itself: save the
 zip, quit, and swap the app in Applications.
 
+### Menus
+
+- **Connection**: Source and Destination (or the tenant in delete mode),
+  **Edit Tenants…** and **Demo Mode**.
+- **Migration**: **Enter Delete Mode** / **Leave Delete Mode** (⌘D),
+  **Preview** (⇧⌘P), **Run** (⌘R), **Clone Tenant…** (in Copy) and **Wipe
+  Tenant…** (in delete mode).
+
 ### Settings
 
 - **Connections**: your tenants and whether each one is Protected.
@@ -170,9 +197,39 @@ zip, quit, and swap the app in Applications.
 
 - **Activity log**: **Window › Activity Log** (⇧⌘L) shows every sign-in,
   request and run problem as it happens, with secrets removed. It is kept in
-  memory; export it from that window for a bug report.
+  memory; **File › Export Activity Log for Bug Report…** saves it with
+  identifiers masked, **Export Activity Log Unmasked…** without.
 - Tenants, journals, backups, exports and run reports:
   `~/Library/Containers/be.jordythery.jamfmigrator/Data/Library/Application Support/JamfMigrator/`
+- Settings (the Source and Destination, the type selection, Settings › Export
+  and the mappings) are kept in the app's preferences; secrets in the Keychain.
+
+## Network and sandbox
+
+The app contacts only:
+
+- `us.api.jamfcloud.com`, `eu.api.jamfcloud.com` or `apac.api.jamfcloud.com`
+  (the tenant's region) for the Jamf Platform API
+- each tenant's own Jamf Pro server, for a direct connection
+- `api.github.com` and GitHub's release downloads, for the update check
+- the Self Service icon addresses the source tenant returns (Jamf's icon
+  CDN), over https only, to copy icons
+
+The app is sandboxed: outgoing network connections, the Downloads folder, and
+files you choose in an Open or Save panel.
+
+## Building
+
+Open `JamfMigrator.xcodeproj` in Xcode 26 or later and build the
+`JamfMigrator` scheme (⌘R); ⌘U runs the unit tests. The app’s only package
+dependency is [JTKit](https://github.com/JordyThery/JTKit), the shared package
+of these apps. Resolving it also downloads Microsoft’s MSAL, which JTKit uses
+for Intune sign-in and which this app doesn’t link or ship.
+
+## Support
+
+If Jamf Migrator saves you time, you can
+[buy me a coffee](https://buymeacoffee.com/jordythery). ☕️
 
 ## Disclaimer
 
