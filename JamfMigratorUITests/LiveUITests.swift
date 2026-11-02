@@ -213,8 +213,17 @@ final class LiveUITests: JTKitUITestCase {
         }
         let secretWords = ["password", "passwd", "secret", "token", "key", "credential"]
         var lines = ["Preview: \(outcome)"]
-        for tableRow in app.tables.firstMatch.tableRows.allElementsBoundByIndex {
-            let texts = tableRow.staticTexts.allElementsBoundByIndex.map { (($0.value as? String) ?? $0.label) }
+        let table = app.tables.firstMatch
+        var rows = table.tableRows.allElementsBoundByIndex.map { row in
+            row.staticTexts.allElementsBoundByIndex.map { (($0.value as? String) ?? $0.label) }
+        }
+        if rows.isEmpty {
+            // a SwiftUI table may not expose its rows: its texts, three per row
+            let texts = table.staticTexts.allElementsBoundByIndex.map { (($0.value as? String) ?? $0.label) }
+                .filter { !["Field", "Source", "Destination"].contains($0) }
+            rows = stride(from: 0, to: texts.count, by: 3).map { Array(texts[$0..<min($0 + 3, texts.count)]) }
+        }
+        for texts in rows {
             guard let field = texts.first else { continue }
             let hidden = secretWords.contains { field.lowercased().contains($0) }
             let values = texts.dropFirst().map { hidden ? "<hidden>" : String($0.prefix(80)) }
