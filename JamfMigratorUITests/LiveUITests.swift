@@ -253,9 +253,14 @@ final class LiveUITests: JTKitUITestCase {
         XCTAssertTrue(typeRow.waitForExistence(timeout: 10), "No \(type) row")
         // the sidebar may have scrolled past it (choosing the types)
         scrollIntoView(typeRow)
-        typeRow.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.5)).click()
-        XCTAssertTrue(app.windows.firstMatch.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", type, type))
-                        .firstMatch.waitForExistence(timeout: 10), "\(type) didn't open")
+        let title = app.windows.firstMatch.staticTexts.matching(NSPredicate(format: "value == %@ OR label == %@", type, type)).firstMatch
+        // the row, not its checkbox's label: the far end, or (a long counts
+        // text there) the empty space mid-row
+        for spot in [0.98, 0.6, 0.75] where !title.exists {
+            typeRow.coordinate(withNormalizedOffset: CGVector(dx: spot, dy: 0.5)).click()
+            _ = title.waitForExistence(timeout: 5)
+        }
+        XCTAssertTrue(title.exists, "\(type) didn't open")
     }
 
     /// The wizard's "Continue" (or "Continue Anyway"), not "Continue to Verify".
