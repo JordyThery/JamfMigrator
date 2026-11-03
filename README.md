@@ -1,8 +1,20 @@
+<p align="center">
+  <img src="docs/icon.png" width="128" alt="Jamf Migrator app icon">
+</p>
+
 # Jamf Migrator
+
+*Copy a Jamf tenant to another, or any selection down to one object.*
+
+[![Latest release](https://img.shields.io/github/v/release/JordyThery/JamfMigrator?label=release)](https://github.com/JordyThery/JamfMigrator/releases/latest)
+![macOS 26+](https://img.shields.io/badge/macOS-26%2B-blue)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 A macOS app that copies a source Jamf tenant to a destination tenant — or any
 selection down to a single object — with a read-only Preview, a resumable run,
 and a gated wipe.
+
+![Preview in Demo Mode: object types in the sidebar, the categories to create, update or leave unchanged with their checkboxes, and the source-to-destination differences of the selected category](docs/screenshot-preview.png)
 
 Jamf Migrator started as a fork of [Replicator](https://github.com/jamf/Replicator)
 by Jamf Professional Services (MIT license) and has been rewritten as a SwiftUI
@@ -126,6 +138,8 @@ API roles and clients, and package files below.
    the mappings changed since Preview, Run stops before writing it and asks for
    a new Preview. Stop a run or lose the connection, and **Resume Run** carries
    on with the same plan.
+
+![The Run confirmation: copy to the destination tenant, with the counts to create, update, leave unchanged and blocked, and a Copy 2 Changes button](docs/screenshot-confirm.png)
 
 Every run, also a stopped one, saves a report to the **Run Reports** folder;
 **Show Report in Finder** in the run window opens it. Turn on **Settings ›
