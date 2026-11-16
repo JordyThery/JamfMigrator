@@ -1,6 +1,6 @@
 # Change log
 
-## Unreleased
+## v1.2.1 (2026-11-16)
 - Preview and Verify no longer report a policy or macOS profile as different
   only because Jamf Pro left out its Self Service notification settings while
   notifications are off.
