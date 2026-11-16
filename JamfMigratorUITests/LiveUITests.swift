@@ -135,31 +135,21 @@ final class LiveUITests: JTKitUITestCase {
         app.activate()
         tap(wizard.buttons["Verify"], timeout: 10)
         let clean = anyContaining("Verified: a second run would write nothing.")
+        // Anything must match: Jamf Pro 11.34 and 11.35 drop a policy's Self
+        // Service notification settings, but the test policy keeps Jamf's
+        // defaults (off), which the app compares as absent (decided by Jordy
+        // on 2026-11-16; WATCHLIST.md).
         let verified = clean.waitForExistence(timeout: 300)
-        // Verify's only discrepancy may be the policy (see below)
-        let onlyThePolicy = !verified && anyContaining("1 object differs or is missing.").exists
-            && anyContaining("\(policyName): differs from the source").exists
         tap(wizard.buttons["Done"], timeout: 10)
         waitForNetwork()
-        var accepted = false
         if !verified {
             // what differs, field by field, from a new Preview's inspector
             let diff = policyDiffAfterRun(prefix: prefix, policyName: policyName)
-            // The one known Jamf difference for a policy, accepted only on a
-            // Jamf Pro 11.34.x destination (decided by Jordy on 2026-11-02, as
-            // for macOS profiles): 11.34 drops a policy's Self Service
-            // notification settings on save; the app sends them. Anything
-            // else must match. Recheck with every 11.34.x and 11.35.
             let version = (try? liveCall { try await destinationRaw.json("pro/v1/jamf-pro-version") })?["version"] as? String ?? ""
-            let knownFields: Set<String> = ["policy/self_service/notification", "policy/self_service/notification_type"]
-            accepted = onlyThePolicy && version.hasPrefix("11.34.") && !diff.rows.isEmpty
-                && diff.rows.allSatisfy { knownFields.contains($0.field) && $0.destination == "Not set" }
-            recordLive(step: step(accepted ? "known Jamf difference accepted" : "the copied policy's field-level diff after Run (source → destination)"),
-                       passed: accepted,
-                       note: (accepted ? "Jamf Pro \(version) drops the policy's Self Service notification settings on save; the app sent them: " : "Jamf Pro \(version): ")
-                           + diff.summary)
+            recordLive(step: step("the copied policy's field-level diff after Run (source → destination)"), passed: false,
+                       note: "Jamf Pro \(version): " + diff.summary)
         }
-        XCTAssertTrue(verified || accepted, "Verify isn't clean, beyond the accepted Jamf Pro 11.34 difference")
+        XCTAssertTrue(verified, "Verify isn't clean")
 
         // 5. Read back on the destination: all three there, the script and
         //    the policy in the copied category, the policy still off.

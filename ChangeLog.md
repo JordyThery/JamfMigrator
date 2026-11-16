@@ -1,5 +1,14 @@
 # Change log
 
+## Unreleased
+- Preview and Verify no longer report a policy or macOS profile as different
+  only because Jamf Pro left out its Self Service notification settings while
+  notifications are off.
+- The warning about Self Service notification settings that Jamf Pro doesn’t
+  keep now also covers Jamf Pro 11.35.
+- When the Keychain refuses to remove a tenant’s password, Settings keeps the
+  tenant in the list and says so, so you can delete it again.
+
 ## v1.2.0 (2026-11-02)
 - Settings asks to save or discard unsaved tenant changes, the Protected
   switch included, before it closes or another tab opens.

@@ -388,10 +388,12 @@ final class ReviewFixTests {
     }
 }
 
-/// Jamf Pro 11.34.x drops the Self Service notification settings of a
-/// policy or macOS profile on save (decided by Jordy on 2026-11-02): Preview
-/// and the run report say so once, only when the source has notifications
-/// turned on, and only for an 11.34.x destination.
+/// Jamf Pro 11.34.x and 11.35.x drop the Self Service notification settings
+/// of a policy or macOS profile on save (decided by Jordy on 2026-11-02,
+/// widened to 11.35 on 2026-11-16): Preview and the run report say so once,
+/// only when the source has notifications turned on, and only for such a
+/// destination. With notifications off, the fields count as absent when
+/// compared (decided by Jordy on 2026-11-16).
 struct SelfServiceNotificationWarningTests {
 
     /// Turned on: true, or a subject or message. Jamf's defaults: false,
@@ -440,12 +442,12 @@ struct SelfServiceNotificationWarningTests {
 
     private func typeKey(_ kind: Kind) -> String { kind == .profile ? "osxconfigurationprofiles" : "policies" }
 
-    @Test("Notifications on, to an 11.34.x destination: one warning on the row and in the run report, for a policy and a profile")
+    @Test("Notifications on, to an 11.34.x or 11.35.x destination: one warning on the row and in the run report, for a policy and a profile")
     func warnsWhenNotificationsAreOn() async throws {
         let cases: [(Kind, String)] = [(.profile, Self.profileOn), (.profile, Self.profileWorded),
                                        (.policy, Self.policyOn), (.policy, Self.policyWorded)]
         for (kind, xml) in cases {
-            for version in ["11.34.0-t1793383479089", "11.34.0-b.1.t1791987365570", "11.34.2"] {
+            for version in ["11.34.0-t1793383479089", "11.34.0-b.1.t1791987365570", "11.34.2", "11.35.0-b.1.t1794410213471"] {
                 let gateway = gateway(kind, xml)
                 let plan = await MigrationPlanner(source: gateway.source, dest: gateway.dest, destinationVersion: version)
                     .plan(typeKeys: [typeKey(kind)])
@@ -465,7 +467,7 @@ struct SelfServiceNotificationWarningTests {
     func noWarningOtherwise() async throws {
         let cases: [(Kind, String, String?)] = [
             (.profile, Self.profileDefaults, "11.34.0-t1793383479089"), (.policy, Self.policyDefaults, "11.34.0-t1793383479089"),
-            (.profile, Self.profileOn, "11.33.3-t1793127642444"), (.policy, Self.policyOn, "11.35.0"),
+            (.profile, Self.profileOn, "11.33.3-t1793127642444"), (.policy, Self.policyOn, "11.36.0"),
             (.profile, Self.profileOn, nil), (.policy, Self.policyOn, nil),
         ]
         for (kind, xml, version) in cases {
@@ -474,6 +476,68 @@ struct SelfServiceNotificationWarningTests {
                 .plan(typeKeys: [typeKey(kind)])
             let entry = try #require(plan.entries.first { $0.typeKey == typeKey(kind) })
             #expect(!entry.warnings.contains(warning), "\(kind) \(String(describing: version)): \(entry.warnings)")
+        }
+    }
+
+    /// The source against a same-named destination object: Preview's change.
+    private func change(_ kind: Kind, source: String, destination: String) async throws -> PlannedChange {
+        let (list, root) = kind == .profile ? ("/proclassic/osxconfigurationprofiles", "os_x_configuration_profiles")
+                                            : ("/proclassic/policies", "policies")
+        let name = kind == .profile ? "Wi-Fi" : "Install Notes"
+        let gateway = FakeGateway { env, method, path, _ in
+            switch (env, method, path) {
+            case ("src", "GET", list):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json([root: [["id": kind == .profile ? 3 : 8, "name": name]]]))
+            case ("dst", "GET", list):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json([root: [["id": 23, "name": name]]]))
+            case ("src", "GET", list + "/id/\(kind == .profile ? 3 : 8)"):
+                return MockHTTP.Reply(status: 200, data: Data(source.utf8))
+            case ("dst", "GET", list + "/id/23"):
+                return MockHTTP.Reply(status: 200, data: Data(destination.utf8))
+            default:
+                return nil
+            }
+        }
+        let plan = await MigrationPlanner(source: gateway.source, dest: gateway.dest, destinationVersion: "11.35.0-b.1.t1794410213471")
+            .plan(typeKeys: [typeKey(kind)])
+        return try #require(plan.entries.first { $0.typeKey == typeKey(kind) }).change
+    }
+
+    @Test("Notifications off on both sides: Jamf's defaults and missing fields compare as the same, for a policy and a profile")
+    func defaultsAndMissingFieldsAreUnchanged() async throws {
+        let profileWithout = Self.profile("")
+        let profileShown = Self.profile("<self_service_display_name>Wi-Fi</self_service_display_name>")
+        let policyWithout = Self.policy("")
+        let cases: [(Kind, String, String)] = [
+            (.profile, Self.profileDefaults, profileWithout),
+            (.profile, Self.profile("<self_service_display_name>Wi-Fi</self_service_display_name><notification>false</notification><notification>Self Service</notification>"), profileShown),
+            (.profile, Self.profileDefaults, Self.profile("<notification>false</notification><notification>Self Service</notification>")),
+            (.policy, Self.policyDefaults, policyWithout),
+            (.policy, policyWithout, Self.policyDefaults),
+        ]
+        for (kind, source, destination) in cases {
+            let change = try await change(kind, source: source, destination: destination)
+            guard case .unchanged = change else {
+                Issue.record("\(kind): expected Unchanged, got \(change)"); continue
+            }
+        }
+    }
+
+    @Test("Notifications on on one side: the difference still shows, for a policy and a profile")
+    func notificationsOnStillDiffer() async throws {
+        let cases: [(Kind, String, String)] = [
+            (.profile, Self.profileOn, Self.profile("")),
+            (.profile, Self.profileWorded, Self.profileDefaults),
+            (.profile, Self.profileDefaults, Self.profileOn),
+            (.policy, Self.policyOn, Self.policy("")),
+            (.policy, Self.policyWorded, Self.policyDefaults),
+            (.policy, Self.policy(""), Self.policyOn),
+        ]
+        for (kind, source, destination) in cases {
+            let change = try await change(kind, source: source, destination: destination)
+            guard case .update = change else {
+                Issue.record("\(kind): expected Update, got \(change)"); continue
+            }
         }
     }
 }

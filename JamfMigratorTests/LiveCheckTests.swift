@@ -728,56 +728,32 @@ struct LiveMigrationTests {
         let differences = again.entries.flatMap { entry in
             entry.diff.map { (typeKey: entry.typeKey, field: $0) }
         }
-        // The one known Jamf difference, accepted only on a Jamf Pro 11.34.x
-        // destination (decided by Jordy on 2026-10-28 for the 11.34.0 beta,
-        // widened to 11.34.x on 2026-11-02 as the 11.34.0 release does the
-        // same): it drops a profile's Self Service notification settings on
-        // save; the app sends them. Anything else must match. Recheck with
-        // every 11.34.x and 11.35 (WATCHLIST.md).
-        let version = await Preflight.check(destination.api).version ?? ""
-        let betaQuirk = { (difference: (typeKey: String, field: DiffEntry)) -> Bool in
-            ClassicTransformer.dropsSelfServiceNotifications(version) && difference.typeKey == "osxconfigurationprofiles"
-                && difference.field.path == "os_x_configuration_profile/self_service/notification"
-                && difference.field.destination == nil
-        }
-        let accepted = differences.filter(betaQuirk)
-        let unexpected = differences.filter { !betaQuirk($0) }
+        // Anything must match: Jamf Pro 11.34 and 11.35 drop a profile's
+        // Self Service notification settings, but the test profile keeps
+        // Jamf's defaults (off), which the app compares as absent (decided by
+        // Jordy on 2026-11-16; WATCHLIST.md).
         let counted = verify.types.allSatisfy { result in
             result.sourceCount == (limit[result.typeKey]?.count ?? -1) && result.blocked.isEmpty && (result.destCount ?? 0) > 0
                 && result.notChecked == nil
         }
-        // Verify's only discrepancies are profiles whose whole diff is the accepted field
-        let explained = verify.types.allSatisfy { result in
-            result.discrepancies.isEmpty || (result.typeKey == "osxconfigurationprofiles" && !accepted.isEmpty)
-        }
         let describe = { (list: [(typeKey: String, field: DiffEntry)]) in
             list.map { "\($0.typeKey) \($0.field.path): source \(String(($0.field.source ?? "nil").prefix(120))) / destination \(String(($0.field.destination ?? "nil").prefix(120)))" }
         }
-        try require("the app's Verify is clean", explained && unexpected.isEmpty && counted && verify.types.count == limit.count,
+        try require("the app's Verify is clean",
+                    verify.isClean && differences.isEmpty && counted && verify.types.count == limit.count,
                     note: (verify.types.map { "\($0.typeKey): \($0.sourceCount) planned, \($0.discrepancies + $0.blocked)" }
-                           + describe(unexpected)).joined(separator: "; "))
-        if !accepted.isEmpty {
-            run.record(step: step("known Jamf difference accepted"), passed: true,
-                       note: "Jamf Pro \(version) drops the profile's Self Service notification settings on save; the app sent them: \(describe(accepted).joined(separator: "; "))")
-        }
+                           + describe(differences)).joined(separator: "; "))
         try require("Verify made no write", fence.refusals.isEmpty && sourceNetwork.refusals.isEmpty)
 
-        // 6. A second Preview shows everything Unchanged (the profile with only
-        //    the accepted beta field), and its Run writes nothing.
+        // 6. A second Preview shows everything Unchanged, and its Run writes nothing.
         let second = await preview()
-        let secondDiffers = second.entries.filter { if case .unchanged = $0.change { false } else { true } }
-        let onlyQuirk = secondDiffers.allSatisfy { entry in
-            entry.typeKey == "osxconfigurationprofiles" && !entry.diff.isEmpty
-                && entry.diff.allSatisfy { betaQuirk((typeKey: entry.typeKey, field: $0)) }
-        }
-        var ticks = second.runnableIds
-        for entry in secondDiffers { ticks[entry.typeKey]?.remove(entry.objectId) }
+        let allUnchanged = second.entries.allSatisfy { if case .unchanged = $0.change { true } else { false } }
         let writesBefore = fence.writes
-        let nothing = await engine.run(second, including: ticks)
+        let nothing = await engine.run(second, including: second.runnableIds)
         try require("a second Preview shows Unchanged and its Run writes nothing",
-                    onlyQuirk && second.entries.count == wanted.count && nothing.entries.isEmpty
+                    allUnchanged && second.entries.count == wanted.count && nothing.entries.isEmpty
                         && nothing.stopReason == nil && fence.writes == writesBefore && fence.refusals.isEmpty,
-                    note: describePlan(second) + (secondDiffers.isEmpty ? "" : "; left unchecked (accepted Jamf Pro 11.34 difference): \(secondDiffers.map(\.name))"))
+                    note: describePlan(second))
 
         // 7. Remove the objects from both tenants.
         let problems = await destination.removeOutstanding(run) + (await source.removeOutstanding(run))

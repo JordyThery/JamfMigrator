@@ -12,22 +12,55 @@ enum ClassicTransformer {
 
     /// Rewrites a source object's Classic XML for the destination.
     /// The warning on a policy or macOS profile with Self Service
-    /// notifications turned on, copied to a Jamf Pro 11.34.x destination.
+    /// notifications turned on, copied to a destination that drops them.
     static let selfServiceNotificationsWarning =
-        "Jamf Pro 11.34 doesn’t keep Self Service notification settings; set them in Jamf Pro after copying."
+        "This Jamf Pro version doesn’t keep Self Service notification settings; set them in Jamf Pro after copying."
 
     /// Whether a destination of this Jamf Pro version drops the Self
     /// Service notification settings of a policy or macOS profile on save:
-    /// 11.34.x (seen on the 11.34.0 beta and release; see WATCHLIST.md).
+    /// 11.34.x and 11.35.x (seen on the 11.34.0 beta and release and the
+    /// 11.35.0 beta; see WATCHLIST.md).
     static func dropsSelfServiceNotifications(_ version: String?) -> Bool {
         guard let version else { return false }
-        return version.hasPrefix("11.34.")
+        return version.hasPrefix("11.34.") || version.hasPrefix("11.35.")
+    }
+
+    /// The Self Service notification fields of a policy or macOS profile.
+    static let selfServiceNotificationFields = ["notification", "notification_type", "notification_subject", "notification_message"]
+
+    /// A policy or macOS profile as Preview, Run and Verify compare it: with
+    /// notifications off, its notification fields are Jamf's defaults and
+    /// count as absent, as Jamf Pro 11.34 and 11.35 drop or omit them
+    /// (decided by Jordy on 2026-11-16). Each side is judged on its own, so a
+    /// side with notifications on keeps them and a real difference shows.
+    static func comparingSelfServiceNotifications(_ dictionary: [String: Any], typeKey: String) -> [String: Any] {
+        guard let root = ["policies": "policy", "osxconfigurationprofiles": "os_x_configuration_profile"][typeKey],
+              var object = dictionary[root] as? [String: Any],
+              var selfService = object["self_service"] as? [String: Any],
+              !notificationsTurnedOn(selfService) else { return dictionary }
+        for field in selfServiceNotificationFields { selfService[field] = nil }
+        // a section left empty compares as an empty or missing one
+        object["self_service"] = selfService.isEmpty ? "" : selfService
+        var result = dictionary
+        result[root] = object
+        return result
+    }
+
+    /// `hasSelfServiceNotifications` for a parsed Self Service section.
+    private static func notificationsTurnedOn(_ selfService: [String: Any]) -> Bool {
+        let notification = selfService["notification"]
+        let values = notification as? [Any] ?? [notification as Any]
+        let turnedOn = values.contains { ($0 as? String)?.lowercased() == "true" }
+        let worded = ["notification_subject", "notification_message"].contains {
+            !(selfService[$0] as? String ?? "").isEmpty
+        }
+        return turnedOn || worded
     }
 
     /// Whether the Self Service section has notifications turned on: a
     /// `notification` that is true, or a notification subject or message.
     /// Jamf's defaults (notification false, type "Self Service", nothing
-    /// else) are off: an 11.34 destination dropping them loses nothing
+    /// else) are off: a destination dropping them loses nothing
     /// (decided by Jordy on 2026-11-02). A profile repeats `notification`
     /// (on/off, then the type), so every one is read.
     static func hasSelfServiceNotifications(_ xml: String) -> Bool {
@@ -126,8 +159,8 @@ enum ClassicTransformer {
                ClassicXML.value(of: "payloads", in: out).range(of: "com.apple.security.FDERecoveryKeyEscrow", options: .caseInsensitive) != nil {
                 return .blocked(reason: "FileVault payloads aren’t migrated and must be recreated manually.")
             }
-            // Jamf Pro 11.34 drops these on save (decided by Jordy on 2026-11-02:
-            // say so on the row and in the run report when they're on)
+            // Jamf Pro 11.34 and 11.35 drop these on save (decided by Jordy on
+            // 2026-11-02: say so on the row and in the run report when they're on)
             if type.key == "osxconfigurationprofiles", Self.dropsSelfServiceNotifications(context.destinationVersion),
                Self.hasSelfServiceNotifications(xml) {
                 warnings.append(Self.selfServiceNotificationsWarning)
@@ -157,8 +190,8 @@ enum ClassicTransformer {
             out = ClassicXML.strippingTag("attachments", from: out)
 
         case "policies", "macapplications", "mobiledeviceapplications":
-            // Jamf Pro 11.34 drops a policy's Self Service notification settings
-            // on save, as a profile's (decided by Jordy on 2026-11-02)
+            // Jamf Pro 11.34 and 11.35 drop a policy's Self Service notification
+            // settings on save, as a profile's (decided by Jordy on 2026-11-02)
             if type.key == "policies", Self.dropsSelfServiceNotifications(context.destinationVersion),
                Self.hasSelfServiceNotifications(xml) {
                 warnings.append(Self.selfServiceNotificationsWarning)
