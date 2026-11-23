@@ -5,7 +5,7 @@
   to Jamf Pro 11.34 or later, which no longer keeps this setting.
 - Policies with Fix Disk Permissions turned off no longer show as different
   after copying.
-- Improved stability.
+- Preview is more reliable when its checks run at the same time.
 
 ## v1.2.1 (2026-11-16)
 - Preview and Verify no longer report a policy or macOS profile as different
