@@ -227,9 +227,8 @@ actor MigrationPlanner {
         case .blocked(let reason):
             return ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name, change: .blocked(reason: reason))
         case .write(let transformed):
-            let sourceDictionary = ClassicTransformer.comparingFixDiskPermissions(
-                ClassicTransformer.comparingSelfServiceNotifications(
-                    dictionary(from: transformed, isClassic: type.api.isClassic), typeKey: type.key), typeKey: type.key)
+            let sourceDictionary = ClassicTransformer.comparing(
+                dictionary(from: transformed, isClassic: type.api.isClassic), typeKey: type.key)
             var plan = ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name, change: .create,
                                   warnings: transformed.warnings)
             plan.sourceDigest = digest(sourceDictionary)
@@ -257,9 +256,8 @@ actor MigrationPlanner {
                                   change: .update(destId: existingDestId), warnings: transformed.warnings,
                                   sourceDigest: plan.sourceDigest, plannedDependencies: plan.plannedDependencies)
             }
-            let destDictionary = ClassicTransformer.comparingFixDiskPermissions(
-                ClassicTransformer.comparingSelfServiceNotifications(
-                    dictionary(from: normalizedDest, isClassic: type.api.isClassic), typeKey: type.key), typeKey: type.key)
+            let destDictionary = ClassicTransformer.comparing(
+                dictionary(from: normalizedDest, isClassic: type.api.isClassic), typeKey: type.key)
             plan.destDigest = digest(destDictionary)
             // Settings › Secrets values never go into the plan: only that the field differs
             let diff = PayloadDiff.hidingSecrets(PayloadDiff.diff(source: sourceDictionary, destination: destDictionary),

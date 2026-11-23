@@ -560,6 +560,7 @@ struct FixDiskPermissionsTests {
     private static let off = policy("<recon>false</recon><permissions>false</permissions><byhost>false</byhost>")
     private static let without = policy("<recon>false</recon><byhost>false</byhost>")
     private static let onlyOff = policy("<permissions>false</permissions>")
+    private static let onAsOne = policy("<recon>false</recon><permissions>1</permissions><byhost>false</byhost>")
 
     private let warning = ClassicTransformer.fixDiskPermissionsWarning
 
@@ -591,8 +592,9 @@ struct FixDiskPermissionsTests {
 
     @Test("Turned on, to an 11.34 or later destination: one warning on the row and in the run report")
     func warnsWhenOn() async throws {
-        for version in ["11.34.0-t1793383479089", "11.35.0-b.1.t1794410213471", "12.0.0"] {
-            let gateway = gateway(Self.on)
+        for (xml, version) in [(Self.on, "11.34.0-t1793383479089"), (Self.on, "11.35.0-b.1.t1794410213471"),
+                               (Self.on, "12.0.0"), (Self.onAsOne, "11.34.0-t1793383479089")] {
+            let gateway = gateway(xml)
             let plan = await MigrationPlanner(source: gateway.source, dest: gateway.dest, destinationVersion: version)
                 .plan(typeKeys: ["policies"])
             let entry = try #require(plan.entries.first { $0.typeKey == "policies" })
@@ -658,7 +660,8 @@ struct FixDiskPermissionsTests {
 
     @Test("On on one side: the difference still shows")
     func onStillDiffers() async throws {
-        let cases: [(String, String)] = [(Self.on, Self.off), (Self.on, Self.without), (Self.off, Self.on)]
+        let cases: [(String, String)] = [(Self.on, Self.off), (Self.on, Self.without), (Self.off, Self.on),
+                                         (Self.onAsOne, Self.without)]
         for (source, destination) in cases {
             let change = try await change(source: source, destination: destination)
             guard case .update = change else {

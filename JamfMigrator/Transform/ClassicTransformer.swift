@@ -77,7 +77,7 @@ enum ClassicTransformer {
     /// The warning on a policy with Maintenance › Fix Disk Permissions
     /// turned on, copied to a destination that doesn't keep it.
     static let fixDiskPermissionsWarning =
-        "This Jamf Pro version doesn’t keep Fix Disk Permissions; the policy is copied with it off."
+        "This Jamf Pro version doesn’t keep Fix Disk Permissions; the policy is copied with it turned off."
 
     /// Whether a destination of this Jamf Pro version stores a policy's Fix
     /// Disk Permissions as off: 11.34 and later accept it turned on but keep
@@ -99,7 +99,7 @@ enum ClassicTransformer {
         guard typeKey == "policies",
               var object = dictionary["policy"] as? [String: Any],
               var maintenance = object["maintenance"] as? [String: Any],
-              (maintenance["permissions"] as? String)?.lowercased() != "true" else { return dictionary }
+              !isOn(maintenance["permissions"] as? String ?? "") else { return dictionary }
         maintenance["permissions"] = nil
         // a section left empty compares as an empty or missing one
         object["maintenance"] = maintenance.isEmpty ? "" : maintenance
@@ -110,9 +110,20 @@ enum ClassicTransformer {
 
     /// Whether the policy has Maintenance › Fix Disk Permissions turned on.
     static func hasFixDiskPermissions(_ xml: String) -> Bool {
-        let maintenance = ClassicXML.value(of: "maintenance", in: xml)
-        return ClassicXML.text(of: "permissions", in: maintenance)
-            .trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "true"
+        isOn(ClassicXML.text(of: "permissions", in: ClassicXML.value(of: "maintenance", in: xml)))
+    }
+
+    /// A Classic flag that is on: true or 1, as `PayloadDiff` treats them alike.
+    private static func isOn(_ value: String) -> Bool {
+        ["true", "1"].contains(value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+    }
+
+    /// An object as Preview, Run and Verify compare it: every field that
+    /// counts as absent when it's off on that side (the Self Service
+    /// notifications, Fix Disk Permissions). Used for the source and the
+    /// destination alike, so both sides are always normalized the same way.
+    static func comparing(_ dictionary: [String: Any], typeKey: String) -> [String: Any] {
+        comparingFixDiskPermissions(comparingSelfServiceNotifications(dictionary, typeKey: typeKey), typeKey: typeKey)
     }
 
     static func transform(type: ObjectType, xml: String, context: TransformContext) -> TransformOutcome {

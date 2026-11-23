@@ -634,6 +634,7 @@ struct LiveMigrationTests {
         let destinationVersion = await Preflight.check(destination.api).version
         var expectsLoss = false
         if let name = names[.policy] {
+            try require("the destination's Jamf Pro version is known", destinationVersion != nil)
             let id = try await attempt("create the source policy") { try await source.createPolicy(name: name, category: categoryName) }
             sourceIDs[.policy] = id
             let xml = try await source.policyXML(id: id)
@@ -808,9 +809,14 @@ struct LiveMigrationTests {
         let describe = { (list: [(typeKey: String, field: DiffEntry)]) in
             list.map { "\($0.typeKey) \($0.field.path): source \(String(($0.field.source ?? "nil").prefix(120))) / destination \(String(($0.field.destination ?? "nil").prefix(120)))" }
         }
+        // the lost setting is the policy's only difference, field by field
+        let policyLostOnly = again.entries.first { $0.typeKey == "policies" }.map { entry -> Bool in
+            guard case .update = entry.change, !entry.diff.isEmpty else { return false }
+            return entry.diff.allSatisfy { isExpectedLoss(entry.typeKey, $0.path) }
+        } ?? false
         let verifyClean = verify.types.allSatisfy { result -> Bool in
             guard result.notChecked == nil else { return false }
-            let lostOnly = expectsLoss && result.typeKey == "policies" && result.discrepancies.count == 1
+            let lostOnly = expectsLoss && policyLostOnly && result.typeKey == "policies" && result.discrepancies.count == 1
             return result.discrepancies.isEmpty || lostOnly
         }
         try require(expectsLoss ? "the app's Verify is clean but for the lost Fix Disk Permissions" : "the app's Verify is clean",
@@ -823,7 +829,8 @@ struct LiveMigrationTests {
         let second = await preview()
         // the policy that lost Fix Disk Permissions is an Update by design; never run
         let lostPolicy = { (entry: ObjectPlan) in
-            expectsLoss && entry.typeKey == "policies" && entry.diff.allSatisfy { isExpectedLoss(entry.typeKey, $0.path) }
+            expectsLoss && entry.typeKey == "policies" && !entry.diff.isEmpty
+                && entry.diff.allSatisfy { isExpectedLoss(entry.typeKey, $0.path) }
         }
         let allUnchanged = second.entries.allSatisfy { entry in
             if case .unchanged = entry.change { true } else if case .update = entry.change { lostPolicy(entry) } else { false }
