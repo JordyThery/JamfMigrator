@@ -74,6 +74,47 @@ enum ClassicTransformer {
         return turnedOn || worded
     }
 
+    /// The warning on a policy with Maintenance › Fix Disk Permissions
+    /// turned on, copied to a destination that doesn't keep it.
+    static let fixDiskPermissionsWarning =
+        "This Jamf Pro version doesn’t keep Fix Disk Permissions; the policy is copied with it off."
+
+    /// Whether a destination of this Jamf Pro version stores a policy's Fix
+    /// Disk Permissions as off: 11.34 and later accept it turned on but keep
+    /// it off, and no longer show it (confirmed by Jamf on 2026-11-14; see
+    /// WATCHLIST.md).
+    static func dropsFixDiskPermissions(_ version: String?) -> Bool {
+        guard let version else { return false }
+        let parts = version.prefix { $0.isNumber || $0 == "." }.split(separator: ".").compactMap { Int($0) }
+        guard parts.count >= 2 else { return false }
+        return parts[0] > 11 || (parts[0] == 11 && parts[1] >= 34)
+    }
+
+    /// A policy as Preview, Run and Verify compare it: with Fix Disk
+    /// Permissions off, the field counts as absent, as Jamf Pro 11.34 and
+    /// later may leave it out (decided by Jordy on 2026-11-23, like the Self
+    /// Service notifications). Each side is judged on its own, so a side with
+    /// it on keeps it and a real difference shows.
+    static func comparingFixDiskPermissions(_ dictionary: [String: Any], typeKey: String) -> [String: Any] {
+        guard typeKey == "policies",
+              var object = dictionary["policy"] as? [String: Any],
+              var maintenance = object["maintenance"] as? [String: Any],
+              (maintenance["permissions"] as? String)?.lowercased() != "true" else { return dictionary }
+        maintenance["permissions"] = nil
+        // a section left empty compares as an empty or missing one
+        object["maintenance"] = maintenance.isEmpty ? "" : maintenance
+        var result = dictionary
+        result["policy"] = object
+        return result
+    }
+
+    /// Whether the policy has Maintenance › Fix Disk Permissions turned on.
+    static func hasFixDiskPermissions(_ xml: String) -> Bool {
+        let maintenance = ClassicXML.value(of: "maintenance", in: xml)
+        return ClassicXML.text(of: "permissions", in: maintenance)
+            .trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "true"
+    }
+
     static func transform(type: ObjectType, xml: String, context: TransformContext) -> TransformOutcome {
         var out = xml
         var warnings = [String]()
@@ -195,6 +236,12 @@ enum ClassicTransformer {
             if type.key == "policies", Self.dropsSelfServiceNotifications(context.destinationVersion),
                Self.hasSelfServiceNotifications(xml) {
                 warnings.append(Self.selfServiceNotificationsWarning)
+            }
+            // Jamf Pro 11.34 and later keep Fix Disk Permissions off (decided
+            // by Jordy on 2026-11-23: say so when the source has it on)
+            if type.key == "policies", Self.dropsFixDiskPermissions(context.destinationVersion),
+               Self.hasFixDiskPermissions(xml) {
+                warnings.append(Self.fixDiskPermissionsWarning)
             }
             // self-service icon: captured here, copied by the engine after the write
             if out.contains("</self_service_icon>") {

@@ -373,6 +373,32 @@ extension LiveConnection {
         return try #require(JamfClassic.createdID(in: response.data), "The profile create returned no id")
     }
 
+    /// A disabled policy in the test category, scoped to nothing, with no
+    /// trigger, package or script, made with Maintenance › Fix Disk
+    /// Permissions turned on (Jamf Pro 11.34 and later store it off).
+    func createPolicy(name: String, category: String) async throws -> String {
+        // the policy's own name comes first: the guarded network reads the first <name>
+        let xml = """
+        <policy><general><name>\(Self.escape(name))</name><enabled>false</enabled>\
+        <trigger_checkin>false</trigger_checkin><trigger_enrollment_complete>false</trigger_enrollment_complete>\
+        <trigger_login>false</trigger_login><trigger_startup>false</trigger_startup>\
+        <frequency>Once per computer</frequency>\
+        <category><name>\(Self.escape(category))</name></category></general>\
+        <scope><all_computers>false</all_computers></scope>\
+        <maintenance><recon>false</recon><permissions>true</permissions></maintenance></policy>
+        """
+        let response = try await api.send(HTTPRequest(method: "POST", path: JamfClassic.createPath("policies"),
+                                                      body: Data(xml.utf8), accept: "application/xml", contentType: "application/xml"),
+                                          privilege: .createPolicies)
+        return try #require(JamfClassic.createdID(in: response.data), "The policy create returned no id")
+    }
+
+    func policyXML(id: String) async throws -> String {
+        let response = try await api.send(HTTPRequest(path: JamfClassic.path("policies", id: id), accept: "application/xml"),
+                                          privilege: .readPolicies)
+        return String(decoding: response.data, as: UTF8.self)
+    }
+
     func profileXML(id: String) async throws -> String {
         let response = try await api.send(HTTPRequest(path: JamfClassic.path("osxconfigurationprofiles", id: id),
                                                       accept: "application/xml"),
@@ -538,9 +564,11 @@ struct LiveMigrationTests {
     static let scriptContents = "#!/bin/sh\n# Release check test object; does nothing and is removed after the run\nexit 0\n"
 
     /// jamf-test-a → jamf-test-b over the Platform API: a category, an empty
-    /// static group, a script in the category, a profile in the category scoped to nothing.
+    /// static group, a script in the category, a profile in the category scoped
+    /// to nothing, and a disabled policy in the category scoped to nothing,
+    /// made with Fix Disk Permissions on.
     @Test func platformToPlatform() async throws {
-        try await migrate(over: .jamfPlatform, kinds: [.category, .staticGroup, .script, .profile], label: "")
+        try await migrate(over: .jamfPlatform, kinds: [.category, .staticGroup, .script, .profile, .policy], label: "")
     }
 
     /// jamf-test-a → jamf-test-b over its direct Jamf Pro connection
@@ -580,7 +608,8 @@ struct LiveMigrationTests {
 
         // 1. The test objects on the source, made by the test code.
         let names = [TestKind.category: "\(run.prefix) – \(label)Category", .staticGroup: "\(run.prefix) – \(label)Group",
-                     .script: "\(run.prefix) – \(label)Script", .profile: "\(run.prefix) – \(label)Profile"]
+                     .script: "\(run.prefix) – \(label)Script", .profile: "\(run.prefix) – \(label)Profile",
+                     .policy: "\(run.prefix) – \(label)Policy"]
             .filter { kinds.contains($0.key) }
         var sourceIDs: [TestKind: String] = [:]
         let categoryName = try #require(names[.category])
@@ -600,10 +629,26 @@ struct LiveMigrationTests {
             sourceIDs[.profile] = id
             try require("the source profile is scoped to nothing", LiveConnection.isScopedToNothing(try await source.profileXML(id: id)))
         }
+        // Jamf Pro 11.34 and later store Fix Disk Permissions off (WATCHLIST.md):
+        // what the source kept decides whether the destination loses it
+        let destinationVersion = await Preflight.check(destination.api).version
+        var expectsLoss = false
+        if let name = names[.policy] {
+            let id = try await attempt("create the source policy") { try await source.createPolicy(name: name, category: categoryName) }
+            sourceIDs[.policy] = id
+            let xml = try await source.policyXML(id: id)
+            try require("the source policy is disabled and scoped to nothing",
+                        LiveConnection.isScopedToNothing(xml)
+                            && ClassicXML.text(of: "enabled", in: ClassicXML.value(of: "general", in: xml)) == "false")
+            let keptOn = ClassicTransformer.hasFixDiskPermissions(xml)
+            expectsLoss = keptOn && ClassicTransformer.dropsFixDiskPermissions(destinationVersion)
+            run.record(step: step("Fix Disk Permissions as the source stored it"), passed: true,
+                       note: "\(keptOn ? "on" : "off"); destination Jamf Pro \(destinationVersion ?? "unknown")")
+        }
 
         // The app's registry keys for the kinds, with the source ids to take.
         let typeKeys: [TestKind: String] = [.category: "categories", .staticGroup: "staticcomputergroups",
-                                            .script: "scripts", .profile: "osxconfigurationprofiles"]
+                                            .script: "scripts", .profile: "osxconfigurationprofiles", .policy: "policies"]
         var limit: [String: Set<String>] = [:]
         for (kind, id) in sourceIDs { limit[typeKeys[kind]!, default: []].insert(id) }
         let only = OnlyObjects(testing: limit)
@@ -617,7 +662,8 @@ struct LiveMigrationTests {
         }
         let wanted = Set(limit.flatMap { key, ids in ids.map { "\(key) \($0)" } })
         func preview() async -> MigrationPlan {
-            await MigrationPlanner(source: source.app, dest: destination.app).plan(typeKeys: only.typeKeys, only: only)
+            await MigrationPlanner(source: source.app, dest: destination.app, destinationVersion: destinationVersion)
+                .plan(typeKeys: only.typeKeys, only: only)
         }
         func describePlan(_ plan: MigrationPlan) -> String {
             plan.entries.map { "\($0.typeKey) \($0.name): \($0.change)" }.joined(separator: "; ")
@@ -628,10 +674,17 @@ struct LiveMigrationTests {
                     plan.entries.allSatisfy(isCreate) && Set(plan.entries.map { "\($0.typeKey) \($0.objectId)" }) == wanted
                         && plan.entries.count == wanted.count,
                     note: describePlan(plan))
+        if names[.policy] != nil {
+            let warned = plan.entries.first { $0.typeKey == "policies" }?.warnings
+                .contains(ClassicTransformer.fixDiskPermissionsWarning) == true
+            try require("Preview warns about Fix Disk Permissions exactly when the destination loses it", warned == expectsLoss,
+                        note: "warning \(warned ? "shown" : "not shown")")
+        }
 
         // The app's own engine; its journal in this run's folder, no export.
         let engine = MigrationEngine(source: source.app, dest: destination.app,
-                                     journal: JournalStore(url: folder.appending(path: "journal.json"), mode: .copy))
+                                     journal: JournalStore(url: folder.appending(path: "journal.json"), mode: .copy),
+                                     destinationVersion: destinationVersion)
         fence.onRefusal { Task { await engine.cancel() } }
         var report = RunReport()
         var scriptContents = Self.scriptContents
@@ -719,15 +772,31 @@ struct LiveMigrationTests {
             try require("read back: the profile, its setting and category", holds)
             try require("read back: the profile is scoped to nothing", LiveConnection.isScopedToNothing(xml))
         }
+        if let id = destIDs[.policy], let name = names[.policy] {
+            let xml = try await destination.policyXML(id: id)
+            let general = ClassicXML.value(of: "general", in: xml)
+            let holds = ClassicXML.text(of: "name", in: general) == name && ClassicXML.text(of: "enabled", in: general) == "false"
+                && ClassicXML.text(of: "name", in: ClassicXML.value(of: "category", in: general)) == categoryName
+            try require("read back: the policy, disabled, in its category", holds)
+            try require("read back: the policy is scoped to nothing", LiveConnection.isScopedToNothing(xml))
+            run.record(step: step("Fix Disk Permissions as the destination stored it"), passed: true,
+                       note: ClassicTransformer.hasFixDiskPermissions(xml) ? "on" : "off")
+        }
 
         // 5. The app's Verify, with the counts checked here too (Verify alone
         //    can pass a type it couldn't read).
         let verify = await Verifier.verify(source: source.app, dest: destination.app, typeKeys: only.typeKeys, only: only)
         // What differs, field by field (the planner's diff, as Preview shows it).
         let again = await MigrationPlanner(source: source.app, dest: destination.app).plan(typeKeys: only.typeKeys, only: only)
+        // A policy whose Fix Disk Permissions the destination lost (on on a
+        // source before 11.34) still shows that one difference, by design
+        // (decided by Jordy on 2026-11-23); nothing else may differ.
+        let isExpectedLoss = { (typeKey: String, path: String) in
+            expectsLoss && typeKey == "policies" && path == "policy/maintenance/permissions"
+        }
         let differences = again.entries.flatMap { entry in
             entry.diff.map { (typeKey: entry.typeKey, field: $0) }
-        }
+        }.filter { !isExpectedLoss($0.typeKey, $0.field.path) }
         // Anything must match: Jamf Pro 11.34 and 11.35 drop a profile's
         // Self Service notification settings, but the test profile keeps
         // Jamf's defaults (off), which the app compares as absent (decided by
@@ -739,17 +808,30 @@ struct LiveMigrationTests {
         let describe = { (list: [(typeKey: String, field: DiffEntry)]) in
             list.map { "\($0.typeKey) \($0.field.path): source \(String(($0.field.source ?? "nil").prefix(120))) / destination \(String(($0.field.destination ?? "nil").prefix(120)))" }
         }
-        try require("the app's Verify is clean",
-                    verify.isClean && differences.isEmpty && counted && verify.types.count == limit.count,
+        let verifyClean = verify.types.allSatisfy { result -> Bool in
+            guard result.notChecked == nil else { return false }
+            let lostOnly = expectsLoss && result.typeKey == "policies" && result.discrepancies.count == 1
+            return result.discrepancies.isEmpty || lostOnly
+        }
+        try require(expectsLoss ? "the app's Verify is clean but for the lost Fix Disk Permissions" : "the app's Verify is clean",
+                    verifyClean && differences.isEmpty && counted && verify.types.count == limit.count,
                     note: (verify.types.map { "\($0.typeKey): \($0.sourceCount) planned, \($0.discrepancies + $0.blocked)" }
                            + describe(differences)).joined(separator: "; "))
         try require("Verify made no write", fence.refusals.isEmpty && sourceNetwork.refusals.isEmpty)
 
         // 6. A second Preview shows everything Unchanged, and its Run writes nothing.
         let second = await preview()
-        let allUnchanged = second.entries.allSatisfy { if case .unchanged = $0.change { true } else { false } }
+        // the policy that lost Fix Disk Permissions is an Update by design; never run
+        let lostPolicy = { (entry: ObjectPlan) in
+            expectsLoss && entry.typeKey == "policies" && entry.diff.allSatisfy { isExpectedLoss(entry.typeKey, $0.path) }
+        }
+        let allUnchanged = second.entries.allSatisfy { entry in
+            if case .unchanged = entry.change { true } else if case .update = entry.change { lostPolicy(entry) } else { false }
+        }
+        var runnable = second.runnableIds
+        if expectsLoss { runnable["policies"] = nil }
         let writesBefore = fence.writes
-        let nothing = await engine.run(second, including: second.runnableIds)
+        let nothing = await engine.run(second, including: runnable)
         try require("a second Preview shows Unchanged and its Run writes nothing",
                     allUnchanged && second.entries.count == wanted.count && nothing.entries.isEmpty
                         && nothing.stopReason == nil && fence.writes == writesBefore && fence.refusals.isEmpty,

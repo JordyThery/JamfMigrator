@@ -541,3 +541,129 @@ struct SelfServiceNotificationWarningTests {
         }
     }
 }
+
+/// Jamf Pro 11.34 and later accept a policy's Maintenance › Fix Disk
+/// Permissions turned on but store it off (confirmed by Jamf on 2026-11-14):
+/// Preview and the run report say so once, only when the source has it on and
+/// the destination runs 11.34 or later. Turned off, the field counts as absent
+/// when compared; turned on, a real difference still shows (decided by Jordy
+/// on 2026-11-23).
+struct FixDiskPermissionsTests {
+
+    private static func policy(_ maintenance: String) -> String {
+        "<policy><general><id>8</id><name>Repair Disk</name><enabled>false</enabled></general>"
+            + "<scope><all_computers>false</all_computers></scope>"
+            + "<maintenance>\(maintenance)</maintenance></policy>"
+    }
+
+    private static let on = policy("<recon>false</recon><permissions>true</permissions><byhost>false</byhost>")
+    private static let off = policy("<recon>false</recon><permissions>false</permissions><byhost>false</byhost>")
+    private static let without = policy("<recon>false</recon><byhost>false</byhost>")
+    private static let onlyOff = policy("<permissions>false</permissions>")
+
+    private let warning = ClassicTransformer.fixDiskPermissionsWarning
+
+    private func gateway(_ xml: String) -> FakeGateway {
+        FakeGateway { env, method, path, _ in
+            switch (env, method, path) {
+            case ("src", "GET", "/proclassic/policies"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["policies": [["id": 8, "name": "Repair Disk"]]]))
+            case ("src", "GET", "/proclassic/policies/id/8"):
+                return MockHTTP.Reply(status: 200, data: Data(xml.utf8))
+            case ("dst", "POST", "/proclassic/policies/id/0"):
+                return MockHTTP.Reply(status: 201, data: Data("<policy><id>18</id></policy>".utf8))
+            default:
+                return nil
+            }
+        }
+    }
+
+    @Test("Versions: 11.34 and later keep it off; earlier ones and an unknown one don't")
+    func versions() {
+        for version in ["11.34.0-t1793383479089", "11.34.0-b.1.t1791987365570", "11.35.0-b.1.t1794410213471", "11.36.2", "12.0.0"] {
+            #expect(ClassicTransformer.dropsFixDiskPermissions(version), "\(version)")
+        }
+        for version in ["11.33.3-t1793127642444", "11.9.0", "10.50.0", "", "unknown"] {
+            #expect(!ClassicTransformer.dropsFixDiskPermissions(version), "\(version)")
+        }
+        #expect(!ClassicTransformer.dropsFixDiskPermissions(nil))
+    }
+
+    @Test("Turned on, to an 11.34 or later destination: one warning on the row and in the run report")
+    func warnsWhenOn() async throws {
+        for version in ["11.34.0-t1793383479089", "11.35.0-b.1.t1794410213471", "12.0.0"] {
+            let gateway = gateway(Self.on)
+            let plan = await MigrationPlanner(source: gateway.source, dest: gateway.dest, destinationVersion: version)
+                .plan(typeKeys: ["policies"])
+            let entry = try #require(plan.entries.first { $0.typeKey == "policies" })
+            #expect(entry.warnings.filter { $0 == warning }.count == 1, "\(version): \(entry.warnings)")
+
+            let report = await MigrationEngine(source: gateway.source, dest: gateway.dest, journal: makeJournal(),
+                                               destinationVersion: version)
+                .run(plan, including: plan.runnableIds)
+            #expect(report.entries.first?.warnings.filter { $0 == warning }.count == 1,
+                    "\(version): \(report.entries.first?.status as Any) \(report.entries.first?.warnings ?? [])")
+        }
+    }
+
+    @Test("Turned off, an earlier version or an unknown one: no warning")
+    func noWarningOtherwise() async throws {
+        let cases: [(String, String?)] = [
+            (Self.off, "11.34.0-t1793383479089"), (Self.without, "11.35.0-b.1.t1794410213471"),
+            (Self.on, "11.33.3-t1793127642444"), (Self.on, nil),
+        ]
+        for (xml, version) in cases {
+            let gateway = gateway(xml)
+            let plan = await MigrationPlanner(source: gateway.source, dest: gateway.dest, destinationVersion: version)
+                .plan(typeKeys: ["policies"])
+            let entry = try #require(plan.entries.first { $0.typeKey == "policies" })
+            #expect(!entry.warnings.contains(warning), "\(String(describing: version)): \(entry.warnings)")
+        }
+    }
+
+    /// The source against a same-named destination policy: Preview's change.
+    private func change(source: String, destination: String) async throws -> PlannedChange {
+        let gateway = FakeGateway { env, method, path, _ in
+            switch (env, method, path) {
+            case ("src", "GET", "/proclassic/policies"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["policies": [["id": 8, "name": "Repair Disk"]]]))
+            case ("dst", "GET", "/proclassic/policies"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["policies": [["id": 23, "name": "Repair Disk"]]]))
+            case ("src", "GET", "/proclassic/policies/id/8"):
+                return MockHTTP.Reply(status: 200, data: Data(source.utf8))
+            case ("dst", "GET", "/proclassic/policies/id/23"):
+                return MockHTTP.Reply(status: 200, data: Data(destination.utf8))
+            default:
+                return nil
+            }
+        }
+        let plan = await MigrationPlanner(source: gateway.source, dest: gateway.dest, destinationVersion: "11.34.0-t1793383479089")
+            .plan(typeKeys: ["policies"])
+        return try #require(plan.entries.first { $0.typeKey == "policies" }).change
+    }
+
+    @Test("Off on both sides: off and a missing field compare as the same, also when it's the only maintenance field")
+    func offAndMissingAreUnchanged() async throws {
+        let cases: [(String, String)] = [
+            (Self.off, Self.without), (Self.without, Self.off), (Self.off, Self.off),
+            (Self.onlyOff, Self.policy("")), (Self.policy(""), Self.onlyOff),
+        ]
+        for (source, destination) in cases {
+            let change = try await change(source: source, destination: destination)
+            guard case .unchanged = change else {
+                Issue.record("expected Unchanged, got \(change)"); continue
+            }
+        }
+    }
+
+    @Test("On on one side: the difference still shows")
+    func onStillDiffers() async throws {
+        let cases: [(String, String)] = [(Self.on, Self.off), (Self.on, Self.without), (Self.off, Self.on)]
+        for (source, destination) in cases {
+            let change = try await change(source: source, destination: destination)
+            guard case .update = change else {
+                Issue.record("expected Update, got \(change)"); continue
+            }
+        }
+    }
+}

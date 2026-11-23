@@ -1,5 +1,12 @@
 # Change log
 
+## v1.2.2 (2026-11-23)
+- Policies with Fix Disk Permissions turned on now show a warning when copied
+  to Jamf Pro 11.34 or later, which no longer keeps this setting.
+- Policies with Fix Disk Permissions turned off no longer show as different
+  after copying.
+- Improved stability.
+
 ## v1.2.1 (2026-11-16)
 - Preview and Verify no longer report a policy or macOS profile as different
   only because Jamf Pro left out its Self Service notification settings while
