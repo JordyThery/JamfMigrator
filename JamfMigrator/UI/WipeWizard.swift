@@ -20,6 +20,8 @@ struct WipeWizard: View {
     @State private var backupSkipped = false
     @State private var showSkipBackupConfirmation = false
     @State private var started = false
+    /// Resume Run confirms with the tenant's name and the counts, as Run does.
+    @State private var showResumeConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -197,19 +199,23 @@ struct WipeWizard: View {
                         }
                     }
                 }
-                if appState.canResume {
-                    Button("Resume Run") {
-                        appState.run()
-                    }
-                    .disabled(!appState.canRun)
-                }
                 HStack {
                     Spacer()
+                    if appState.canResume {
+                        Button("Resume Run", role: .destructive) { showResumeConfirmation = true }
+                            .disabled(!appState.canRun)
+                    }
                     Button("Done") { dismiss() }
                         .buttonStyle(.borderedProminent)
                 }
             }
         }
         .padding()
+        .confirmationDialog(appState.runConfirmationTitle, isPresented: $showResumeConfirmation) {
+            Button(appState.runConfirmationButton, role: .destructive) { appState.run() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(appState.runConfirmationMessage)
+        }
     }
 }
