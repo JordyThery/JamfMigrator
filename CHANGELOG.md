@@ -8,17 +8,20 @@
   to the destination exactly as entered in Settings › Secrets.
 - Wipe Tenant only accepts a backup made for the current Preview; a new
   Preview or a change of the selected types asks for a new backup.
-- Backups and exports keep scripts and other object text exactly as they are;
-  only passwords and other secret fields are replaced by `<redacted>`.
+- Backups and exports keep scripts and other object text as they are; only
+  passwords and other secret fields, configuration profile passwords and
+  license serial numbers included, are replaced by `<redacted>`.
 - Copying no longer changes the destination accounts that keep it reachable:
   the account the destination signs in with and its full-access
   administrators are shown as Blocked, with the reason.
-- Delete mode checks each Jamf Pro account again right before deleting it, and
-  leaves alone one that became a full-access administrator since Preview.
+- Delete mode checks each Jamf Pro account again right before deleting it: if
+  one became a full-access administrator since Preview, the run stops before
+  deleting it and asks for a new Preview.
 - A delete run that ends early lists the objects Jamf Pro refused and why, and
   an object still refused after every retry keeps Jamf Pro’s own reason.
 - Run stays off after a tenant’s connection is edited in Settings until a new
-  Preview. Jamf Migrator now has a single main window.
+  Preview. Jamf Migrator now has a single main window; Run, Clone Tenant and
+  Wipe Tenant in the menu bar bring it back when it’s closed.
 - Clone Tenant says when the ADE instances or distribution points couldn’t be
   read, with Load Again, instead of showing an empty tenant, and its
   connection check always matches the tenants shown.
