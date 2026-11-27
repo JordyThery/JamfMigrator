@@ -155,3 +155,82 @@ final class ReleaseFixTests {
         #expect(ExportWriter.isSecretField(name) == isSecret)
     }
 }
+
+// MARK: - C5 The accounts that keep the destination reachable, in a copy
+
+struct CopyKeepsDestinationReachableTests {
+
+    private static func account(_ id: String, _ name: String, _ access: String, _ privileges: String) -> MockHTTP.Reply {
+        MockHTTP.Reply(status: 200, data: MockHTTP.json(
+            ["id": id, "username": name, "accessLevel": access, "privilegeLevel": privileges]))
+    }
+
+    private static func group(_ id: Int, _ name: String, _ access: String, _ privileges: String) -> MockHTTP.Reply {
+        MockHTTP.Reply(status: 200, data: Data(
+            "<group><id>\(id)</id><name>\(name)</name><access_level>\(access)</access_level><privilege_set>\(privileges)</privilege_set></group>".utf8))
+    }
+
+    /// The same three accounts and two groups on both tenants; on the source
+    /// each has less access than on the destination.
+    private var gateway: FakeGateway {
+        FakeGateway { env, method, path, _ in
+            guard method == "GET" else { return nil }
+            let list = MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 3, "results": [
+                ["id": "1", "username": "admin"], ["id": "2", "username": "migrator"], ["id": "3", "username": "helpdesk"],
+            ]]))
+            let groups = MockHTTP.Reply(status: 200, data: MockHTTP.json(["accounts": ["users": [Any](), "groups": [
+                ["id": 7, "name": "Admins"], ["id": 8, "name": "Auditors"],
+            ]]]))
+            switch (env, path) {
+            case (_, "/pro/v1/accounts"): return list
+            case (_, "/proclassic/accounts"): return groups
+            case ("src", "/pro/v1/accounts/1"): return Self.account("1", "admin", "FullAccess", "AUDITOR")
+            case ("src", "/pro/v1/accounts/2"): return Self.account("2", "migrator", "FullAccess", "AUDITOR")
+            case ("src", "/pro/v1/accounts/3"): return Self.account("3", "helpdesk", "FullAccess", "AUDITOR")
+            case ("dst", "/pro/v1/accounts/1"): return Self.account("1", "admin", "FullAccess", "ADMINISTRATOR")
+            case ("dst", "/pro/v1/accounts/2"): return Self.account("2", "migrator", "FullAccess", "CUSTOM")
+            case ("dst", "/pro/v1/accounts/3"): return Self.account("3", "helpdesk", "SiteAccess", "CUSTOM")
+            case ("src", "/proclassic/accounts/groupid/7"): return Self.group(7, "Admins", "Full Access", "Auditor")
+            case ("src", "/proclassic/accounts/groupid/8"): return Self.group(8, "Auditors", "Full Access", "Custom")
+            case ("dst", "/proclassic/accounts/groupid/7"): return Self.group(7, "Admins", "Full Access", "Administrator")
+            case ("dst", "/proclassic/accounts/groupid/8"): return Self.group(8, "Auditors", "Full Access", "Auditor")
+            default: return nil
+            }
+        }
+    }
+
+    @Test("A copy plans the signed-in account and full-access administrators as Blocked, with the reason")
+    func copyBlocksReachabilityAccounts() async throws {
+        let gateway = gateway
+        let plan = await MigrationPlanner(source: gateway.source, dest: gateway.dest, signedInUsername: "Migrator")
+            .plan(typeKeys: ["jamfusers", "jamfgroups"])
+        func change(_ name: String) -> PlannedChange? { plan.entries.first { $0.name == name }?.change }
+
+        guard case .blocked(let admin)? = change("admin") else { Issue.record("admin: \(String(describing: change("admin")))"); return }
+        #expect(admin.hasPrefix("A full-access administrator on the destination"))
+        guard case .blocked(let migrator)? = change("migrator") else { Issue.record("migrator: \(String(describing: change("migrator")))"); return }
+        #expect(migrator.hasPrefix("The account the destination’s connection signs in with"))
+        guard case .blocked(let admins)? = change("Admins") else { Issue.record("Admins: \(String(describing: change("Admins")))"); return }
+        #expect(admins.contains("full-access administrator"))
+        if case .update = change("helpdesk") {} else { Issue.record("helpdesk: \(String(describing: change("helpdesk")))") }
+        if case .update = change("Auditors") {} else { Issue.record("Auditors: \(String(describing: change("Auditors")))") }
+
+        // Run writes only the other two
+        let report = await MigrationEngine(source: gateway.source, dest: gateway.dest, journal: makeJournal(),
+                                           signedInUsername: "Migrator").run(plan, including: plan.runnableIds)
+        #expect(!plan.runnableIds.values.joined().contains("1"))
+        let written = Set(gateway.writes(to: "dst").map(\.path))
+        #expect(!written.contains { $0.hasSuffix("/accounts/1") || $0.hasSuffix("/accounts/2") || $0.hasSuffix("groupid/7") },
+                "\(written)")
+        #expect(report.stopReason == nil)
+    }
+
+    @Test("An account whose destination access isn't stated is Blocked in a copy too")
+    func unreadableAccessIsBlocked() {
+        let type = ObjectRegistry.type("jamfusers")!
+        let reason = MigrationPlanner.copyKeepReason(type, name: "x", destPayload: .json(["username": "x"]), signedInUsername: nil)
+        #expect(reason?.hasPrefix("Its access on the destination couldn’t be read") == true)
+        #expect(MigrationPlanner.copyKeepReason(ObjectRegistry.type("scripts")!, name: "x", destPayload: .json([:]),
+                                                signedInUsername: "x") == nil)
+    }
+}

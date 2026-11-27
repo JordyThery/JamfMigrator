@@ -20,6 +20,9 @@ actor MigrationEngine {
     let mappings: TenantMappings
     /// The destination's Jamf Pro version, from Preview's permission check.
     let destinationVersion: String?
+    /// The account a direct username-and-password destination signs in
+    /// with, as Preview had it.
+    let signedInUsername: String?
     private let progress: (@Sendable (ProgressEvent) -> Void)?
     private let icons: IconMigrator
 
@@ -49,8 +52,10 @@ actor MigrationEngine {
          secrets: [String: String] = [:],
          mappings: TenantMappings = TenantMappings(),
          destinationVersion: String? = nil,
+         signedInUsername: String? = nil,
          progress: (@Sendable (ProgressEvent) -> Void)? = nil) {
         self.destinationVersion = destinationVersion
+        self.signedInUsername = signedInUsername
         self.source = source
         self.dest = dest
         self.journal = journal
@@ -271,7 +276,8 @@ actor MigrationEngine {
                 inputs: MigrationPlanner.ComparisonInputs(destIdsByName: asPreviewSaw, destNamesById: destNamesById,
                                                           sourceNamesById: sourceNamesById, plannedCreates: plannedCreates,
                                                           secrets: secrets, included: plan.typeKeys, mappings: mappings,
-                                                          unreadable: unreadableLists, destinationVersion: destinationVersion))
+                                                          unreadable: unreadableLists, destinationVersion: destinationVersion,
+                                                          signedInUsername: signedInUsername))
             if let change = Self.changeSincePreview(planned: entry, now: now) {
                 stop(type, ref, change)
                 return (.failed(reason: "Not written"), [])

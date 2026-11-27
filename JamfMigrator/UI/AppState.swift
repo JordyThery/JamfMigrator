@@ -594,6 +594,7 @@ final class AppState {
         let typeKeys = previewTypeKeys
         let mappings = mappings
         // a direct username-and-password tenant's account is never deleted
+        // or changed
         let signedInUsername = destTenant.usesGateway ? nil : destTenant.username
         planInputs = PlanInputs(mappings: mappings, secretDigests: Self.digests(of: secrets))
         includedObjectIds = [:]
@@ -620,7 +621,8 @@ final class AppState {
                 let source = tenantStore.client(for: sourceTenant)
                 let preflight = await Preflight.run(source: source, dest: dest, typeKeys: typeKeys)
                 let planner = MigrationPlanner(source: source, dest: dest, secrets: secrets, mappings: mappings,
-                                               destinationVersion: preflight.destination.version, progress: progress)
+                                               destinationVersion: preflight.destination.version,
+                                               signedInUsername: signedInUsername, progress: progress)
                 let plan = await planner.plan(typeKeys: typeKeys)
                 guard !Task.isCancelled, self.mode == mode else { return }
                 self.preflight = preflight
@@ -705,7 +707,9 @@ final class AppState {
             let export = exportWriterIfEnabled()
             let engine = MigrationEngine(source: source, dest: dest, journal: journal,
                                          export: export, secrets: secrets, mappings: mappings,
-                                         destinationVersion: preflight?.destination.version, progress: progress)
+                                         destinationVersion: preflight?.destination.version,
+                                         signedInUsername: destTenant.usesGateway ? nil : destTenant.username,
+                                         progress: progress)
             activeMigration = engine
             runTask = Task { [weak self] in
                 let report = await engine.run(plan, including: including)
@@ -995,6 +999,7 @@ final class AppState {
             let report = await Verifier.verify(source: source, dest: dest,
                                                typeKeys: typeKeys, excluding: excluding,
                                                secrets: secrets, mappings: mappings,
+                                               signedInUsername: destTenant.usesGateway ? nil : destTenant.username,
                                                progress: progress)
             guard let self else { return }
             self.verifyReport = report
