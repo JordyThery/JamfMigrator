@@ -86,8 +86,8 @@ labels every object:
 | 4 | Scripts, packages (records only), distribution points |
 | 5 | Jamf Pro user and group accounts, LDAP servers, users, user groups, directory bindings, software update servers |
 | 6 | Smart and static computer and mobile device groups, advanced searches |
-| 7 | Configuration profiles, Mac and mobile device apps, eBooks, classes, restricted and licensed software, printers, Dock items (with their Self Service icons) |
-| 8 | Policies, patch management titles and policies, App Installers |
+| 7 | Configuration profiles, Mac and mobile device apps (with their Self Service icons), eBooks, classes, restricted and licensed software, printers, Dock items |
+| 8 | Policies (with their Self Service icons), patch management titles and policies, App Installers |
 | 9 | Enrollment customizations |
 | 10 | Computer and mobile device PreStages (with ADE and distribution point mapping) |
 | 11 | Blueprints *(Jamf Platform API only)*: deployed on the destination only when deployed on the source; an out-of-date one is deployed with a warning |
@@ -119,6 +119,10 @@ API roles and clients, and package files below.
   groups are created empty.
 - FileVault escrow profiles, Apple School Manager classes and patch-service
   extension attributes are Blocked by design.
+- **The accounts that keep the destination reachable**: a copy never changes
+  the account the destination's direct connection signs in with, or a
+  destination Jamf Pro account or group with full access and the
+  Administrator privilege set; Preview shows them as Blocked, with the reason.
 
 ## Using the app
 
@@ -136,8 +140,8 @@ API roles and clients, and package files below.
    only the checked objects Preview marked to create, update or replace.
    Objects added later are left alone, and if an object, Settings › Secrets or
    the mappings changed since Preview, Run stops before writing it and asks for
-   a new Preview. Stop a run or lose the connection, and **Resume Run** carries
-   on with the same plan.
+   a new Preview. Stop a run (it then shows as stopped, with how far it got) or
+   lose the connection, and **Resume Run** carries on with the same plan.
 
 ![The Run confirmation: copy to the destination tenant, with the counts to create, update, leave unchanged and blocked, and a Copy 2 Changes button](docs/screenshot-confirm.png)
 
@@ -163,12 +167,14 @@ banner names the tenant and offers **Switch to Copy**, Run turns red, and every
 run confirms with the tenant name and counts. In delete mode the toolbar's red
 **Wipe Tenant** button deletes every selected object type from a tenant behind
 gates that must all pass, in order: delete mode is on, the tenant isn’t
-Protected, a Preview, a verified backup of the selected types (skippable only
-through an extra confirmation), and typing the tenant’s name. Deletes run in
+Protected, a Preview, a verified backup made for that Preview (skippable only
+through an extra confirmation; a new Preview or another selection needs a new
+backup), and typing the tenant’s name. Deletes run in
 reverse dependency order, retry objects held by dependencies, and end with a
-report of anything left behind. Delete mode never removes the account a
-direct connection signs in with, or a Jamf Pro account or group with full
-access and the Administrator privilege set.
+report of anything left behind, with Jamf Pro's reason. Delete mode never
+removes the account a direct connection signs in with, or a Jamf Pro account or
+group with full access and the Administrator privilege set; each account is
+checked again right before its delete.
 
 ### Demo Mode
 
@@ -241,6 +247,12 @@ dependency is [JTKit](https://github.com/JordyThery/JTKit), the shared package
 of these apps. Resolving it also downloads Microsoft’s MSAL, which JTKit uses
 for Intune sign-in and which this app doesn’t link or ship.
 
+## Credits
+
+Based on [Replicator](https://github.com/jamf/Replicator), © 2017 Jamf
+Professional Services, MIT license; see
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
 ## Support
 
 If Jamf Migrator saves you time, you can
@@ -252,4 +264,4 @@ This tool is provided as-is, without warranty of any kind. Use it at your own ri
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Based on Replicator, © Jamf.
+MIT — see [LICENSE](LICENSE). Based on Replicator, © 2017 Jamf Professional Services.
