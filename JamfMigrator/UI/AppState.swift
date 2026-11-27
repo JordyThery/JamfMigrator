@@ -98,6 +98,14 @@ final class AppState {
         return "Application Support › JamfMigrator › Run Reports"
     }
 
+    /// Where exports go, in words, for Settings › Export.
+    var exportsLocation: String {
+        if Self.liveDirectory != nil { return "the release check’s run folder (exports)" }
+        if demo.isOn { return "demo mode’s temporary folder (exports)" }
+        if demo.isSandbox { return "this sandbox run’s temporary folder (exports)" }
+        return "Application Support › JamfMigrator › exports"
+    }
+
     /// Settings › Export: "Save payloads during runs", in the app's own
     /// settings (a sandbox run's are in memory).
     var exportOnRun: Bool {

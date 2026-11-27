@@ -96,4 +96,62 @@ final class ReleaseFixTests {
         result.errors = ["Scripts: wrote 1 of 2 objects"]
         #expect(!result.covers(plan), "an incomplete backup")
     }
+
+    // MARK: C4 Backups keep object text
+
+    private static let script = """
+    #!/bin/zsh
+    JAMF_TOKEN=$(get_token)
+    API_PASSWORD=$4
+    curl -H "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln" https://example.test
+    """
+
+    @Test("A Pro script's contents stay whole; only secret fields are replaced")
+    func jsonScriptStaysWhole() throws {
+        let object: [String: Any] = ["name": "Install", "scriptContents": Self.script, "notes": "keep me",
+                                     "readWritePassword": "Share-Pa55", "recoveryLockPasswordType": "MANUAL",
+                                     "enableRecoveryLock": true, "readOnlyPassword": "",
+                                     "nested": ["adminPassword": "Admin-Pa55", "priority": 3]]
+        let body = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
+        let data = ExportWriter.redacted(body, hiding: [])
+        let out = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(out["scriptContents"] as? String == Self.script, "the script was changed")
+        #expect(out["notes"] as? String == "keep me")
+        #expect(out["readWritePassword"] as? String == Redaction.placeholder)
+        #expect(out["readOnlyPassword"] as? String == "")
+        #expect(out["recoveryLockPasswordType"] as? String == "MANUAL")
+        #expect(out["enableRecoveryLock"] as? Bool == true)
+        let nested = try #require(out["nested"] as? [String: Any])
+        #expect(nested["adminPassword"] as? String == Redaction.placeholder)
+        #expect(nested["priority"] as? Int == 3)
+        #expect(!String(decoding: data, as: UTF8.self).contains("Pa55"))
+    }
+
+    @Test("A Classic object's script stays whole; password elements and known values are replaced")
+    func xmlScriptStaysWhole() {
+        let escaped = ClassicXML.escape(Self.script)
+        let xml = """
+        <computer_extension_attribute><name>Token check</name>\
+        <input_type><type>script</type><script>\(escaped)</script></input_type>\
+        <account><password_sha256 since="9.23">0f0e0d0c</password_sha256><password>Plain-Pa55</password>\
+        <serial>ABCD-1234</serial></account></computer_extension_attribute>
+        """
+        let text = String(decoding: ExportWriter.redacted(Data(xml.utf8), hiding: ["ABCD-1234"]), as: UTF8.self)
+        #expect(text.contains("<script>\(escaped)</script>"), "the script was changed: \(text)")
+        #expect(text.contains(#"<password_sha256 since="9.23"><redacted></password_sha256>"#.replacingOccurrences(of: "<redacted>", with: Redaction.placeholder)))
+        #expect(!text.contains("0f0e0d0c"))
+        #expect(!text.contains("Plain-Pa55"))
+        #expect(!text.contains("ABCD-1234"))
+        #expect(text.contains("<name>Token check</name>"))
+    }
+
+    @Test("Secret field names", arguments: [
+        ("password", true), ("readWritePassword", true), ("password_sha256", true), ("management_password_sha256", true),
+        ("recoveryLockPassword", true), ("sharedSecret", true), ("serviceToken", true), ("passcode", true),
+        ("recoveryLockPasswordType", false), ("tokenExpiration", false), ("enableRecoveryLock", false),
+        ("scriptContents", false), ("name", false), ("notes", false),
+    ])
+    func secretFieldNames(name: String, isSecret: Bool) {
+        #expect(ExportWriter.isSecretField(name) == isSecret)
+    }
 }

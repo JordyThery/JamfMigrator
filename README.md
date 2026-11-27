@@ -145,7 +145,8 @@ Every run, also a stopped one, saves a report to the **Run Reports** folder;
 **Show Report in Finder** in the run window opens it. Turn on **Settings ›
 Export** to save every source payload and every written payload per run;
 passwords, password hashes, Settings › Secrets values and license serial
-numbers are replaced by `<redacted>` in those files.
+numbers are replaced by `<redacted>` in those files, and in Wipe Tenant's
+backup. Everything else, script contents included, is kept as it is.
 
 ### Clone Tenant
 
