@@ -305,3 +305,85 @@ struct IconFileNameTests {
         #expect(IconMigrator.headerSafe(name) == expected)
     }
 }
+
+// MARK: - Review of 1.2.3: serials in backups, profile secrets, lossless JSON
+
+struct ExportRedactionReviewTests {
+
+    @Test("Wipe's backup hides license serial numbers")
+    func backupHidesLicenseSerials() async throws {
+        let gateway = FakeGateway { env, method, path, _ in
+            switch (env, method, path) {
+            case ("dst", "GET", "/proclassic/licensedsoftware"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["licensed_software": [["id": 1, "name": "Office"]]]))
+            case ("dst", "GET", "/proclassic/licensedsoftware/id/1"):
+                return MockHTTP.Reply(status: 200, data: Data("""
+                <licensed_software><general><id>1</id><name>Office</name></general><licenses><license>\
+                <serial_number_1>SERIAL-EXAMPLE-0001</serial_number_1><serial_number_2>SERIAL-EXAMPLE-0002</serial_number_2>\
+                </license></licenses></licensed_software>
+                """.utf8))
+            default:
+                return nil
+            }
+        }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("BackupSerials-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let result = await TenantExporter(client: gateway.dest).backup(typeKeys: ["licensedsoftware"], to: root)
+        #expect(result.isComplete, "\(result.errors)")
+        let files = try #require(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil)?
+            .compactMap { $0 as? URL }.filter { !$0.hasDirectoryPath })
+        #expect(files.count == 1)
+        let text = try String(contentsOf: try #require(files.first), encoding: .utf8)
+        #expect(!text.contains("SERIAL-EXAMPLE"), "\(text)")
+        #expect(text.contains("<name>Office</name>"))
+    }
+
+    /// A Wi-Fi payload as Classic XML carries it: an escaped plist.
+    private static let wifiProfile: String = {
+        let plist = """
+        <?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>PayloadContent</key><array><dict>\
+        <key>SSID_STR</key><string>Office &amp; Guests</string>\
+        <key>Password</key><string>Wifi-Pa55&amp;word</string>\
+        <key>EncryptionType</key><string>WPA2</string>\
+        <key>EAPClientConfiguration</key><dict><key>UserPassword</key><string>Eap-Pa55</string>\
+        <key>AcceptEAPTypes</key><array><integer>25</integer></array></dict>\
+        <key>AutoJoin</key><true/></dict></array>\
+        <key>PayloadDisplayName</key><string>Office Wi-Fi</string></dict></plist>
+        """
+        return "<os_x_configuration_profile><general><name>Wi-Fi</name><payloads>\(ClassicXML.escape(plist))</payloads></general></os_x_configuration_profile>"
+    }()
+
+    @Test("A profile's Wi-Fi and 802.1X passwords are replaced; every other byte stays")
+    func profilePayloadSecrets() {
+        let out = String(decoding: ExportWriter.redacted(Data(Self.wifiProfile.utf8), hiding: []), as: UTF8.self)
+        #expect(!out.contains("Pa55"), "\(out)")
+        let placeholder = ClassicXML.escape(Redaction.placeholder)
+        #expect(out.contains("&lt;key&gt;Password&lt;/key&gt;&lt;string&gt;\(placeholder)&lt;/string&gt;"), "\(out)")
+        #expect(out.contains("&lt;key&gt;UserPassword&lt;/key&gt;&lt;string&gt;\(placeholder)&lt;/string&gt;"))
+        // everything else is exactly as it was
+        let expected = Self.wifiProfile
+            .replacingOccurrences(of: "Wifi-Pa55&amp;amp;word", with: placeholder)
+            .replacingOccurrences(of: "Eap-Pa55", with: placeholder)
+        #expect(out == expected)
+    }
+
+    @Test("A VPN shared secret in plain plist XML is replaced too")
+    func plainPayloadSecret() {
+        let xml = "<p><payloads><key>SharedSecret</key><data>c2VjcmV0</data><key>RemoteAddress</key><string>vpn.example.test</string></payloads></p>"
+        let out = String(decoding: ExportWriter.redacted(Data(xml.utf8), hiding: []), as: UTF8.self)
+        #expect(!out.contains("c2VjcmV0"))
+        #expect(out.contains("vpn.example.test"))
+    }
+
+    @Test("JSON keeps its numbers, key order and slashes; hidden values are found inside text")
+    func losslessJSON() {
+        let body = Data(#"{"zeta":0.1,"alpha":3.0,"url":"https:\/\/example.test\/a","note":"key \"Q-1\" here","readWritePassword":"x"}"#.utf8)
+        let out = String(decoding: ExportWriter.redacted(body, hiding: [#"Q-1"#]), as: UTF8.self)
+        #expect(out.contains(#""zeta": 0.1"#), "\(out)")
+        #expect(out.contains(#""alpha": 3.0"#))
+        #expect(out.contains(#""url": "https://example.test/a""#))
+        #expect(out.contains(#""note": "key \"\#(Redaction.placeholder)\" here""#), "\(out)")
+        #expect(out.range(of: "zeta")!.lowerBound < out.range(of: "alpha")!.lowerBound, "key order changed")
+        #expect(!out.contains(#""x""#))
+    }
+}
