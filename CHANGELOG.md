@@ -1,13 +1,41 @@
-# Change log
+# Changelog
 
-## v1.2.2 (2026-11-23)
+## 1.2.3 — 2026-11-27
+- A run you stop is now shown as stopped, with how far it got, and Resume Run
+  carries on where it left off, in the run window, Clone Tenant and Wipe
+  Tenant alike.
+- LDAP and directory binding passwords containing `$` or `\` are now written
+  to the destination exactly as entered in Settings › Secrets.
+- Wipe Tenant only accepts a backup made for the current Preview; a new
+  Preview or a change of the selected types asks for a new backup.
+- Backups and exports keep scripts and other object text exactly as they are;
+  only passwords and other secret fields are replaced by `<redacted>`.
+- Copying no longer changes the destination accounts that keep it reachable:
+  the account the destination signs in with and its full-access
+  administrators are shown as Blocked, with the reason.
+- Delete mode checks each Jamf Pro account again right before deleting it, and
+  leaves alone one that became a full-access administrator since Preview.
+- A delete run that ends early lists the objects Jamf Pro refused and why, and
+  an object still refused after every retry keeps Jamf Pro’s own reason.
+- Run stays off after a tenant’s connection is edited in Settings until a new
+  Preview. Jamf Migrator now has a single main window.
+- Clone Tenant says when the ADE instances or distribution points couldn’t be
+  read, with Load Again, instead of showing an empty tenant, and its
+  connection check always matches the tenants shown.
+- A Self Service icon whose file name contains quotes or line breaks now
+  copies correctly.
+- Jamf Migrator no longer asks for access to the Downloads folder.
+- Settings › Export names the folder exports go to, also in Demo Mode, and the
+  saved Verify report uses plain labels.
+
+## 1.2.2 — 2026-11-23
 - Policies with Fix Disk Permissions turned on now show a warning when copied
   to Jamf Pro 11.34 or later, which no longer keeps this setting.
 - Policies with Fix Disk Permissions turned off no longer show as different
   after copying.
 - Preview is more reliable when its checks run at the same time.
 
-## v1.2.1 (2026-11-16)
+## 1.2.1 — 2026-11-16
 - Preview and Verify no longer report a policy or macOS profile as different
   only because Jamf Pro left out its Self Service notification settings while
   notifications are off.
@@ -16,7 +44,7 @@
 - When the Keychain refuses to remove a tenant’s password, Settings keeps the
   tenant in the list and says so, so you can delete it again.
 
-## v1.2.0 (2026-11-02)
+## 1.2.0 — 2026-11-02
 - Settings asks to save or discard unsaved tenant changes, the Protected
   switch included, before it closes or another tab opens.
 - Clone Tenant: Continue and Preview wait until the ADE instance and
@@ -55,7 +83,7 @@
   the wizards’ Close button is at the bottom.
 - Clearer badges and status lines for VoiceOver and in high contrast.
 
-## v1.1.0 (2026-10-31)
+## 1.1.0 — 2026-10-31
 - Fixed: a Blueprint that isn’t deployed on the source was deployed on the
   destination, and an out-of-date one wasn’t deployed. Now only a deployed
   Blueprint is deployed, and an out-of-date one is deployed with a warning.
@@ -116,7 +144,7 @@
 - The run window's help names where run reports are saved, also in demo
   mode.
 
-## v1.0.5
+## 1.0.5 — 2026-10-22
 - Fixed: patch management titles were never copied — the type always
   appeared empty, and patch policies were blocked as a result. Titles are
   now listed, created by subscribing the destination to the same title
@@ -126,7 +154,7 @@
 - The Permissions page notes the patch source reads a new title needs on
   the destination.
 
-## v1.0.4
+## 1.0.4 — 2026-10-22
 - Licensed software is now copied (step 7). The licenses and their
   purchasing details are copied; the list of matching computers comes
   from inventory and is not, and license attachments are left behind with
@@ -134,13 +162,13 @@
 - The Permissions page lists the new type, and notes Jamf Pro's separate
   View License Serial Numbers privilege for direct connections.
 
-## v1.0.3
+## 1.0.3 — 2026-10-15
 - An update check: at launch, at most once a day, the app asks GitHub
   for the latest release and offers a newer one with its release notes
   and a download. Check on demand from Jamf Migrator › Check for
   Updates…; turn the daily check off in Settings › Updates.
 
-## v1.0.2
+## 1.0.2 — 2026-10-15
 - A dry run now shows a clear progress view while it plans (“type 12 of
   51”), and opens on a new Summary page: totals per outcome, every
   planned type with its counts, and a legend for the sidebar badges.
@@ -150,13 +178,13 @@
   Benchmarks are skipped on direct connections instead of being reported
   as missing permissions.
 
-## v1.0.1
+## 1.0.1 — 2026-10-05
 - Fixed: secrets and passwords entered in Settings were not saved in the
   released build, so every tenant failed with “No client secret or
   password is stored”. Secrets now go to the login keychain, and Settings
   shows a warning if the Keychain ever refuses a save.
 
-## v1.0
+## 1.0 — 2026-10-04
 First release. A complete rewrite of Replicator as a SwiftUI app for
 macOS 26: 52 object types over the Jamf Platform API gateway or direct
 Jamf Pro connections, a dry-run preview with field-level diffs,

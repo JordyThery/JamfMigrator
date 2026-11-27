@@ -25,7 +25,7 @@ app for macOS 26 on top of the Jamf Platform API and the Jamf Pro APIs.
 - macOS 26 or later
 - Per tenant: a Jamf Platform API integration from Jamf Account, or a Jamf Pro
   API client or user account, with the permissions in
-  [Permissions](docs/PERMISSIONS.md)
+  [Permissions](docs/permissions.md)
 
 ## Install
 
@@ -59,7 +59,7 @@ Client secrets and passwords are stored in the macOS Keychain (service
 
 The quick version: the source needs Read and the destination needs Read,
 Create and Update on every object type you copy, plus Delete for delete mode.
-For least privilege, [Permissions](docs/PERMISSIONS.md) lists the Jamf Account
+For least privilege, [Permissions](docs/permissions.md) lists the Jamf Account
 permission and the Jamf Pro privileges for each object type, the types each one
 also reads, and the few exceptions. The **Clone Tenant** wizard’s Connect step
 checks every selected type on both tenants and names any a tenant can’t read.
