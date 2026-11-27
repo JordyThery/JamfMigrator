@@ -163,12 +163,23 @@ struct WipeWizard: View {
                 }
             } else if let report = appState.report {
                 let leftovers = report.retryableFailures
-                Label(leftovers.isEmpty
-                      ? "Wipe finished: \(Plural.count(report.deletedCount, "object")) deleted."
-                      : "Wipe finished, but \(Plural.count(leftovers.count, "object")) couldn’t be deleted.",
-                      systemImage: leftovers.isEmpty ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                    .statusColor(leftovers.isEmpty ? .green : .orange)
-                    .font(.headline)
+                Group {
+                    if let reason = report.stopReason {
+                        Label(reason, systemImage: "exclamationmark.octagon.fill")
+                            .symbolRenderingMode(.multicolor)
+                    } else if report.wasStopped {
+                        Label("Wipe stopped: \(report.doneOfChecked) deleted. Resume Run carries on where it left off.",
+                              systemImage: "pause.circle.fill")
+                            .statusColor(.orange)
+                    } else {
+                        Label(leftovers.isEmpty
+                              ? "Wipe finished: \(Plural.count(report.deletedCount, "object")) deleted."
+                              : "Wipe finished, but \(Plural.count(leftovers.count, "object")) couldn’t be deleted.",
+                              systemImage: leftovers.isEmpty ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                            .statusColor(leftovers.isEmpty ? .green : .orange)
+                    }
+                }
+                .font(.headline)
                 if !leftovers.isEmpty {
                     List(leftovers) { entry in
                         VStack(alignment: .leading) {
@@ -178,9 +189,12 @@ struct WipeWizard: View {
                             }
                         }
                     }
+                }
+                if appState.canResume {
                     Button("Resume Run") {
                         appState.run()
                     }
+                    .disabled(!appState.canRun)
                 }
                 HStack {
                     Spacer()

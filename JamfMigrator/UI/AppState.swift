@@ -648,7 +648,6 @@ final class AppState {
         report = nil
         reportFileURL = nil
         reportSaveError = nil
-        runWasStopped = false
         isStopping = false
         lastError = nil
         // decided now: switching demo mode during the run doesn't move its report
@@ -741,8 +740,10 @@ final class AppState {
     var runConfirmationMessage: String {
         guard let planCounts = plan?.counts else { return "" }
         let effective = effectiveCounts
+        // Resume Run: what the stopped or failed run already did is skipped
+        let resuming = canResume ? " What the last run of this plan finished is skipped." : ""
         if mode == .delete {
-            return "\(Plural.count(effective.delete, "object")) will be deleted from \(destTenant?.name ?? "the tenant"); \(Plural.count(planCounts.keep, "object")) \(planCounts.keep == 1 ? "is" : "are") kept. This can’t be undone."
+            return "\(Plural.count(effective.delete, "object")) will be deleted from \(destTenant?.name ?? "the tenant"); \(Plural.count(planCounts.keep, "object")) \(planCounts.keep == 1 ? "is" : "are") kept.\(resuming) This can’t be undone."
         }
         var message = "\(effective.create) to create, \(effective.update) to update, \(planCounts.unchanged) unchanged, \(planCounts.blocked) blocked."
         let planChangeCount = planCounts.create + planCounts.update + planCounts.replace + planCounts.delete
@@ -753,7 +754,7 @@ final class AppState {
         if effective.replace > 0 {
             message += " \(Plural.count(effective.replace, "Compliance Benchmark")) will be deleted and recreated — benchmarks can’t be updated in place."
         }
-        return message
+        return message + resuming
     }
 
     /// Stop: a run finishes the object it is writing, then stops (cancelling
@@ -762,7 +763,6 @@ final class AppState {
     /// stop at once.
     func cancel() {
         if isRunning {
-            runWasStopped = true
             isStopping = true
         } else {
             runTask?.cancel()
@@ -812,9 +812,6 @@ final class AppState {
     /// Where the running run's report goes: Run Reports, or demo mode's folder.
     private var runReportsFolder: URL?
 
-    /// Set by Stop, so the saved report says the run didn't finish.
-    private var runWasStopped = false
-
     private func finishRun(report: RunReport, journal: JournalStore?, file: RunReportFile) async {
         self.report = report
         saveReport(report, file: file)
@@ -835,6 +832,11 @@ final class AppState {
             return
         }
         guard let journal else { return }
+        if report.wasStopped {
+            // Stop before the last checked row: the plan and the journal
+            // stay, so Resume Run carries on where the run left off
+            return
+        }
         if report.retryableFailures.isEmpty {
             // done: remove the journal and discard the now-stale plan
             await journal.finish()
@@ -843,13 +845,20 @@ final class AppState {
         // on real failures the plan stays, so Resume Run can retry
     }
 
+    /// Whether the last run left work that Resume Run carries out: it was
+    /// stopped, or some objects failed. Resume Run is Run of the same plan.
+    var canResume: Bool {
+        guard let report, plan != nil, report.stopReason == nil else { return false }
+        return report.wasStopped || !report.retryableFailures.isEmpty
+    }
+
     /// Saves the run's report to Run Reports. A failure is shown in the run
     /// sheet and the activity log; the run itself is not affected.
     private func saveReport(_ report: RunReport, file: RunReportFile) {
         var file = file
         file.report = report
         file.finished = Date()
-        file.wasStopped = runWasStopped
+        file.wasStopped = report.wasStopped
         do {
             let url = try file.save(in: runReportsFolder ?? dataDirectory.appendingPathComponent("Run Reports", isDirectory: true))
             reportFileURL = url

@@ -423,6 +423,10 @@ private struct RunStep: View {
             } else if let report = appState.report, let reason = report.stopReason {
                 Label(reason, systemImage: "exclamationmark.octagon.fill")
                     .symbolRenderingMode(.multicolor)
+            } else if let report = appState.report, report.wasStopped {
+                Label("Run stopped: \(report.doneOfChecked) done. Resume Run carries on where it left off.",
+                      systemImage: "pause.circle.fill")
+                    .statusColor(.orange)
             } else if let report = appState.report {
                 let failures = report.retryableFailures
                 Label(failures.isEmpty
@@ -455,8 +459,14 @@ private struct RunStep: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(!appState.canPreview)
+                } else if appState.report?.wasStopped == true {
+                    // stopped before the end: carrying on comes first
+                    Button("Continue to Verify") { next() }
+                    Button("Resume Run") { showRunConfirmation = true }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!appState.canRun)
                 } else if started || appState.plan?.changeCount == 0 {
-                    if appState.report?.retryableFailures.isEmpty == false {
+                    if appState.canResume {
                         Button("Resume Run") { showRunConfirmation = true }
                             .disabled(!appState.canRun)
                     }

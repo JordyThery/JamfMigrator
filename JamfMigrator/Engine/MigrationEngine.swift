@@ -130,12 +130,27 @@ actor MigrationEngine {
             }
         }
         report.stopReason = stopReason
+        let ticked = Self.tickedRows(plan, including: including)
+        report.checkedCount = ticked.values.reduce(0) { $0 + $1.count }
+        // Stop during the last object's write: the run did finish
+        report.wasStopped = isCancelled && report.leftOut(ticked)
         return report
     }
 
     /// Why the run stopped before the end because something changed since
     /// Preview; nil otherwise.
     private var stopReason: String?
+
+    /// The checked rows a run carries out, per registry key: runnable rows of
+    /// the plan's types that are in `including`.
+    static func tickedRows(_ plan: MigrationPlan, including: [String: Set<String>]) -> [String: Set<String>] {
+        var rows = [String: Set<String>]()
+        for entry in plan.entries where plan.typeKeys.contains(entry.typeKey) && entry.change.isRunnable
+            && including[entry.typeKey]?.contains(entry.objectId) == true {
+            rows[entry.typeKey, default: []].insert(entry.objectId)
+        }
+        return rows
+    }
 
     private func runType(_ type: ObjectType, entries: [ObjectPlan], ticked: Set<String>, plan: MigrationPlan,
                          precedingCreates: [String: Set<String>], report: inout RunReport) async throws {

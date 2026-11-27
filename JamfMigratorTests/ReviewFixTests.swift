@@ -18,7 +18,7 @@ import Testing
 /// A server for both tenants on one mocked session, told apart by the
 /// X-Environment-Id header ("src", "dst"); a GET it doesn't answer is an
 /// empty list. Every request is noted.
-private final class TwoTenantServer: @unchecked Sendable {
+final class TwoTenantServer: @unchecked Sendable {
     let requests = Locked<[(env: String, method: String, path: String, body: Data?)]>([])
     let session: URLSession
 
@@ -59,7 +59,7 @@ private final class TwoTenantServer: @unchecked Sendable {
 }
 
 /// "Jamf asked to wait 50 s": a 429 with Retry-After.
-private let rateLimited = MockHTTP.Reply(status: 429, headers: ["Retry-After": "50"])
+let rateLimited = MockHTTP.Reply(status: 429, headers: ["Retry-After": "50"])
 
 /// A Keychain that can be locked during a test.
 private final class LockableKeychain: SecretStore, @unchecked Sendable {
