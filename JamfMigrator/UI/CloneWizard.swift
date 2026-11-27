@@ -582,9 +582,9 @@ private struct VerifyStep: View {
         var lines = ["Clone verification — \(Date().formatted())", ""]
         for result in report.types {
             lines.append("\(result.typeKey): \(result.sourceCount) source / \(result.destCount.map(String.init) ?? "?") destination")
-            if let reason = result.notChecked { lines.append("  NOT CHECKED \(reason)") }
-            lines.append(contentsOf: result.discrepancies.map { "  DIFFERS \($0)" })
-            lines.append(contentsOf: result.blocked.map { "  BLOCKED \($0)" })
+            if let reason = result.notChecked { lines.append("  Not checked: \(reason)") }
+            lines.append(contentsOf: result.discrepancies.map { "  Differs: \($0)" })
+            lines.append(contentsOf: result.blocked.map { "  Blocked: \($0)" })
         }
         do {
             try lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)

@@ -10,7 +10,6 @@ import Foundation
 
 enum ClassicTransformer {
 
-    /// Rewrites a source object's Classic XML for the destination.
     /// The warning on a policy or macOS profile with Self Service
     /// notifications turned on, copied to a destination that drops them.
     static let selfServiceNotificationsWarning =
@@ -126,6 +125,7 @@ enum ClassicTransformer {
         comparingFixDiskPermissions(comparingSelfServiceNotifications(dictionary, typeKey: typeKey), typeKey: typeKey)
     }
 
+    /// Rewrites a source object's Classic XML for the destination.
     static func transform(type: ObjectType, xml: String, context: TransformContext) -> TransformOutcome {
         var out = xml
         var warnings = [String]()

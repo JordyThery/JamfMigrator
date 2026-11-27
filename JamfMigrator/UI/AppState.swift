@@ -695,6 +695,10 @@ final class AppState {
     @discardableResult
     func run() -> Bool {
         guard canRun, let destTenant, let plan, let planInputs, let secrets = readServiceSecrets() else { return false }
+        // a copy needs its source; checked before anything changes, so a
+        // refused run never leaves the app "running"
+        let source = mode == .copy ? sourceTenant.map(tenantStore.client(for:)) : nil
+        guard mode == .delete || source != nil else { return false }
         guard mode == .copy || !destTenant.isProtected else {
             lastError = "\(destTenant.name) is protected and can’t be wiped or deleted from. Switch protection off in Settings › Connections first."
             return false
@@ -744,8 +748,7 @@ final class AppState {
 
         switch mode {
         case .copy:
-            guard let sourceTenant else { return false }
-            let source = tenantStore.client(for: sourceTenant)
+            guard let source else { return false }
             let export = exportWriterIfEnabled()
             let engine = MigrationEngine(source: source, dest: dest, journal: journal,
                                          export: export, secrets: secrets, mappings: mappings,
@@ -819,10 +822,10 @@ final class AppState {
         return message + resuming
     }
 
-    /// Stop: a run finishes the object it is writing, then stops (cancelling
+    /// Stop: a run finishes the object it is writing, then stops (canceling
     /// it mid-request would leave that object's state unknown); a wait before
-    /// a retry or a watch after a write ends at once. Preview and the backup
-    /// stop at once.
+    /// a retry or a watch after a write ends at once. Stop is offered only
+    /// while a run writes (`canStop`).
     func cancel() {
         if isRunning {
             isStopping = true

@@ -328,4 +328,17 @@ final class StoppedAppTests {
         try await waitUntil({ !app.isPlanning }, "The second check didn't end")
         #expect(app.preflight != nil)
     }
+
+    @Test("A copy without a source is refused before anything changes (C14)")
+    func copyWithoutASourceNeverStartsRunning() throws {
+        let app = try app(TwoTenantServer { _, _, _, _ in nil })
+        app.sourceTenantID = nil
+        app.selectedTypeKeys = ["categories"]
+        app.plan = MigrationPlan(mode: .copy, entries: [ObjectPlan(typeKey: "categories", objectId: "1", name: "Alpha", change: .create)],
+                                 typeKeys: ["categories"])
+        app.includedObjectIds = app.plan!.runnableIds
+        #expect(app.canRun)
+        #expect(!app.run())
+        #expect(!app.isRunning, "a refused run left the app running")
+    }
 }
