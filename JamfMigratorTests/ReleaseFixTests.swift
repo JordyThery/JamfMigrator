@@ -288,3 +288,20 @@ struct DeleteRechecksAccountsTests {
         #expect(report.stopReason != nil)
     }
 }
+
+// MARK: - C13 Icon file names in the upload header
+
+struct IconFileNameTests {
+
+    @Test("Quotes, backslashes and line breaks never reach the upload header", arguments: [
+        (#"my "new" icon.png"#, "my _new_ icon.png"),
+        ("a\\b.png", "a_b.png"),
+        ("line\r\nbreak.png", "line break.png"),
+        ("plain.png", "plain.png"),
+        ("\"", "_"),
+        ("\n", "icon.png"),
+    ])
+    func headerSafeNames(name: String, expected: String) {
+        #expect(IconMigrator.headerSafe(name) == expected)
+    }
+}

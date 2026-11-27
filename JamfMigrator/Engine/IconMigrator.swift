@@ -108,10 +108,24 @@ actor IconMigrator {
         let boundary = "JamfMigrator-\(UUID().uuidString)"
         var body = Data()
         body.append(Data("--\(boundary)\r\n".utf8))
-        body.append(Data("Content-Disposition: form-data; name=\"file\"; filename=\"\(fileName)\"\r\n".utf8))
+        body.append(Data("Content-Disposition: form-data; name=\"file\"; filename=\"\(Self.headerSafe(fileName))\"\r\n".utf8))
         body.append(Data("Content-Type: application/octet-stream\r\n\r\n".utf8))
         body.append(data)
         body.append(Data("\r\n--\(boundary)--\r\n".utf8))
         return (body, "multipart/form-data; boundary=\(boundary)")
+    }
+
+    /// An icon's file name as it can go in a quoted header value: a quote
+    /// or a backslash becomes an underscore and a line break a space, so a
+    /// name like `my "new" icon.png` can't break the upload.
+    static func headerSafe(_ fileName: String) -> String {
+        let safe = String(fileName.map { character -> Character in
+            switch character {
+            case "\"", "\\": "_"
+            case "\r", "\n", "\r\n": " "
+            default: character
+            }
+        })
+        return safe.trimmingCharacters(in: .whitespaces).isEmpty ? "icon.png" : safe
     }
 }
