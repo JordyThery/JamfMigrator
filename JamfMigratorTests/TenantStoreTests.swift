@@ -22,7 +22,7 @@ struct TenantStoreTests {
         "environmentId" : "11111111-2222-3333-4444-555555555555",
         "id" : "AAAAAAAA-0000-0000-0000-000000000001",
         "isProtected" : true,
-        "name" : "Sandbox",
+        "name" : "Tenant A",
         "region" : "us"
       },
       {
@@ -30,7 +30,7 @@ struct TenantStoreTests {
         "environmentId" : "env-b",
         "id" : "AAAAAAAA-0000-0000-0000-000000000002",
         "isProtected" : false,
-        "name" : "Demo",
+        "name" : "Tenant B",
         "region" : "eu"
       },
       {
@@ -38,17 +38,17 @@ struct TenantStoreTests {
         "environmentId" : "env-c",
         "id" : "AAAAAAAA-0000-0000-0000-000000000003",
         "isProtected" : false,
-        "name" : "Demo (direct)",
+        "name" : "Tenant C",
         "region" : "us",
         "serverURL" : "https:\\/\\/direct.example.test",
-        "username" : "jssadmin"
+        "username" : "admin-example"
       },
       {
         "clientId" : "client-d",
         "environmentId" : "",
-        "id" : "E4908A92-FC22-43B0-90CD-646796719708",
+        "id" : "AAAAAAAA-0000-0000-0000-000000000004",
         "isProtected" : true,
-        "name" : "Sandbox (direct)",
+        "name" : "Tenant D",
         "region" : "apac",
         "serverURL" : "https:\\/\\/jamf.example.com"
       }
@@ -72,8 +72,8 @@ struct TenantStoreTests {
         let directory = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let sandbox = Tenant(name: "Sandbox", region: .us, environmentId: "env-a", clientId: "client-a", isProtected: true)
-        let demo = Tenant(name: "Demo", region: .eu, environmentId: "env-b", clientId: "client-b")
+        let sandbox = Tenant(name: "Tenant A", region: .us, environmentId: "env-a", clientId: "client-a", isProtected: true)
+        let demo = Tenant(name: "Tenant B", region: .eu, environmentId: "env-b", clientId: "client-b")
 
         let store = TenantStore(directory: directory, secrets: InMemorySecretStore())
         try store.connections.save(sandbox)
@@ -93,7 +93,7 @@ struct TenantStoreTests {
 
         let store = TenantStore(directory: directory, secrets: InMemorySecretStore())
         #expect(store.connections.problem == nil)
-        #expect(store.tenants.map(\.name) == ["Sandbox", "Demo", "Demo (direct)", "Sandbox (direct)"])
+        #expect(store.tenants.map(\.name) == ["Tenant A", "Tenant B", "Tenant C", "Tenant D"])
 
         // saving each tenant as the editor would, with nothing changed
         for tenant in store.tenants {
@@ -118,7 +118,7 @@ struct TenantStoreTests {
         #expect(connections[1].region == .eu)
         #expect(connections[2].service == .jamfPro)
         #expect(connections[2].signIn == .usernamePassword)
-        #expect(connections[2].username == "jssadmin")
+        #expect(connections[2].username == "admin-example")
         #expect(connections[2].serverURL == "https://direct.example.test")
         #expect(connections[3].service == .jamfPro)
         #expect(connections[3].signIn == .apiClient)
@@ -126,7 +126,7 @@ struct TenantStoreTests {
     }
 
     @Test func editingTheConnectionChangesOnlyConnectionFields() {
-        var tenant = Tenant(name: "Demo", region: .us, environmentId: "env", clientId: "client", isProtected: true)
+        var tenant = Tenant(name: "Tenant B", region: .us, environmentId: "env", clientId: "client", isProtected: true)
 
         // gateway → Jamf Pro server with a username
         var connection = tenant.connection
@@ -164,7 +164,7 @@ struct TenantStoreTests {
         let directory = try makeTempDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("tenants.json")
-        let damaged = #"[{"id":"AAAAAAAA-0000-0000-0000-000000000001","name":"Sandbox"}]"#
+        let damaged = #"[{"id":"AAAAAAAA-0000-0000-0000-000000000001","name":"Tenant A"}]"#
         try Data(damaged.utf8).write(to: url)
 
         let store = TenantStore(directory: directory, secrets: InMemorySecretStore())
@@ -182,7 +182,7 @@ struct TenantStoreTests {
         let secrets = InMemorySecretStore()
         let store = TenantStore(directory: directory, secrets: secrets)
 
-        var tenant = Tenant(name: "Sandbox")
+        var tenant = Tenant(name: "Tenant A")
         try store.connections.save(tenant, secrets: [.main: "hunter2"])
         #expect(secrets.all == [tenant.id.uuidString: "hunter2"])
 
@@ -209,7 +209,7 @@ struct TenantStoreTests {
         defer { try? FileManager.default.removeItem(at: directory) }
 
         let store = TenantStore(directory: directory, secrets: InMemorySecretStore())
-        let tenant = Tenant(name: "Demo", environmentId: TestEnvironment.id, clientId: "client-1")
+        let tenant = Tenant(name: "Tenant B", environmentId: TestEnvironment.id, clientId: "client-1")
         try store.connections.save(tenant)
 
         let client = store.client(for: tenant)
@@ -233,7 +233,7 @@ struct TenantStoreTests {
         }
 
         let store = TenantStore(directory: directory, secrets: InMemorySecretStore(), log: nil, session: session)
-        let tenant = Tenant(name: "Demo", environmentId: "env-1", clientId: "client-1")
+        let tenant = Tenant(name: "Tenant B", environmentId: "env-1", clientId: "client-1")
         try store.connections.save(tenant)
 
         await #expect {
