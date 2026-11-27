@@ -194,7 +194,11 @@ final class AppState {
 
     var selectedTypeKeys: Set<String> {
         // demo mode's choice is kept in memory only
-        didSet { if !demo.isOn { defaults.set(Array(selectedTypeKeys), forKey: "selectedTypeKeys") } }
+        didSet {
+            if !demo.isOn { defaults.set(Array(selectedTypeKeys), forKey: "selectedTypeKeys") }
+            // a backup is for the selection and Preview it was made for
+            if selectedTypeKeys != oldValue { backupResult = nil }
+        }
     }
     /// The checked rows, per registry key: what Run carries out. After a
     /// Preview every Create, Update, Replace and Delete row starts checked;
@@ -575,6 +579,8 @@ final class AppState {
         isPlanning = true
         plan = nil
         report = nil
+        // Wipe's backup belongs to one Preview: a new one needs a new backup
+        backupResult = nil
         lastError = nil
         let mode = mode
         let typeKeys = previewTypeKeys
@@ -718,7 +724,7 @@ final class AppState {
               let plan, plan.mode == .delete, effectiveCounts.delete > 0,
               canRun,
               typedName == tenant.name else { return false }
-        return backupSkipped || backupResult?.isComplete == true
+        return backupSkipped || backupResult?.covers(plan) == true
     }
 
     /// The run confirmation's title and message, naming the tenant (the demo
@@ -950,8 +956,10 @@ final class AppState {
         activeExporter = exporter
         // the types Preview plans: never the gateway-only ones a direct tenant can't reach
         let typeKeys = previewTypeKeys
+        let planId = plan?.id
         Task { [weak self] in
-            let result = await exporter.backup(typeKeys: typeKeys, to: root)
+            var result = await exporter.backup(typeKeys: typeKeys, to: root)
+            result.planId = planId
             guard let self else { return }
             self.backupResult = result
             self.isBackingUp = false

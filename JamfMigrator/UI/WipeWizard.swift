@@ -97,7 +97,12 @@ struct WipeWizard: View {
                 if appState.isBackingUp {
                     ProgressView("Backing up… \(appState.planningStatus)")
                 } else if let result = appState.backupResult {
-                    if result.isComplete {
+                    if result.isComplete, let plan = appState.plan, !result.covers(plan) {
+                        Label("This backup is for an earlier Preview.", systemImage: "exclamationmark.triangle.fill")
+                            .statusColor(.orange)
+                        Button("Back Up Again") { appState.backup() }
+                            .disabled(appState.isPlanning)
+                    } else if result.isComplete {
                         Label("Backup complete: \(Plural.count(result.totalObjects, "object")) in \(result.root.lastPathComponent).",
                               systemImage: "checkmark.circle.fill")
                         Button("Show in Finder") {
@@ -117,6 +122,8 @@ struct WipeWizard: View {
                 } else {
                     Button("Back Up \(tenantName) First") { appState.backup() }
                         .buttonStyle(.borderedProminent)
+                        // the backup is made for the Preview above
+                        .disabled(appState.plan == nil || appState.isPlanning)
                     Button("Skip the Backup…", role: .destructive) {
                         showSkipBackupConfirmation = true
                     }

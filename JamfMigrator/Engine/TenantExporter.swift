@@ -13,10 +13,20 @@ struct BackupResult: Sendable, Equatable {
     var objectCounts: [String: Int] = [:]
     var errors: [String] = []
     var root: URL
+    /// The types it covers.
+    var typeKeys: Set<String> = []
+    /// The Preview it was made for (Wipe's backup gate); nil without one.
+    var planId: UUID? = nil
 
     var totalObjects: Int { objectCounts.values.reduce(0, +) }
     /// A backup only counts when every listed object was written.
     var isComplete: Bool { errors.isEmpty }
+
+    /// Wipe's backup gate: complete, made for this Preview, and covering
+    /// every type the plan deletes from.
+    func covers(_ plan: MigrationPlan) -> Bool {
+        isComplete && planId == plan.id && plan.typeKeys.isSubset(of: typeKeys)
+    }
 }
 
 actor TenantExporter {
@@ -36,7 +46,7 @@ actor TenantExporter {
 
     /// Writes every object of the selected types under `root`/<type>/raw/.
     func backup(typeKeys: Set<String>, to root: URL) async -> BackupResult {
-        var result = BackupResult(root: root)
+        var result = BackupResult(root: root, typeKeys: typeKeys)
         let writer = ExportWriter(root: root)
 
         for type in ObjectRegistry.types where typeKeys.contains(type.key) {
