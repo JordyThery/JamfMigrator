@@ -353,6 +353,18 @@ final class AppState {
     var sourceDistributionPoints: [ObjectRef] = []
     var destDistributionPoints: [ObjectRef] = []
     var isLoadingMappings = false
+    /// Why a mapping list couldn't be read, per list; empty when all were.
+    var mappingReadErrors = MappingReadErrors()
+
+    /// The four lists Clone Tenant's mappings are made from.
+    struct MappingReadErrors: Equatable {
+        var sourceADE: String?
+        var destADE: String?
+        var sourceDistributionPoints: String?
+        var destDistributionPoints: String?
+
+        var isEmpty: Bool { self == MappingReadErrors() }
+    }
 
     var isBackingUp = false
     var backupResult: BackupResult?
@@ -921,6 +933,28 @@ final class AppState {
         }
     }
 
+    // MARK: Clone Tenant's connection check
+
+    /// Checks that both tenants answer and their permissions, for the types
+    /// selected. The result belongs to the tenants it checked: when they
+    /// change while it runs, it is dropped.
+    func runPreflight() {
+        guard let sourceTenant, let destTenant, !isPlanning, !isRunning else { return }
+        let source = tenantStore.client(for: sourceTenant)
+        let dest = tenantStore.client(for: destTenant)
+        let typeKeys = selectedTypeKeys
+        let tenantKey = tenantPairKey
+        isPlanning = true
+        preflight = nil
+        runTask = Task { [weak self] in
+            let report = await Preflight.run(source: source, dest: dest, typeKeys: typeKeys)
+            guard let self, !Task.isCancelled else { return }
+            self.isPlanning = false
+            guard self.tenantPairKey == tenantKey else { return }
+            self.preflight = report
+        }
+    }
+
     // MARK: Mappings
 
     /// The pair's saved mappings; demo mode's are kept in memory only.
@@ -951,11 +985,25 @@ final class AppState {
         let pair = Self.connectionKey(sourceTenant) + ">" + Self.connectionKey(destTenant)
         let source = tenantStore.client(for: sourceTenant)
         let dest = tenantStore.client(for: destTenant)
+        // a list that can't be read says why, never that the tenant has none
+        func read(_ list: () async throws -> [ObjectRef], _ name: String, _ tenant: Tenant) async -> ([ObjectRef], String?) {
+            do {
+                return (try await list(), nil)
+            } catch {
+                AppActivity.record("\(name) couldn’t be read: \(error.localizedDescription)", category: "Mappings",
+                                   connection: tenant.name, level: .warning)
+                return ([], error.localizedDescription)
+            }
+        }
         Task { [weak self] in
-            let sourceADE = (try? await MappingCatalog.adeInstances(on: source)) ?? []
-            let destADE = (try? await MappingCatalog.adeInstances(on: dest)) ?? []
-            let sourceDPs = (try? await MappingCatalog.distributionPoints(on: source)) ?? []
-            let destDPs = (try? await MappingCatalog.distributionPoints(on: dest)) ?? []
+            let (sourceADE, sourceADEError) = await read({ try await MappingCatalog.adeInstances(on: source) },
+                                                         "The ADE instances", sourceTenant)
+            let (destADE, destADEError) = await read({ try await MappingCatalog.adeInstances(on: dest) },
+                                                     "The ADE instances", destTenant)
+            let (sourceDPs, sourceDPError) = await read({ try await MappingCatalog.distributionPoints(on: source) },
+                                                        "The distribution points", sourceTenant)
+            let (destDPs, destDPError) = await read({ try await MappingCatalog.distributionPoints(on: dest) },
+                                                    "The distribution points", destTenant)
             guard let self, load == self.mappingLoad else { return }
             guard pair == Self.connectionKey(self.sourceTenant) + ">" + Self.connectionKey(self.destTenant) else {
                 // the tenants changed while it loaded: none of this is theirs
@@ -966,6 +1014,9 @@ final class AppState {
             self.destADEInstances = destADE
             self.sourceDistributionPoints = sourceDPs
             self.destDistributionPoints = destDPs
+            self.mappingReadErrors = MappingReadErrors(sourceADE: sourceADEError, destADE: destADEError,
+                                                       sourceDistributionPoints: sourceDPError,
+                                                       destDistributionPoints: destDPError)
             if self.mappings.isEmpty {
                 self.mappings = MappingCatalog.propose(sourceADE: sourceADE, destADE: destADE,
                                                        sourceDPs: sourceDPs, destDPs: destDPs)

@@ -292,4 +292,40 @@ final class StoppedAppTests {
         #expect(!app.run())
         #expect(server.writes("dst").isEmpty)
     }
+
+    @Test("A mapping list that can't be read says why, not that the tenant has none (C9)")
+    func unreadableMappingListSaysWhy() async throws {
+        let server = TwoTenantServer { env, method, path, _ in
+            env == "src" && method == "GET" && path == "/pro/v1/device-enrollments" ? MockHTTP.Reply(status: 403) : nil
+        }
+        let app = try app(server)
+        app.loadMappingCandidates()
+        try await waitUntil { !app.isLoadingMappings }
+        #expect(app.mappingReadErrors.sourceADE != nil)
+        #expect(app.mappingReadErrors.destADE == nil)
+        #expect(app.mappingReadErrors.sourceDistributionPoints == nil)
+        #expect(!app.mappingReadErrors.isEmpty)
+    }
+
+    @Test("Clone Tenant's connection check is dropped when the tenants change while it runs (C10)")
+    func preflightBelongsToItsTenants() async throws {
+        let server = TwoTenantServer { env, method, _, _ in
+            if env == "dst" && method == "GET" { Thread.sleep(forTimeInterval: 0.05) }
+            return nil
+        }
+        let app = try app(server)
+        app.selectedTypeKeys = ["categories"]
+        app.runPreflight()
+        #expect(app.isPlanning)
+        // the destination's connection is edited while the check runs
+        var edited = try #require(app.destTenant)
+        edited.clientId = "another-client"
+        try app.tenantStore.connections.save(edited, secrets: [.main: "secret-c"])
+        try await waitUntil({ !app.isPlanning }, "The check didn't end")
+        #expect(app.preflight == nil, "a check of the old connection was shown")
+
+        app.runPreflight()
+        try await waitUntil({ !app.isPlanning }, "The second check didn't end")
+        #expect(app.preflight != nil)
+    }
 }
