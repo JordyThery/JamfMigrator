@@ -387,3 +387,63 @@ struct ExportRedactionReviewTests {
         #expect(!out.contains(#""x""#))
     }
 }
+
+struct DeleteRetryReviewTests {
+
+    @Test("An account refused once and made an administrator before its retry is never deleted")
+    func retryRechecksTheAccount() async throws {
+        let promoted = Locked(false)
+        let deletes = Locked(0)
+        let gateway = FakeGateway { env, method, path, _ in
+            switch (env, method, path) {
+            case ("dst", "GET", "/pro/v1/accounts"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 1, "results": [["id": "3", "username": "helpdesk"]]]))
+            case ("dst", "GET", "/pro/v1/accounts/3"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(
+                    ["id": "3", "username": "helpdesk", "accessLevel": "FullAccess",
+                     "privilegeLevel": promoted.value ? "ADMINISTRATOR" : "CUSTOM"]))
+            case ("dst", "DELETE", "/pro/v1/accounts/3"):
+                deletes.withLock { $0 += 1 }
+                promoted.withLock { $0 = true }
+                return MockHTTP.Reply(status: 422, data: MockHTTP.json(["httpStatus": 422, "errors": [["code": "HAS_DEPENDENCIES"]]]))
+            default:
+                return nil
+            }
+        }
+        let plan = await MigrationPlanner(source: gateway.dest, dest: gateway.dest).planDeletion(typeKeys: ["jamfusers"])
+        let report = await DeleteEngine(client: gateway.dest, journal: makeJournal(mode: .delete))
+            .run(plan, including: plan.runnableIds)
+        #expect(deletes.value == 1, "the new administrator's delete was tried again")
+        #expect(report.stopReason?.contains("changed since Preview. A full-access administrator") == true,
+                "\(String(describing: report.stopReason))")
+        guard case .failed(let reason)? = report.entries.first?.status else {
+            Issue.record("expected .failed, got \(String(describing: report.entries.first?.status))")
+            return
+        }
+        #expect(reason.hasPrefix("Refused, and the run ended before its retries were done"))
+    }
+
+    @Test("Resume: a delete a Stop ended during its wait that went through counts as deleted")
+    func resumedDeleteThatWentThrough() async throws {
+        let gone = Locked(false)
+        let gateway = FakeGateway { env, method, path, _ in
+            switch (env, method, path) {
+            case ("dst", "GET", "/pro/v1/categories"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 2, "results":
+                    (gone.value ? [] : [["id": "5", "name": "Done"]]) + [["id": "6", "name": "Next"]]]))
+            case ("dst", "DELETE", "/pro/v1/categories/6"):
+                return MockHTTP.Reply(status: 204)
+            default:
+                return nil
+            }
+        }
+        let plan = await MigrationPlanner(source: gateway.dest, dest: gateway.dest).planDeletion(typeKeys: ["categories"])
+        let journal = makeJournal(mode: .delete)
+        await journal.begin(planId: plan.id)
+        await journal.record(type: "categories", objectId: "5", status: .failed(reason: DeleteEngine.stoppedDuringWait))
+        gone.withLock { $0 = true }
+        let report = await DeleteEngine(client: gateway.dest, journal: journal).run(plan, including: plan.runnableIds)
+        #expect(report.stopReason == nil, "\(String(describing: report.stopReason))")
+        #expect(report.deletedCount == 2)
+    }
+}

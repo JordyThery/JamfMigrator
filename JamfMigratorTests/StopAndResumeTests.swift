@@ -106,7 +106,7 @@ struct StoppedEngineTests {
             Issue.record("Held isn't reported as failed: \(held.status)")
             return
         }
-        #expect(reason.hasPrefix("Refused, and not tried again"), "\(reason)")
+        #expect(reason.hasPrefix("Refused, and the run ended before its retries were done"), "\(reason)")
         #expect(reason.contains("422"), "Jamf's reason is lost: \(reason)")
         #expect(await journal.status(type: "categories", objectId: "5") == held.status)
         #expect(!report.entries.contains { $0.objectName == "Later" }, "Later was never tried")
