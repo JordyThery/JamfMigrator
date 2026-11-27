@@ -64,11 +64,14 @@ actor TenantExporter {
                         let payload = try await ObjectLister.detail(type, id: ref.id, on: client)
                         let wrote: Bool
                         switch payload {
+                        // license serial numbers never reach the backup
                         case .xml(let xml):
-                            wrote = writer.writeRaw(type: type, ref: ref, payload: Data(xml.utf8), isXML: true)
+                            wrote = writer.writeRaw(type: type, ref: ref, payload: Data(xml.utf8), isXML: true,
+                                                    hiding: type.secretValues(in: xml))
                         case .json(let json):
                             let data = try JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys])
-                            wrote = writer.writeRaw(type: type, ref: ref, payload: data, isXML: false)
+                            wrote = writer.writeRaw(type: type, ref: ref, payload: data, isXML: false,
+                                                    hiding: type.secretValues(in: String(decoding: data, as: UTF8.self)))
                         }
                         if wrote {
                             written += 1
