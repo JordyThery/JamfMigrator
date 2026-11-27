@@ -403,21 +403,28 @@ actor MigrationPlanner {
     /// with the Administrator privilege set, or its access couldn't be read
     /// (so it could be the last administrator).
     private func accountKeepReason(_ type: ObjectType, ref: ObjectRef, signedInUsername: String?) async -> String? {
+        await Self.accountKeepReason(type, ref: ref, signedInUsername: signedInUsername, on: dest)
+    }
+
+    /// The same, read from `dest` now: Preview's plan, and the delete
+    /// engine right before it deletes an account or group.
+    static func accountKeepReason(_ type: ObjectType, ref: ObjectRef, signedInUsername: String?,
+                                  on dest: JamfPlatform.Client) async -> String? {
         switch type.key {
         case "jamfusers":
-            if Self.isSignedIn(ref.name, signedInUsername) {
+            if isSignedIn(ref.name, signedInUsername) {
                 return "The account this connection signs in with."
             }
             guard case .json(let json)? = try? await ObjectLister.detail(type, id: ref.id, on: dest) else {
                 return "Its access couldn’t be read, so it could be the last administrator."
             }
-            return Self.isFullAdministrator(accessLevel: json["accessLevel"] as? String,
+            return isFullAdministrator(accessLevel: json["accessLevel"] as? String,
                                             privilegeSet: json["privilegeLevel"] as? String)
         case "jamfgroups":
             guard case .xml(let xml)? = try? await ObjectLister.detail(type, id: ref.id, on: dest) else {
                 return "Its access couldn’t be read, so it could hold the last administrator."
             }
-            return Self.isFullAdministrator(accessLevel: ClassicXML.text(of: "access_level", in: xml),
+            return isFullAdministrator(accessLevel: ClassicXML.text(of: "access_level", in: xml),
                                             privilegeSet: ClassicXML.text(of: "privilege_set", in: xml))
         default:
             return nil

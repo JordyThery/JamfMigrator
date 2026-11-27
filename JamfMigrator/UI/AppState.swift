@@ -746,7 +746,9 @@ final class AppState {
                 await self?.finishRun(report: report, journal: journal, file: reportFile)
             }
         case .delete:
-            let engine = DeleteEngine(client: dest, journal: journal, progress: progress)
+            let engine = DeleteEngine(client: dest, journal: journal,
+                                      signedInUsername: destTenant.usesGateway ? nil : destTenant.username,
+                                      progress: progress)
             activeDelete = engine
             runTask = Task { [weak self] in
                 let report = await engine.run(plan, including: including)

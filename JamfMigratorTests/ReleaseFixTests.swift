@@ -234,3 +234,57 @@ struct CopyKeepsDestinationReachableTests {
                                                 signedInUsername: "x") == nil)
     }
 }
+
+// MARK: - C8 Kept accounts are checked again right before a delete
+
+struct DeleteRechecksAccountsTests {
+
+    @Test("An account made a full-access administrator after Preview stops the run before its delete")
+    func promotedAccountIsNotDeleted() async throws {
+        let promoted = Locked(false)
+        let gateway = FakeGateway { env, method, path, _ in
+            switch (env, method, path) {
+            case ("dst", "GET", "/pro/v1/accounts"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 1, "results": [["id": "3", "username": "helpdesk"]]]))
+            case ("dst", "GET", "/pro/v1/accounts/3"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(
+                    ["id": "3", "username": "helpdesk", "accessLevel": "FullAccess",
+                     "privilegeLevel": promoted.value ? "ADMINISTRATOR" : "CUSTOM"]))
+            case ("dst", "DELETE", _):
+                return MockHTTP.Reply(status: 204)
+            default:
+                return nil
+            }
+        }
+        let plan = await MigrationPlanner(source: gateway.dest, dest: gateway.dest).planDeletion(typeKeys: ["jamfusers"])
+        #expect(plan.entries.first?.change == .delete)
+        promoted.withLock { $0 = true }
+        let report = await DeleteEngine(client: gateway.dest, journal: makeJournal(mode: .delete))
+            .run(plan, including: plan.runnableIds)
+        #expect(gateway.requests.value.filter { $0.method == "DELETE" }.isEmpty, "the new administrator was deleted")
+        #expect(report.stopReason?.contains("changed since Preview. A full-access administrator") == true,
+                "\(String(describing: report.stopReason))")
+    }
+
+    @Test("The signed-in account is checked again too")
+    func signedInAccountIsNotDeleted() async throws {
+        let gateway = FakeGateway { env, method, path, _ in
+            switch (env, method, path) {
+            case ("dst", "GET", "/pro/v1/accounts"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(["totalCount": 1, "results": [["id": "3", "username": "helpdesk"]]]))
+            case ("dst", "GET", "/pro/v1/accounts/3"):
+                return MockHTTP.Reply(status: 200, data: MockHTTP.json(
+                    ["id": "3", "username": "helpdesk", "accessLevel": "SiteAccess", "privilegeLevel": "CUSTOM"]))
+            case ("dst", "DELETE", _):
+                return MockHTTP.Reply(status: 204)
+            default:
+                return nil
+            }
+        }
+        let plan = await MigrationPlanner(source: gateway.dest, dest: gateway.dest).planDeletion(typeKeys: ["jamfusers"])
+        let report = await DeleteEngine(client: gateway.dest, journal: makeJournal(mode: .delete), signedInUsername: "HelpDesk")
+            .run(plan, including: plan.runnableIds)
+        #expect(gateway.requests.value.filter { $0.method == "DELETE" }.isEmpty)
+        #expect(report.stopReason != nil)
+    }
+}

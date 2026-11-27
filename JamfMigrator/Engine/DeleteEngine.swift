@@ -16,6 +16,9 @@ actor DeleteEngine {
     private let journal: JournalStore
     private let progress: (@Sendable (ProgressEvent) -> Void)?
     private var isCancelled = false
+    /// The account a direct username-and-password connection signs in
+    /// with, as Preview had it: never deleted.
+    private let signedInUsername: String?
 
     /// Built-in objects that can't or shouldn't be deleted.
     static let protectedNames: [String: Set<String>] = [
@@ -25,9 +28,11 @@ actor DeleteEngine {
 
     init(client: JamfPlatform.Client,
          journal: JournalStore,
+         signedInUsername: String? = nil,
          progress: (@Sendable (ProgressEvent) -> Void)? = nil) {
         self.client = client
         self.journal = journal
+        self.signedInUsername = signedInUsername
         self.progress = progress
     }
 
@@ -80,6 +85,14 @@ actor DeleteEngine {
                     guard current[ref.id] == ref.name else {
                         let change = current[ref.id] == nil ? "no longer on the tenant" : "renamed since Preview"
                         stopReason = "\(type.displayName) › “\(ref.name)”: \(change). The run stopped before deleting it. Preview again before running."
+                        AppActivity.record(stopReason ?? "", category: "Delete", level: .warning)
+                        break
+                    }
+                    // an account that keeps the tenant reachable now (made an
+                    // administrator since Preview) is never deleted
+                    if let reason = await MigrationPlanner.accountKeepReason(type, ref: ref, signedInUsername: signedInUsername,
+                                                                            on: client) {
+                        stopReason = "\(type.displayName) › “\(ref.name)”: changed since Preview. \(reason) The run stopped before deleting it. Preview again before running."
                         AppActivity.record(stopReason ?? "", category: "Delete", level: .warning)
                         break
                     }
