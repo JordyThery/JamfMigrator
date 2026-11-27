@@ -230,8 +230,8 @@ The app contacts only:
 - the Self Service icon addresses the source tenant returns (Jamf's icon
   CDN), over https only, to copy icons
 
-The app is sandboxed: outgoing network connections, the Downloads folder, and
-files you choose in an Open or Save panel.
+The app is sandboxed: outgoing network connections, and files you choose in a
+Save panel (Verify's report).
 
 ## Building
 
