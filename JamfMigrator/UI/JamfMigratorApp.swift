@@ -22,7 +22,9 @@ struct JamfMigratorApp: App {
     )
 
     var body: some Scene {
-        WindowGroup {
+        // One main window: every window would share one plan and one run,
+        // so a second one would only mislead (and confirm a run twice).
+        Window("Jamf Migrator", id: "main") {
             ContentView()
                 .environment(appState)
                 .environment(updates)

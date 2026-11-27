@@ -265,4 +265,31 @@ final class StoppedAppTests {
         #expect(app.wipeGatesPass(typedName: "B", backupSkipped: true), "the plan is still there to resume")
         #expect(server.writes("dst").map(\.path) == ["/pro/v1/categories/5"])
     }
+
+    @Test("A tenant edited after Preview turns Run off, also when no window saw the edit (C6)")
+    func editedTenantTurnsRunOff() async throws {
+        let server = TwoTenantServer { env, method, path, _ in
+            switch (env, method, path) {
+            case ("src", "GET", "/pro/v1/categories"): return categories([("1", "Alpha")])
+            case ("src", "GET", "/pro/v1/categories/1"): return category("1", "Alpha")
+            default: return nil
+            }
+        }
+        let app = try app(server)
+        app.selectedTypeKeys = ["categories"]
+        app.preview()
+        try await waitUntil { !app.isPlanning }
+        #expect(app.canRun)
+
+        // Settings › Connections: the destination's client changes; no
+        // ContentView is there to clear the plan
+        var edited = try #require(app.destTenant)
+        edited.clientId = "another-client"
+        try app.tenantStore.connections.save(edited, secrets: [.main: "secret-c"])
+        #expect(app.plan != nil)
+        #expect(!app.canRun, "a plan for the old connection could run")
+        #expect(app.runBlockedReason?.hasPrefix("The tenants or how they connect changed since Preview") == true)
+        #expect(!app.run())
+        #expect(server.writes("dst").isEmpty)
+    }
 }

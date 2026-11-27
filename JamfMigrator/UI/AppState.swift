@@ -264,7 +264,10 @@ final class AppState {
     // MARK: Plan and run state
 
     var preflight: PreflightReport?
-    var plan: MigrationPlan?
+    var plan: MigrationPlan? {
+        // a plan belongs to the tenants in use when it was made
+        didSet { if plan?.id != oldValue?.id { planTenantKey = plan == nil ? nil : tenantPairKey } }
+    }
     var isPlanning = false
     var planningStatus = ""
     /// Which selected type the planner is on (1-based) and how many there
@@ -319,6 +322,7 @@ final class AppState {
         backupResult = nil
         includedObjectIds = [:]
         planInputs = nil
+        planTenantKey = nil
         planIsStale = false
         selectedObjectID = nil
         searchText = ""
@@ -428,15 +432,28 @@ final class AppState {
     }
 
     var canRun: Bool {
-        // the plan must match the current mode — a stale plan from before a
-        // mode switch must never drive a run
-        plan?.mode == mode && !isRunning && !isPlanning && tour.index == nil
+        // the plan must match the current mode and tenants — a stale plan
+        // from before a mode switch or a tenant edit must never drive a run
+        plan?.mode == mode && planIsForCurrentTenants && !isRunning && !isPlanning && tour.index == nil
             && effectiveChangeCount > 0 && runBlockedReason == nil
+    }
+
+    /// The tenants, how they connect, and the mode, as they were when the
+    /// plan was made (`tenantPairKey`), so a plan never runs after a tenant
+    /// edit, also when no window saw the edit.
+    private var planTenantKey: String?
+
+    /// Whether the plan was made for the tenants in use now.
+    var planIsForCurrentTenants: Bool {
+        plan != nil && planTenantKey == tenantPairKey
     }
 
     /// Why Run is off although there is a plan with checked changes.
     var runBlockedReason: String? {
         guard let plan else { return nil }
+        if !planIsForCurrentTenants {
+            return "The tenants or how they connect changed since Preview. Preview again before running."
+        }
         if planIsStale {
             return "Something changed since Preview. Preview again before running."
         }
@@ -597,6 +614,7 @@ final class AppState {
         // or changed
         let signedInUsername = destTenant.usesGateway ? nil : destTenant.username
         planInputs = PlanInputs(mappings: mappings, secretDigests: Self.digests(of: secrets))
+        let tenantKey = tenantPairKey
         includedObjectIds = [:]
         planIsStale = false
         planningStep = 0
@@ -616,6 +634,7 @@ final class AppState {
                 let planner = MigrationPlanner(source: dest, dest: dest, secrets: secrets, mappings: mappings, progress: progress)
                 let plan = await planner.planDeletion(typeKeys: typeKeys, signedInUsername: signedInUsername)
                 guard !Task.isCancelled, self.mode == mode else { return }
+                guard self.tenantPairKey == tenantKey else { return self.dropPreview() }
                 self.adopt(plan)
             } else if let sourceTenant {
                 let source = tenantStore.client(for: sourceTenant)
@@ -625,6 +644,7 @@ final class AppState {
                                                signedInUsername: signedInUsername, progress: progress)
                 let plan = await planner.plan(typeKeys: typeKeys)
                 guard !Task.isCancelled, self.mode == mode else { return }
+                guard self.tenantPairKey == tenantKey else { return self.dropPreview() }
                 self.preflight = preflight
                 self.adopt(plan)
             }
@@ -634,6 +654,13 @@ final class AppState {
             self.selectedTypeKey = Self.summaryKey
             self.selectedObjectID = nil
         }
+    }
+
+    /// A Preview whose tenants were edited while it read them: its plan is
+    /// for the old connection, so it isn't shown.
+    private func dropPreview() {
+        isPlanning = false
+        lastError = "A tenant’s connection changed during Preview. Preview again."
     }
 
     /// A finished Preview: every actionable row starts checked.
@@ -648,6 +675,8 @@ final class AppState {
     /// rows of the plan that were left unchecked.
     private var lastRunTypeKeys: Set<String>?
     private var lastRunExcluded: [String: Set<String>] = [:]
+    /// The tenants the last run was for (`tenantPairKey`).
+    private var lastRunTenantKey: String?
 
     /// - Returns: whether the run started (false: `lastError` says why, or
     ///   Run isn't possible now).
@@ -678,6 +707,7 @@ final class AppState {
         let including = includedObjectIds
         let mappings = mappings
         lastRunTypeKeys = plan.typeKeys
+        lastRunTenantKey = tenantPairKey
         lastRunExcluded = Dictionary(grouping: plan.entries.filter { $0.change.isRunnable && !isIncluded($0) },
                                      by: \.typeKey).mapValues { Set($0.map(\.objectId)) }
         // Settings › Secrets and the mappings must be what Preview used
@@ -988,9 +1018,10 @@ final class AppState {
         verifyReport = nil
         let source = tenantStore.client(for: sourceTenant)
         let dest = tenantStore.client(for: destTenant)
-        // after a run: what it carried out; otherwise the selection
-        let typeKeys = lastRunTypeKeys ?? previewTypeKeys
-        let excluding = lastRunTypeKeys == nil ? [:] : lastRunExcluded
+        // after a run on these tenants: what it carried out; otherwise the selection
+        let afterRun = lastRunTenantKey == tenantPairKey ? lastRunTypeKeys : nil
+        let typeKeys = afterRun ?? previewTypeKeys
+        let excluding = afterRun == nil ? [:] : lastRunExcluded
         let mappings = mappings
         let progress: @Sendable (String) -> Void = { [weak self] name in
             Task { @MainActor [weak self] in self?.planningStatus = name }
