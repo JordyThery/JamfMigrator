@@ -13,6 +13,8 @@ import SwiftUI
 struct JamfMigratorApp: App {
 
     @State private var appState = AppState.forLaunch()
+    /// Brings the main window back for a menu command chosen while it's closed.
+    @Environment(\.openWindow) private var openWindow
     @State private var updates = UpdateChecker(
         configuration: UpdateConfiguration(owner: "JordyThery", repository: "JamfMigrator", appName: "Jamf Migrator"),
         activity: { line in
@@ -62,7 +64,10 @@ struct JamfMigratorApp: App {
                     .disabled(!appState.canPreview)
                 // routes through ContentView so the same confirmation dialog
                 // appears as for the toolbar button
-                Button("Run") { appState.runRequested = true }
+                Button("Run") {
+                    appState.runRequested = true
+                    openWindow(id: "main")
+                }
                     .keyboardShortcut("r", modifiers: .command)
                     .disabled(!appState.canRun)
 
@@ -70,9 +75,15 @@ struct JamfMigratorApp: App {
 
                 // the toolbar's wizards, also in the menu bar; each is
                 // available in its own mode
-                Button("Clone Tenant…") { appState.cloneRequested = true }
+                Button("Clone Tenant…") {
+                    appState.cloneRequested = true
+                    openWindow(id: "main")
+                }
                     .disabled(!appState.canClone)
-                Button("Wipe Tenant…") { appState.wipeRequested = true }
+                Button("Wipe Tenant…") {
+                    appState.wipeRequested = true
+                    openWindow(id: "main")
+                }
                     .disabled(!appState.canWipe)
             }
         }
