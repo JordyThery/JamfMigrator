@@ -315,9 +315,12 @@ struct VerifyNotCheckedTests {
 @MainActor
 struct RunRulesInTheAppTests {
 
+    /// Removes the test's preference suites when the test ends.
+    private let scratch = ScratchDefaults()
+
     /// An app on a fresh sandbox: in-memory tenants, its own settings.
     private func app(demo: Bool = false) -> AppState {
-        let defaults = UserDefaults(suiteName: "jamfmigrator-run-\(UUID().uuidString)")!
+        let defaults = scratch.make("run")
         let arguments = ["app", "-JTKitSandbox", "YES"] + (demo ? ["-JTKitDemo", "YES"] : [])
         let mode = DemoMode(key: "demoMode", defaults: defaults, arguments: arguments)
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("RunRules-\(UUID().uuidString)")

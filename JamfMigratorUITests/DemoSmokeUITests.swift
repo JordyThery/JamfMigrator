@@ -3,7 +3,7 @@ import JTKitUITestSupport
 
 /// The release check's UI smoke tests (JTKit ROADMAP step 11), in demo mode:
 /// Contoso's two demo tenants, the same answers every run, no real tenant,
-/// nothing saved. Run one at a time by `scripts/release-check.sh`; minutes,
+/// nothing saved. Run one at a time by `Scripts/release-check.sh`; minutes,
 /// not hours.
 final class DemoSmokeUITests: JTKitUITestCase {
 

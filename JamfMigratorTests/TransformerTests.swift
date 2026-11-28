@@ -82,6 +82,22 @@ struct ClassicTransformerTests {
         #expect(!out.contains("password_sha256"))
     }
 
+    @Test("A secret with $1, $0 and \\ is written exactly as stored", arguments: ["ldapservers", "directorybindings"])
+    func secretsWithTemplateCharacters(typeKey: String) throws {
+        let secret = #"Sup3r$1x$0\cd\\e&<"#
+        let xml = #"<thing><name>Corp</name><password_sha256 since="9.23">abc123</password_sha256></thing>"#
+        var ctx = context()
+        ctx.secrets[typeKey == "ldapservers" ? "ldap" : "bind"] = secret
+        let out = try xmlBody(ClassicTransformer.transform(type: ObjectRegistry.type(typeKey)!, xml: xml, context: ctx))
+        #expect(out.contains("<password>\(ClassicXML.escape(secret))</password>"), "\(out)")
+        #expect(ClassicXML.text(of: "password", in: out) == secret)
+        #expect(!out.contains("abc123"), "the source's hash leaked into the password")
+    }
+
+    @Test func classicReplacingIsLiteral() {
+        #expect(ClassicXML.replacing(pattern: "<a>(.*?)</a>", in: "<a>x</a>", with: #"$1\$0"#) == #"$1\$0"#)
+    }
+
     @Test func directoryBindingsFallBackToThePlaceholder() throws {
         let xml = #"<directory_binding><name>AD</name><password_sha256 since="9.23">abc</password_sha256></directory_binding>"#
         let outcome = ClassicTransformer.transform(type: ObjectRegistry.type("directorybindings")!, xml: xml, context: context())

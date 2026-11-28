@@ -20,6 +20,8 @@ struct WipeWizard: View {
     @State private var backupSkipped = false
     @State private var showSkipBackupConfirmation = false
     @State private var started = false
+    /// Resume Run confirms with the tenant's name and the counts, as Run does.
+    @State private var showResumeConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -97,7 +99,12 @@ struct WipeWizard: View {
                 if appState.isBackingUp {
                     ProgressView("Backing up… \(appState.planningStatus)")
                 } else if let result = appState.backupResult {
-                    if result.isComplete {
+                    if result.isComplete, let plan = appState.plan, !result.covers(plan) {
+                        Label("This backup is for an earlier Preview.", systemImage: "exclamationmark.triangle.fill")
+                            .statusColor(.orange)
+                        Button("Back Up Again") { appState.backup() }
+                            .disabled(appState.isPlanning)
+                    } else if result.isComplete {
                         Label("Backup complete: \(Plural.count(result.totalObjects, "object")) in \(result.root.lastPathComponent).",
                               systemImage: "checkmark.circle.fill")
                         Button("Show in Finder") {
@@ -117,6 +124,8 @@ struct WipeWizard: View {
                 } else {
                     Button("Back Up \(tenantName) First") { appState.backup() }
                         .buttonStyle(.borderedProminent)
+                        // the backup is made for the Preview above
+                        .disabled(appState.plan == nil || appState.isPlanning)
                     Button("Skip the Backup…", role: .destructive) {
                         showSkipBackupConfirmation = true
                     }
@@ -163,12 +172,23 @@ struct WipeWizard: View {
                 }
             } else if let report = appState.report {
                 let leftovers = report.retryableFailures
-                Label(leftovers.isEmpty
-                      ? "Wipe finished: \(Plural.count(report.deletedCount, "object")) deleted."
-                      : "Wipe finished, but \(Plural.count(leftovers.count, "object")) couldn’t be deleted.",
-                      systemImage: leftovers.isEmpty ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                    .statusColor(leftovers.isEmpty ? .green : .orange)
-                    .font(.headline)
+                Group {
+                    if let reason = report.stopReason {
+                        Label(reason, systemImage: "exclamationmark.octagon.fill")
+                            .symbolRenderingMode(.multicolor)
+                    } else if report.wasStopped {
+                        Label("Wipe stopped: \(report.doneOfChecked) deleted. Resume Run carries on where it left off.",
+                              systemImage: "pause.circle.fill")
+                            .statusColor(.orange)
+                    } else {
+                        Label(leftovers.isEmpty
+                              ? "Wipe finished: \(Plural.count(report.deletedCount, "object")) deleted."
+                              : "Wipe finished, but \(Plural.count(leftovers.count, "object")) couldn’t be deleted.",
+                              systemImage: leftovers.isEmpty ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                            .statusColor(leftovers.isEmpty ? .green : .orange)
+                    }
+                }
+                .font(.headline)
                 if !leftovers.isEmpty {
                     List(leftovers) { entry in
                         VStack(alignment: .leading) {
@@ -178,17 +198,24 @@ struct WipeWizard: View {
                             }
                         }
                     }
-                    Button("Resume Run") {
-                        appState.run()
-                    }
                 }
                 HStack {
                     Spacer()
+                    if appState.canResume {
+                        Button("Resume Run", role: .destructive) { showResumeConfirmation = true }
+                            .disabled(!appState.canRun)
+                    }
                     Button("Done") { dismiss() }
                         .buttonStyle(.borderedProminent)
                 }
             }
         }
         .padding()
+        .confirmationDialog(appState.runConfirmationTitle, isPresented: $showResumeConfirmation) {
+            Button(appState.runConfirmationButton, role: .destructive) { appState.run() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(appState.runConfirmationMessage)
+        }
     }
 }

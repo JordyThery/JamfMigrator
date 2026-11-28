@@ -21,6 +21,9 @@ actor MigrationPlanner {
     private let progress: (@Sendable (String) -> Void)?
     /// The destination's Jamf Pro version, from the permission check.
     private let destinationVersion: String?
+    /// The account a direct username-and-password destination signs in
+    /// with: a copy never changes it.
+    private let signedInUsername: String?
 
     /// Real destination lookups per registry key.
     private var destIdsByName = [String: [String: String]]()
@@ -42,12 +45,14 @@ actor MigrationPlanner {
          secrets: [String: String] = [:],
          mappings: TenantMappings = TenantMappings(),
          destinationVersion: String? = nil,
+         signedInUsername: String? = nil,
          progress: (@Sendable (String) -> Void)? = nil) {
         self.source = source
         self.dest = dest
         self.secrets = secrets
         self.mappings = mappings
         self.destinationVersion = destinationVersion
+        self.signedInUsername = signedInUsername
         self.progress = progress
     }
 
@@ -130,7 +135,8 @@ actor MigrationPlanner {
                                                          sourceNamesById: sourceNamesById,
                                                          plannedCreates: Self.creates(in: plannedNames, existing: destIdsByName),
                                                          secrets: secrets, included: included, mappings: mappings,
-                                                         unreadable: unreadableLists, destinationVersion: destinationVersion))
+                                                         unreadable: unreadableLists, destinationVersion: destinationVersion,
+                                                         signedInUsername: signedInUsername))
         } catch {
             var entry = ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
                                    change: .blocked(reason: error.localizedDescription))
@@ -168,6 +174,8 @@ actor MigrationPlanner {
         var unreadable: [String: String] = [:]
         /// The destination's Jamf Pro version, when known.
         var destinationVersion: String? = nil
+        /// The account the destination's direct connection signs in with.
+        var signedInUsername: String? = nil
     }
 
     /// Whether `type` can be planned without the `dependency` list: only
@@ -252,6 +260,11 @@ actor MigrationPlanner {
             destContext.destPreStageIds = context.destPreStageIds
             destContext.destEnabledFlags = context.destEnabledFlags
             guard case .write(let normalizedDest) = transform(type, payload: destPayload, context: destContext) else {
+                if let reason = copyKeepReason(type, name: ref.name, destPayload: destPayload,
+                                               signedInUsername: inputs.signedInUsername) {
+                    return ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name, change: .blocked(reason: reason),
+                                      sourceDigest: plan.sourceDigest)
+                }
                 return ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
                                   change: .update(destId: existingDestId), warnings: transformed.warnings,
                                   sourceDigest: plan.sourceDigest, plannedDependencies: plan.plannedDependencies)
@@ -265,6 +278,12 @@ actor MigrationPlanner {
             if diff.isEmpty {
                 return ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name,
                                   change: .unchanged(destId: existingDestId),
+                                  sourceDigest: plan.sourceDigest, destDigest: plan.destDigest)
+            }
+            // the accounts that keep the destination reachable are never changed
+            if let reason = copyKeepReason(type, name: ref.name, destPayload: destPayload,
+                                           signedInUsername: inputs.signedInUsername) {
+                return ObjectPlan(typeKey: type.key, objectId: ref.id, name: ref.name, change: .blocked(reason: reason),
                                   sourceDigest: plan.sourceDigest, destDigest: plan.destDigest)
             }
             // benchmarks have no update endpoint: delete and recreate
@@ -384,42 +403,97 @@ actor MigrationPlanner {
     /// with the Administrator privilege set, or its access couldn't be read
     /// (so it could be the last administrator).
     private func accountKeepReason(_ type: ObjectType, ref: ObjectRef, signedInUsername: String?) async -> String? {
+        await Self.accountKeepReason(type, ref: ref, signedInUsername: signedInUsername, on: dest)
+    }
+
+    /// The same, read from `dest` now: Preview's plan, and the delete
+    /// engine right before it deletes an account or group.
+    static func accountKeepReason(_ type: ObjectType, ref: ObjectRef, signedInUsername: String?,
+                                  on dest: JamfPlatform.Client) async -> String? {
         switch type.key {
         case "jamfusers":
-            if let signedInUsername, !signedInUsername.isEmpty,
-               ref.name.caseInsensitiveCompare(signedInUsername) == .orderedSame {
+            if isSignedIn(ref.name, signedInUsername) {
                 return "The account this connection signs in with."
             }
             guard case .json(let json)? = try? await ObjectLister.detail(type, id: ref.id, on: dest) else {
                 return "Its access couldn’t be read, so it could be the last administrator."
             }
-            return Self.isFullAdministrator(accessLevel: json["accessLevel"] as? String,
+            return isFullAdministrator(accessLevel: json["accessLevel"] as? String,
                                             privilegeSet: json["privilegeLevel"] as? String)
         case "jamfgroups":
             guard case .xml(let xml)? = try? await ObjectLister.detail(type, id: ref.id, on: dest) else {
                 return "Its access couldn’t be read, so it could hold the last administrator."
             }
-            return Self.isFullAdministrator(accessLevel: ClassicXML.text(of: "access_level", in: xml),
+            return isFullAdministrator(accessLevel: ClassicXML.text(of: "access_level", in: xml),
                                             privilegeSet: ClassicXML.text(of: "privilege_set", in: xml))
         default:
             return nil
         }
     }
 
-    /// The keep reason for an account or group with full access and the
-    /// Administrator privilege set, or whose access isn't stated; nil otherwise.
-    static func isFullAdministrator(accessLevel: String?, privilegeSet: String?) -> String? {
+    /// Whether `name` is the account a direct connection signs in with (Jamf
+    /// Pro account names are case-insensitive).
+    static func isSignedIn(_ name: String, _ signedInUsername: String?) -> Bool {
+        guard let signedInUsername, !signedInUsername.isEmpty else { return false }
+        return name.caseInsensitiveCompare(signedInUsername) == .orderedSame
+    }
+
+    /// How an account's access counts for the accounts that keep a tenant
+    /// reachable.
+    enum AdministratorAccess {
+        /// Full access with the Administrator privilege set.
+        case full
+        /// Not stated, so it could be the last administrator.
+        case unreadable
+    }
+
+    static func administratorAccess(accessLevel: String?, privilegeSet: String?) -> AdministratorAccess? {
         func normalized(_ text: String?) -> String {
             (text ?? "").lowercased().filter(\.isLetter)
         }
         let access = normalized(accessLevel), privileges = normalized(privilegeSet)
-        if access.isEmpty || privileges.isEmpty {
-            return "Its access couldn’t be read, so it could be the last administrator."
-        }
-        if access == "fullaccess" && privileges == "administrator" {
-            return "A full-access administrator: Wipe never removes the accounts that keep the tenant reachable."
-        }
+        if access.isEmpty || privileges.isEmpty { return .unreadable }
+        if access == "fullaccess" && privileges == "administrator" { return .full }
         return nil
+    }
+
+    /// The keep reason for an account or group with full access and the
+    /// Administrator privilege set, or whose access isn't stated; nil otherwise.
+    static func isFullAdministrator(accessLevel: String?, privilegeSet: String?) -> String? {
+        switch administratorAccess(accessLevel: accessLevel, privilegeSet: privilegeSet) {
+        case .unreadable: "Its access couldn’t be read, so it could be the last administrator."
+        case .full: "A full-access administrator: Wipe never removes the accounts that keep the tenant reachable."
+        case nil: nil
+        }
+    }
+
+    /// Why a copy never updates this destination account or account group
+    /// (decided by Jordy on 2026-11-27): it is the account the destination's
+    /// connection signs in with, a full-access administrator, or its access
+    /// couldn't be read. Nil for any other object.
+    static func copyKeepReason(_ type: ObjectType, name: String, destPayload: ObjectPayload,
+                               signedInUsername: String?) -> String? {
+        let access: AdministratorAccess?
+        switch (type.key, destPayload) {
+        case ("jamfusers", .json(let json)):
+            if isSignedIn(name, signedInUsername) {
+                return "The account the destination’s connection signs in with: a copy never changes the accounts that keep the destination reachable."
+            }
+            access = administratorAccess(accessLevel: json["accessLevel"] as? String,
+                                         privilegeSet: json["privilegeLevel"] as? String)
+        case ("jamfgroups", .xml(let xml)):
+            access = administratorAccess(accessLevel: ClassicXML.text(of: "access_level", in: xml),
+                                         privilegeSet: ClassicXML.text(of: "privilege_set", in: xml))
+        case ("jamfusers", _), ("jamfgroups", _):
+            access = .unreadable
+        default:
+            return nil
+        }
+        switch access {
+        case .full: return "A full-access administrator on the destination: a copy never changes the accounts that keep the destination reachable."
+        case .unreadable: return "Its access on the destination couldn’t be read, so it could be the last administrator: a copy never changes it."
+        case nil: return nil
+        }
     }
 
     // MARK: Helpers

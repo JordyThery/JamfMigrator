@@ -13,16 +13,27 @@ struct RunView: View {
 
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
+    /// Resume Run confirms with the tenant's name and the counts, as Run does.
+    @State private var showResumeConfirmation = false
+
+    private var wasStopped: Bool {
+        !appState.isRunning && appState.report?.wasStopped == true
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(appState.isRunning ? "Running…" : "Results")
+            Text(appState.isRunning ? "Running…" : wasStopped ? "Stopped" : "Results")
                 .font(.title2.weight(.semibold))
                 .accessibilityAddTraits(.isHeader)
 
             if !appState.isRunning, let reason = appState.report?.stopReason {
                 Label(reason, systemImage: "exclamationmark.octagon.fill")
                     .symbolRenderingMode(.multicolor)
+                    .font(.callout)
+            } else if wasStopped, let report = appState.report {
+                Label("Stopped: \(report.doneOfChecked) done. Resume Run carries on where it left off.",
+                      systemImage: "pause.circle.fill")
+                    .statusColor(.orange)
                     .font(.callout)
             }
 
@@ -55,6 +66,10 @@ struct RunView: View {
                 if appState.isRunning {
                     StopButton()
                 } else {
+                    if appState.canResume {
+                        Button("Resume Run") { showResumeConfirmation = true }
+                            .disabled(!appState.canRun)
+                    }
                     Button("Close") { dismiss() }
                         .keyboardShortcut(.defaultAction)
                 }
@@ -62,6 +77,14 @@ struct RunView: View {
         }
         .padding()
         .frame(minWidth: 520, minHeight: 400)
+        .confirmationDialog(appState.runConfirmationTitle, isPresented: $showResumeConfirmation) {
+            Button(appState.runConfirmationButton, role: appState.mode == .delete ? .destructive : nil) {
+                appState.run()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(appState.runConfirmationMessage)
+        }
     }
 }
 

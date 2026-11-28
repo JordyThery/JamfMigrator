@@ -26,6 +26,29 @@ struct RunReport: Codable, Sendable {
     /// object, or Settings › Secrets, or the mappings): what, in words. Never
     /// a secret's value.
     var stopReason: String? = nil
+    /// Set when Stop ended the run before every checked row was carried
+    /// out: the plan and the journal stay, so Resume Run carries on.
+    var wasStopped = false
+    /// How many checked rows the run was asked to carry out.
+    var checkedCount = 0
+
+    /// The checked rows that are done (created, updated, unchanged or
+    /// deleted), also those an earlier, stopped run of this plan finished.
+    var doneCount: Int {
+        entries.filter { $0.objectId != "-" && $0.status.isDone }.count
+    }
+
+    /// "12 of 300", for a stopped run.
+    var doneOfChecked: String {
+        "\(doneCount) of \(checkedCount)"
+    }
+
+    /// Whether a ticked row (registry key, source object id) has no entry
+    /// yet: the run ended before it.
+    func leftOut(_ ticked: [String: Set<String>]) -> Bool {
+        let reported = Set(entries.map(\.id))
+        return ticked.contains { key, ids in ids.contains { !reported.contains("\(key)/\($0)") } }
+    }
 
     mutating func add(type: ObjectType, ref: ObjectRef, status: ObjectStatus, warnings: [String] = []) {
         entries.append(RunReportEntry(type: type.key, objectId: ref.id, objectName: ref.name,
@@ -115,7 +138,7 @@ struct RunReportFile {
         if let reason = report.stopReason {
             lines.append("Stopped: \(reason) Objects after that point weren’t touched.")
         } else if wasStopped {
-            lines.append("The run was stopped before the end; objects after that point weren’t touched.")
+            lines.append("The run was stopped before the end (\(report.doneOfChecked) done); objects after that point weren’t touched. Resume Run carries on where it left off.")
         }
 
         let created = report.entries.filter { if case .created = $0.status { true } else { false } }

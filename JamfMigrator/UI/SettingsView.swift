@@ -149,7 +149,7 @@ struct ExportSettings: View {
         Form {
             // the app's own settings, so a sandbox run never changes the real one
             Toggle("Save payloads during runs", isOn: $appState.exportOnRun)
-            Text("Each run writes the raw source payloads and the trimmed payloads that were sent, per object, under Application Support › JamfMigrator › exports. Passwords, password hashes, Settings › Secrets values and license serial numbers are replaced by “<redacted>”.")
+            Text("Each run writes the raw source payloads and the trimmed payloads that were sent, per object, in \(appState.exportsLocation). Passwords, password hashes, Settings › Secrets values and license serial numbers are replaced by “<redacted>”; everything else, script contents included, is kept as it is.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
         }

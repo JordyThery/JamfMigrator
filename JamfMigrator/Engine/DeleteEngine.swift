@@ -16,6 +16,9 @@ actor DeleteEngine {
     private let journal: JournalStore
     private let progress: (@Sendable (ProgressEvent) -> Void)?
     private var isCancelled = false
+    /// The account a direct username-and-password connection signs in
+    /// with, as Preview had it: never deleted.
+    private let signedInUsername: String?
 
     /// Built-in objects that can't or shouldn't be deleted.
     static let protectedNames: [String: Set<String>] = [
@@ -25,9 +28,11 @@ actor DeleteEngine {
 
     init(client: JamfPlatform.Client,
          journal: JournalStore,
+         signedInUsername: String? = nil,
          progress: (@Sendable (ProgressEvent) -> Void)? = nil) {
         self.client = client
         self.journal = journal
+        self.signedInUsername = signedInUsername
         self.progress = progress
     }
 
@@ -47,7 +52,8 @@ actor DeleteEngine {
         stopReason = nil
         // a journal of another plan never makes this run skip a delete
         await journal.begin(planId: plan.id)
-        var retryQueue = [(ObjectType, ObjectRef)]()
+        // objects refused because something still uses them, with Jamf's reason
+        var retryQueue = [(ObjectType, ObjectRef, String)]()
 
         for type in ObjectRegistry.deletionOrder where plan.typeKeys.contains(type.key) {
             guard !isCancelled, stopReason == nil else { break }
@@ -72,8 +78,16 @@ actor DeleteEngine {
                         report.add(type: type, ref: ref, status: .blocked(reason: "Built-in object."))
                         continue
                     }
-                    if let previous = await journal.status(type: type.key, objectId: ref.id), previous.isDone {
+                    let previous = await journal.status(type: type.key, objectId: ref.id)
+                    if let previous, previous.isDone {
                         report.add(type: type, ref: ref, status: previous)
+                        continue
+                    }
+                    // Resume: a delete a Stop ended during its wait that did go
+                    // through is done, not "no longer on the tenant"
+                    if current[ref.id] == nil, previous == .failed(reason: Self.stoppedDuringWait) {
+                        await journal.record(type: type.key, objectId: ref.id, status: .deleted)
+                        report.add(type: type, ref: ref, status: .deleted)
                         continue
                     }
                     guard current[ref.id] == ref.name else {
@@ -82,9 +96,12 @@ actor DeleteEngine {
                         AppActivity.record(stopReason ?? "", category: "Delete", level: .warning)
                         break
                     }
+                    // an account that keeps the tenant reachable now (made an
+                    // administrator since Preview) is never deleted
+                    if await stopsForKeptAccount(type, ref: ref) { break }
                     let status = await deleteObject(type, ref: ref)
-                    if case .failed(let reason) = status, isDependencyFailure(reason) {
-                        retryQueue.append((type, ref))
+                    if case .failed(let reason) = status, Self.isDependencyFailure(reason) {
+                        retryQueue.append((type, ref, reason))
                         continue
                     }
                     await journal.record(type: type.key, objectId: ref.id, status: status)
@@ -105,14 +122,23 @@ actor DeleteEngine {
         // deletes nothing more
         var queue = retryQueue
         while !queue.isEmpty && !isCancelled && stopReason == nil {
-            var held = [(ObjectType, ObjectRef)]()
+            var held = [(ObjectType, ObjectRef, String)]()
             var completed = 0
-            for (type, ref) in queue {
-                guard !isCancelled else { break }
+            for (index, (type, ref, _)) in queue.enumerated() {
+                guard !isCancelled else {
+                    // not tried again in this pass: still held, as last refused
+                    held.append(contentsOf: queue[index...])
+                    break
+                }
+                // an account is checked again before every try
+                if await stopsForKeptAccount(type, ref: ref) {
+                    held.append(contentsOf: queue[index...])
+                    break
+                }
                 completed += 1
                 let status = await deleteObject(type, ref: ref)
-                if case .failed(let reason) = status, isDependencyFailure(reason) {
-                    held.append((type, ref))
+                if case .failed(let reason) = status, Self.isDependencyFailure(reason) {
+                    held.append((type, ref, reason))
                     continue
                 }
                 await journal.record(type: type.key, objectId: ref.id, status: status)
@@ -120,16 +146,29 @@ actor DeleteEngine {
                 progress?(ProgressEvent(type: type.key, objectName: ref.name,
                                         completed: completed, total: queue.count, status: status))
             }
-            if held.count == queue.count {
-                // no progress: record what is still referenced and stop
-                for (type, ref) in held {
-                    let status = ObjectStatus.failed(reason: "Still referenced by another object after every retry")
+            if held.count == queue.count && !isCancelled && stopReason == nil {
+                // no progress: record what is still referenced, with Jamf's reason, and stop
+                for (type, ref, reason) in held {
+                    let status = ObjectStatus.failed(reason: Self.stillReferenced(reason))
                     await journal.record(type: type.key, objectId: ref.id, status: status)
                     report.add(type: type, ref: ref, status: status)
                 }
+                queue = []
                 break
             }
             queue = held
+        }
+        let ticked = MigrationEngine.tickedRows(plan, including: including)
+            .filter { key, _ in ObjectRegistry.type(key).map { if case .singleton = $0.listShape { false } else { true } } ?? true }
+        report.checkedCount = ticked.values.reduce(0) { $0 + $1.count }
+        // Stop during the last delete: the run did finish
+        report.wasStopped = isCancelled && (report.leftOut(ticked) || !queue.isEmpty)
+        // the run ended (Stop, or an object changed since Preview) with
+        // objects still waiting for a retry: they were tried and refused
+        for (type, ref, reason) in queue {
+            let status = ObjectStatus.failed(reason: Self.notRetried(reason))
+            await journal.record(type: type.key, objectId: ref.id, status: status)
+            report.add(type: type, ref: ref, status: status)
         }
         report.stopReason = stopReason
         return report
@@ -137,6 +176,17 @@ actor DeleteEngine {
 
     /// Why the run stopped because an object changed since Preview; nil otherwise.
     private var stopReason: String?
+
+    /// Stops the run before deleting an account or group that now keeps the
+    /// tenant reachable (made a full-access administrator since Preview, or
+    /// the signed-in account); false for anything else.
+    private func stopsForKeptAccount(_ type: ObjectType, ref: ObjectRef) async -> Bool {
+        guard let reason = await MigrationPlanner.accountKeepReason(type, ref: ref, signedInUsername: signedInUsername,
+                                                                     on: client) else { return false }
+        stopReason = "\(type.displayName) › “\(ref.name)”: changed since Preview. \(reason) The run stopped before deleting it. Preview again before running."
+        AppActivity.record(stopReason ?? "", category: "Delete", level: .warning)
+        return true
+    }
 
     /// The reason of an object whose delete was waiting to be tried again
     /// when Stop ended the wait.
@@ -176,8 +226,22 @@ actor DeleteEngine {
         }
     }
 
-    private func isDependencyFailure(_ reason: String) -> Bool {
+    /// A refusal that may mean something still uses the object (422, 409,
+    /// 406): tried again after everything else.
+    static func isDependencyFailure(_ reason: String) -> Bool {
         reason.contains("HTTP 422") || reason.contains("HTTP 409") || reason.contains("HTTP 406")
             || reason.contains("HAS_DEPENDENCIES")
+    }
+
+    /// The reason of an object still refused after every retry, with Jamf's
+    /// own last answer (a 409 isn't always a reference).
+    static func stillReferenced(_ reason: String) -> String {
+        "Still refused after every retry, possibly because another object uses it: \(reason)"
+    }
+
+    /// The reason of an object Jamf refused whose retries the run ended
+    /// before finishing.
+    static func notRetried(_ reason: String) -> String {
+        "Refused, and the run ended before its retries were done: \(reason)"
     }
 }

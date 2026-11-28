@@ -47,15 +47,18 @@ enum ClassicXML {
         return found
     }
 
-    /// Regex replace; case-insensitive and `.` matches newlines.
-    static func replacing(pattern: String, in xml: String, with template: String) -> String {
+    /// Regex replace; case-insensitive and `.` matches newlines. The
+    /// replacement is literal text: a `$1` or `\` in it (a password from
+    /// Settings › Secrets) is written as it is, never read as a capture
+    /// group or an escape.
+    static func replacing(pattern: String, in xml: String, with replacement: String) -> String {
         guard let regex = try? NSRegularExpression(pattern: pattern,
                                                    options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
             return xml
         }
         return regex.stringByReplacingMatches(in: xml, options: [],
                                               range: NSRange(xml.startIndex..., in: xml),
-                                              withTemplate: template)
+                                              withTemplate: NSRegularExpression.escapedTemplate(for: replacement))
     }
 
     static func escape(_ text: String) -> String {

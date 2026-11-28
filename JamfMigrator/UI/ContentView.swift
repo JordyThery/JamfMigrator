@@ -96,24 +96,11 @@ struct ContentView: View {
         // demo mode on or off, or another tenant: the plan is for other tenants
         .onChange(of: appState.demo.isOn) { appState.tenantsChanged(demoSwitched: true) }
         .onChange(of: appState.tenantPairKey) { appState.tenantsChanged(demoSwitched: false) }
-        .onChange(of: appState.cloneRequested) { _, requested in
-            if requested {
-                appState.cloneRequested = false
-                showCloneWizard = true
-            }
-        }
-        .onChange(of: appState.wipeRequested) { _, requested in
-            if requested {
-                appState.wipeRequested = false
-                showWipeWizard = true
-            }
-        }
-        .onChange(of: appState.runRequested) { _, requested in
-            if requested {
-                appState.runRequested = false
-                showRunConfirmation = true
-            }
-        }
+        .onChange(of: appState.cloneRequested) { takeMenuRequests() }
+        .onChange(of: appState.wipeRequested) { takeMenuRequests() }
+        .onChange(of: appState.runRequested) { takeMenuRequests() }
+        // a menu command chosen while the window was closed opens it first
+        .onAppear { takeMenuRequests() }
         .confirmationDialog(runConfirmationTitle, isPresented: $showRunConfirmation) {
             Button(appState.runConfirmationButton, role: appState.mode == .delete ? .destructive : nil) {
                 if appState.run() {
@@ -145,6 +132,23 @@ struct ContentView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(appState.lastError ?? "")
+        }
+    }
+
+    /// Migration › Run, Clone Tenant… and Wipe Tenant… from the menu bar:
+    /// the same confirmation and wizards as the toolbar buttons.
+    private func takeMenuRequests() {
+        if appState.cloneRequested {
+            appState.cloneRequested = false
+            if appState.canClone { showCloneWizard = true }
+        }
+        if appState.wipeRequested {
+            appState.wipeRequested = false
+            if appState.canWipe { showWipeWizard = true }
+        }
+        if appState.runRequested {
+            appState.runRequested = false
+            if appState.canRun { showRunConfirmation = true }
         }
     }
 

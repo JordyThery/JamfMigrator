@@ -20,6 +20,9 @@ actor MigrationEngine {
     let mappings: TenantMappings
     /// The destination's Jamf Pro version, from Preview's permission check.
     let destinationVersion: String?
+    /// The account a direct username-and-password destination signs in
+    /// with, as Preview had it.
+    let signedInUsername: String?
     private let progress: (@Sendable (ProgressEvent) -> Void)?
     private let icons: IconMigrator
 
@@ -49,8 +52,10 @@ actor MigrationEngine {
          secrets: [String: String] = [:],
          mappings: TenantMappings = TenantMappings(),
          destinationVersion: String? = nil,
+         signedInUsername: String? = nil,
          progress: (@Sendable (ProgressEvent) -> Void)? = nil) {
         self.destinationVersion = destinationVersion
+        self.signedInUsername = signedInUsername
         self.source = source
         self.dest = dest
         self.journal = journal
@@ -130,12 +135,27 @@ actor MigrationEngine {
             }
         }
         report.stopReason = stopReason
+        let ticked = Self.tickedRows(plan, including: including)
+        report.checkedCount = ticked.values.reduce(0) { $0 + $1.count }
+        // Stop during the last object's write: the run did finish
+        report.wasStopped = isCancelled && report.leftOut(ticked)
         return report
     }
 
     /// Why the run stopped before the end because something changed since
     /// Preview; nil otherwise.
     private var stopReason: String?
+
+    /// The checked rows a run carries out, per registry key: runnable rows of
+    /// the plan's types that are in `including`.
+    static func tickedRows(_ plan: MigrationPlan, including: [String: Set<String>]) -> [String: Set<String>] {
+        var rows = [String: Set<String>]()
+        for entry in plan.entries where plan.typeKeys.contains(entry.typeKey) && entry.change.isRunnable
+            && including[entry.typeKey]?.contains(entry.objectId) == true {
+            rows[entry.typeKey, default: []].insert(entry.objectId)
+        }
+        return rows
+    }
 
     private func runType(_ type: ObjectType, entries: [ObjectPlan], ticked: Set<String>, plan: MigrationPlan,
                          precedingCreates: [String: Set<String>], report: inout RunReport) async throws {
@@ -256,7 +276,8 @@ actor MigrationEngine {
                 inputs: MigrationPlanner.ComparisonInputs(destIdsByName: asPreviewSaw, destNamesById: destNamesById,
                                                           sourceNamesById: sourceNamesById, plannedCreates: plannedCreates,
                                                           secrets: secrets, included: plan.typeKeys, mappings: mappings,
-                                                          unreadable: unreadableLists, destinationVersion: destinationVersion))
+                                                          unreadable: unreadableLists, destinationVersion: destinationVersion,
+                                                          signedInUsername: signedInUsername))
             if let change = Self.changeSincePreview(planned: entry, now: now) {
                 stop(type, ref, change)
                 return (.failed(reason: "Not written"), [])

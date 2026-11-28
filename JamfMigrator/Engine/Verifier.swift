@@ -54,8 +54,10 @@ enum Verifier {
                        only: OnlyObjects? = nil,
                        secrets: [String: String] = [:],
                        mappings: TenantMappings = TenantMappings(),
+                       signedInUsername: String? = nil,
                        progress: (@Sendable (String) -> Void)? = nil) async -> VerifyReport {
-        let planner = MigrationPlanner(source: source, dest: dest, secrets: secrets, mappings: mappings, progress: progress)
+        let planner = MigrationPlanner(source: source, dest: dest, secrets: secrets, mappings: mappings,
+                                       signedInUsername: signedInUsername, progress: progress)
         let plan = await planner.plan(typeKeys: typeKeys, only: only)
 
         var report = VerifyReport()

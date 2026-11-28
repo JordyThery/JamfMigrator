@@ -75,7 +75,7 @@ enum ListShape: Sendable {
 
 /// What a type needs to be read and written: its Jamf Pro privileges, from
 /// JTKit's table, and its Jamf Account capability behind the gateway (see
-/// docs/PERMISSIONS.md). Each request names its privileges, so a refusal
+/// docs/permissions.md). Each request names its privileges, so a refusal
 /// (403) on a direct connection says which one is missing.
 struct ObjectAccess: Sendable {
     /// The gateway capability, e.g. "policies".

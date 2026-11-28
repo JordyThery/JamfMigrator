@@ -167,11 +167,12 @@ as failed objects in the run report, with Jamf’s error.
 
 The permissions are taken from the `x-required-privileges` of every
 endpoint the app calls, in the API specs Jamf publishes in
-[jamfplatform-go-sdk](https://github.com/jamf/jamfplatform-go-sdk) (Jamf Pro
-API 11.33.0, Classic API 11.32.0, Blueprints, Compliance Benchmarks). They are
-checked against the API reference on the
-[Jamf developer portal](https://developer.jamf.com/mcp), through its MCP
-server, for each of those calls:
+[jamfplatform-go-sdk](https://github.com/jamf/jamfplatform-go-sdk) (checked
+on Jamf Pro API 11.33.0, Classic API 11.32.0, Blueprints and Compliance
+Benchmarks; the unit tests compare every endpoint the app calls with the
+SDK's Jamf Pro and Classic API 11.32.0 specs). They are checked against the
+API reference on the [Jamf developer portal](https://developer.jamf.com),
+through the portal's MCP server, for each of those calls:
 
 - **Gateway capabilities**: every one is confirmed by the portal’s Platform
   API specs.
@@ -184,4 +185,6 @@ server, for each of those calls:
   name.
 
 Every privilege on this page exists in the privilege list of a Jamf Pro 11.32
-instance.
+instance. The live checks copy their test objects on Jamf Pro 11.34.0 and
+11.35.0 beta 1 with these permissions; the page hasn't been checked again
+against those versions' full privilege lists.

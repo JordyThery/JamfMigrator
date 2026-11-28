@@ -343,8 +343,11 @@ struct StopTests {
 @MainActor
 struct RunKeepsItsTenantsTests {
 
+    /// Removes the test's preference suites when the test ends.
+    private let scratch = ScratchDefaults()
+
     private func app() throws -> (AppState, Tenant, Tenant, Tenant) {
-        let defaults = UserDefaults(suiteName: "jamfmigrator-safety-\(UUID().uuidString)")!
+        let defaults = scratch.make("safety")
         let mode = DemoMode(key: "demoMode", defaults: defaults, arguments: ["app", "-JTKitSandbox", "YES"])
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("Safety-\(UUID().uuidString)")
         let store = TenantStore(directory: directory, secrets: InMemorySecretStore(), log: nil, demo: mode,

@@ -258,15 +258,7 @@ private struct ConnectStep: View {
     }
 
     private func runPreflight() {
-        guard let sourceTenant = appState.sourceTenant, let destTenant = appState.destTenant else { return }
-        let source = appState.tenantStore.client(for: sourceTenant)
-        let dest = appState.tenantStore.client(for: destTenant)
-        let typeKeys = appState.selectedTypeKeys
-        appState.isPlanning = true
-        Task {
-            appState.preflight = await Preflight.run(source: source, dest: dest, typeKeys: typeKeys)
-            appState.isPlanning = false
-        }
+        appState.runPreflight()
     }
 }
 
@@ -289,6 +281,10 @@ private struct PrepareStep: View {
             Section("ADE Instances") {
                 if appState.isLoadingMappings {
                     ProgressView().controlSize(.small)
+                } else if let problem = appState.mappingReadErrors.sourceADE ?? appState.mappingReadErrors.destADE {
+                    MappingReadProblem(what: appState.mappingReadErrors.sourceADE != nil
+                                       ? "The source’s ADE instances" : "The destination’s ADE instances",
+                                       problem: problem)
                 } else if appState.sourceADEInstances.isEmpty {
                     Text("The source has no ADE instances.").foregroundStyle(.secondary)
                 } else if appState.destADEInstances.isEmpty {
@@ -310,6 +306,11 @@ private struct PrepareStep: View {
             Section("Distribution Points") {
                 if appState.isLoadingMappings {
                     ProgressView().controlSize(.small)
+                } else if let problem = appState.mappingReadErrors.sourceDistributionPoints
+                            ?? appState.mappingReadErrors.destDistributionPoints {
+                    MappingReadProblem(what: appState.mappingReadErrors.sourceDistributionPoints != nil
+                                       ? "The source’s distribution points" : "The destination’s distribution points",
+                                       problem: problem)
                 } else if appState.sourceDistributionPoints.isEmpty {
                     Text("The source has no file-share distribution points.").foregroundStyle(.secondary)
                 } else {
@@ -352,6 +353,22 @@ private struct PrepareStep: View {
         Binding(
             get: { appState.mappings[keyPath: keyPath][sourceId] },
             set: { appState.mappings[keyPath: keyPath][sourceId] = $0 })
+    }
+}
+
+/// A mapping list that couldn't be read: why, and a way to read it again.
+private struct MappingReadProblem: View {
+    @Environment(AppState.self) private var appState
+    let what: String
+    let problem: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("\(what) couldn’t be read: \(problem)", systemImage: "exclamationmark.triangle.fill")
+                .statusColor(.orange)
+                .textSelection(.enabled)
+            Button("Load Again") { appState.loadMappingCandidates() }
+        }
     }
 }
 
@@ -423,6 +440,10 @@ private struct RunStep: View {
             } else if let report = appState.report, let reason = report.stopReason {
                 Label(reason, systemImage: "exclamationmark.octagon.fill")
                     .symbolRenderingMode(.multicolor)
+            } else if let report = appState.report, report.wasStopped {
+                Label("Run stopped: \(report.doneOfChecked) done. Resume Run carries on where it left off.",
+                      systemImage: "pause.circle.fill")
+                    .statusColor(.orange)
             } else if let report = appState.report {
                 let failures = report.retryableFailures
                 Label(failures.isEmpty
@@ -455,8 +476,14 @@ private struct RunStep: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(!appState.canPreview)
+                } else if appState.report?.wasStopped == true {
+                    // stopped before the end: carrying on comes first
+                    Button("Continue to Verify") { next() }
+                    Button("Resume Run") { showRunConfirmation = true }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(!appState.canRun)
                 } else if started || appState.plan?.changeCount == 0 {
-                    if appState.report?.retryableFailures.isEmpty == false {
+                    if appState.canResume {
                         Button("Resume Run") { showRunConfirmation = true }
                             .disabled(!appState.canRun)
                     }
@@ -555,9 +582,9 @@ private struct VerifyStep: View {
         var lines = ["Clone verification — \(Date().formatted())", ""]
         for result in report.types {
             lines.append("\(result.typeKey): \(result.sourceCount) source / \(result.destCount.map(String.init) ?? "?") destination")
-            if let reason = result.notChecked { lines.append("  NOT CHECKED \(reason)") }
-            lines.append(contentsOf: result.discrepancies.map { "  DIFFERS \($0)" })
-            lines.append(contentsOf: result.blocked.map { "  BLOCKED \($0)" })
+            if let reason = result.notChecked { lines.append("  Not checked: \(reason)") }
+            lines.append(contentsOf: result.discrepancies.map { "  Differs: \($0)" })
+            lines.append(contentsOf: result.blocked.map { "  Blocked: \($0)" })
         }
         do {
             try lines.joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)

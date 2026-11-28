@@ -3,8 +3,8 @@
 # unattended with nohup; the report lands in
 # ~/Library/Application Support/JTKit Release Check/runs/.
 #
-#   scripts/release-check.sh [--local-jtkit] [--tenants] [--stop-before-live]
-#   scripts/release-check.sh --local-jtkit --fault break-build|fail-live-step|interrupt-live
+#   Scripts/release-check.sh [--local-jtkit] [--tenants] [--stop-before-live]
+#   Scripts/release-check.sh --local-jtkit --fault break-build|fail-live-step|interrupt-live
 #     (tests the check itself; never part of a release check)
 #
 # Tenants are roles on the local allow-list (never named here): jamf-test-a,

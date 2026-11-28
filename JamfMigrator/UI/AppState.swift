@@ -98,6 +98,14 @@ final class AppState {
         return "Application Support › JamfMigrator › Run Reports"
     }
 
+    /// Where exports go, in words, for Settings › Export.
+    var exportsLocation: String {
+        if Self.liveDirectory != nil { return "the release check’s run folder (exports)" }
+        if demo.isOn { return "demo mode’s temporary folder (exports)" }
+        if demo.isSandbox { return "this sandbox run’s temporary folder (exports)" }
+        return "Application Support › JamfMigrator › exports"
+    }
+
     /// Settings › Export: "Save payloads during runs", in the app's own
     /// settings (a sandbox run's are in memory).
     var exportOnRun: Bool {
@@ -194,7 +202,11 @@ final class AppState {
 
     var selectedTypeKeys: Set<String> {
         // demo mode's choice is kept in memory only
-        didSet { if !demo.isOn { defaults.set(Array(selectedTypeKeys), forKey: "selectedTypeKeys") } }
+        didSet {
+            if !demo.isOn { defaults.set(Array(selectedTypeKeys), forKey: "selectedTypeKeys") }
+            // a backup is for the selection and Preview it was made for
+            if selectedTypeKeys != oldValue { backupResult = nil }
+        }
     }
     /// The checked rows, per registry key: what Run carries out. After a
     /// Preview every Create, Update, Replace and Delete row starts checked;
@@ -252,7 +264,10 @@ final class AppState {
     // MARK: Plan and run state
 
     var preflight: PreflightReport?
-    var plan: MigrationPlan?
+    var plan: MigrationPlan? {
+        // a plan belongs to the tenants in use when it was made
+        didSet { if plan?.id != oldValue?.id { planTenantKey = plan == nil ? nil : tenantPairKey } }
+    }
     var isPlanning = false
     var planningStatus = ""
     /// Which selected type the planner is on (1-based) and how many there
@@ -307,6 +322,7 @@ final class AppState {
         backupResult = nil
         includedObjectIds = [:]
         planInputs = nil
+        planTenantKey = nil
         planIsStale = false
         selectedObjectID = nil
         searchText = ""
@@ -337,6 +353,18 @@ final class AppState {
     var sourceDistributionPoints: [ObjectRef] = []
     var destDistributionPoints: [ObjectRef] = []
     var isLoadingMappings = false
+    /// Why a mapping list couldn't be read, per list; empty when all were.
+    var mappingReadErrors = MappingReadErrors()
+
+    /// The four lists Clone Tenant's mappings are made from.
+    struct MappingReadErrors: Equatable {
+        var sourceADE: String?
+        var destADE: String?
+        var sourceDistributionPoints: String?
+        var destDistributionPoints: String?
+
+        var isEmpty: Bool { self == MappingReadErrors() }
+    }
 
     var isBackingUp = false
     var backupResult: BackupResult?
@@ -416,15 +444,28 @@ final class AppState {
     }
 
     var canRun: Bool {
-        // the plan must match the current mode — a stale plan from before a
-        // mode switch must never drive a run
-        plan?.mode == mode && !isRunning && !isPlanning && tour.index == nil
+        // the plan must match the current mode and tenants — a stale plan
+        // from before a mode switch or a tenant edit must never drive a run
+        plan?.mode == mode && planIsForCurrentTenants && !isRunning && !isPlanning && tour.index == nil
             && effectiveChangeCount > 0 && runBlockedReason == nil
+    }
+
+    /// The tenants, how they connect, and the mode, as they were when the
+    /// plan was made (`tenantPairKey`), so a plan never runs after a tenant
+    /// edit, also when no window saw the edit.
+    private var planTenantKey: String?
+
+    /// Whether the plan was made for the tenants in use now.
+    var planIsForCurrentTenants: Bool {
+        plan != nil && planTenantKey == tenantPairKey
     }
 
     /// Why Run is off although there is a plan with checked changes.
     var runBlockedReason: String? {
         guard let plan else { return nil }
+        if !planIsForCurrentTenants {
+            return "The tenants or how they connect changed since Preview. Preview again before running."
+        }
         if planIsStale {
             return "Something changed since Preview. Preview again before running."
         }
@@ -575,13 +616,17 @@ final class AppState {
         isPlanning = true
         plan = nil
         report = nil
+        // Wipe's backup belongs to one Preview: a new one needs a new backup
+        backupResult = nil
         lastError = nil
         let mode = mode
         let typeKeys = previewTypeKeys
         let mappings = mappings
         // a direct username-and-password tenant's account is never deleted
+        // or changed
         let signedInUsername = destTenant.usesGateway ? nil : destTenant.username
         planInputs = PlanInputs(mappings: mappings, secretDigests: Self.digests(of: secrets))
+        let tenantKey = tenantPairKey
         includedObjectIds = [:]
         planIsStale = false
         planningStep = 0
@@ -601,14 +646,17 @@ final class AppState {
                 let planner = MigrationPlanner(source: dest, dest: dest, secrets: secrets, mappings: mappings, progress: progress)
                 let plan = await planner.planDeletion(typeKeys: typeKeys, signedInUsername: signedInUsername)
                 guard !Task.isCancelled, self.mode == mode else { return }
+                guard self.tenantPairKey == tenantKey else { return self.dropPreview() }
                 self.adopt(plan)
             } else if let sourceTenant {
                 let source = tenantStore.client(for: sourceTenant)
                 let preflight = await Preflight.run(source: source, dest: dest, typeKeys: typeKeys)
                 let planner = MigrationPlanner(source: source, dest: dest, secrets: secrets, mappings: mappings,
-                                               destinationVersion: preflight.destination.version, progress: progress)
+                                               destinationVersion: preflight.destination.version,
+                                               signedInUsername: signedInUsername, progress: progress)
                 let plan = await planner.plan(typeKeys: typeKeys)
                 guard !Task.isCancelled, self.mode == mode else { return }
+                guard self.tenantPairKey == tenantKey else { return self.dropPreview() }
                 self.preflight = preflight
                 self.adopt(plan)
             }
@@ -618,6 +666,13 @@ final class AppState {
             self.selectedTypeKey = Self.summaryKey
             self.selectedObjectID = nil
         }
+    }
+
+    /// A Preview whose tenants were edited while it read them: its plan is
+    /// for the old connection, so it isn't shown.
+    private func dropPreview() {
+        isPlanning = false
+        lastError = "A tenant’s connection changed during Preview. Preview again."
     }
 
     /// A finished Preview: every actionable row starts checked.
@@ -632,12 +687,18 @@ final class AppState {
     /// rows of the plan that were left unchecked.
     private var lastRunTypeKeys: Set<String>?
     private var lastRunExcluded: [String: Set<String>] = [:]
+    /// The tenants the last run was for (`tenantPairKey`).
+    private var lastRunTenantKey: String?
 
     /// - Returns: whether the run started (false: `lastError` says why, or
     ///   Run isn't possible now).
     @discardableResult
     func run() -> Bool {
         guard canRun, let destTenant, let plan, let planInputs, let secrets = readServiceSecrets() else { return false }
+        // a copy needs its source; checked before anything changes, so a
+        // refused run never leaves the app "running"
+        let source = mode == .copy ? sourceTenant.map(tenantStore.client(for:)) : nil
+        guard mode == .delete || source != nil else { return false }
         guard mode == .copy || !destTenant.isProtected else {
             lastError = "\(destTenant.name) is protected and can’t be wiped or deleted from. Switch protection off in Settings › Connections first."
             return false
@@ -648,7 +709,6 @@ final class AppState {
         report = nil
         reportFileURL = nil
         reportSaveError = nil
-        runWasStopped = false
         isStopping = false
         lastError = nil
         // decided now: switching demo mode during the run doesn't move its report
@@ -663,6 +723,7 @@ final class AppState {
         let including = includedObjectIds
         let mappings = mappings
         lastRunTypeKeys = plan.typeKeys
+        lastRunTenantKey = tenantPairKey
         lastRunExcluded = Dictionary(grouping: plan.entries.filter { $0.change.isRunnable && !isIncluded($0) },
                                      by: \.typeKey).mapValues { Set($0.map(\.objectId)) }
         // Settings › Secrets and the mappings must be what Preview used
@@ -687,19 +748,22 @@ final class AppState {
 
         switch mode {
         case .copy:
-            guard let sourceTenant else { return false }
-            let source = tenantStore.client(for: sourceTenant)
+            guard let source else { return false }
             let export = exportWriterIfEnabled()
             let engine = MigrationEngine(source: source, dest: dest, journal: journal,
                                          export: export, secrets: secrets, mappings: mappings,
-                                         destinationVersion: preflight?.destination.version, progress: progress)
+                                         destinationVersion: preflight?.destination.version,
+                                         signedInUsername: destTenant.usesGateway ? nil : destTenant.username,
+                                         progress: progress)
             activeMigration = engine
             runTask = Task { [weak self] in
                 let report = await engine.run(plan, including: including)
                 await self?.finishRun(report: report, journal: journal, file: reportFile)
             }
         case .delete:
-            let engine = DeleteEngine(client: dest, journal: journal, progress: progress)
+            let engine = DeleteEngine(client: dest, journal: journal,
+                                      signedInUsername: destTenant.usesGateway ? nil : destTenant.username,
+                                      progress: progress)
             activeDelete = engine
             runTask = Task { [weak self] in
                 let report = await engine.run(plan, including: including)
@@ -719,7 +783,7 @@ final class AppState {
               let plan, plan.mode == .delete, effectiveCounts.delete > 0,
               canRun,
               typedName == tenant.name else { return false }
-        return backupSkipped || backupResult?.isComplete == true
+        return backupSkipped || backupResult?.covers(plan) == true
     }
 
     /// The run confirmation's title and message, naming the tenant (the demo
@@ -741,8 +805,10 @@ final class AppState {
     var runConfirmationMessage: String {
         guard let planCounts = plan?.counts else { return "" }
         let effective = effectiveCounts
+        // Resume Run: what the stopped or failed run already did is skipped
+        let resuming = canResume ? " What the last run of this plan finished is skipped." : ""
         if mode == .delete {
-            return "\(Plural.count(effective.delete, "object")) will be deleted from \(destTenant?.name ?? "the tenant"); \(Plural.count(planCounts.keep, "object")) \(planCounts.keep == 1 ? "is" : "are") kept. This can’t be undone."
+            return "\(Plural.count(effective.delete, "object")) will be deleted from \(destTenant?.name ?? "the tenant"); \(Plural.count(planCounts.keep, "object")) \(planCounts.keep == 1 ? "is" : "are") kept.\(resuming) This can’t be undone."
         }
         var message = "\(effective.create) to create, \(effective.update) to update, \(planCounts.unchanged) unchanged, \(planCounts.blocked) blocked."
         let planChangeCount = planCounts.create + planCounts.update + planCounts.replace + planCounts.delete
@@ -753,16 +819,15 @@ final class AppState {
         if effective.replace > 0 {
             message += " \(Plural.count(effective.replace, "Compliance Benchmark")) will be deleted and recreated — benchmarks can’t be updated in place."
         }
-        return message
+        return message + resuming
     }
 
-    /// Stop: a run finishes the object it is writing, then stops (cancelling
+    /// Stop: a run finishes the object it is writing, then stops (canceling
     /// it mid-request would leave that object's state unknown); a wait before
-    /// a retry or a watch after a write ends at once. Preview and the backup
-    /// stop at once.
+    /// a retry or a watch after a write ends at once. Stop is offered only
+    /// while a run writes (`canStop`).
     func cancel() {
         if isRunning {
-            runWasStopped = true
             isStopping = true
         } else {
             runTask?.cancel()
@@ -812,9 +877,6 @@ final class AppState {
     /// Where the running run's report goes: Run Reports, or demo mode's folder.
     private var runReportsFolder: URL?
 
-    /// Set by Stop, so the saved report says the run didn't finish.
-    private var runWasStopped = false
-
     private func finishRun(report: RunReport, journal: JournalStore?, file: RunReportFile) async {
         self.report = report
         saveReport(report, file: file)
@@ -835,6 +897,11 @@ final class AppState {
             return
         }
         guard let journal else { return }
+        if report.wasStopped {
+            // Stop before the last checked row: the plan and the journal
+            // stay, so Resume Run carries on where the run left off
+            return
+        }
         if report.retryableFailures.isEmpty {
             // done: remove the journal and discard the now-stale plan
             await journal.finish()
@@ -843,13 +910,20 @@ final class AppState {
         // on real failures the plan stays, so Resume Run can retry
     }
 
+    /// Whether the last run left work that Resume Run carries out: it was
+    /// stopped, or some objects failed. Resume Run is Run of the same plan.
+    var canResume: Bool {
+        guard let report, plan != nil, report.stopReason == nil else { return false }
+        return report.wasStopped || !report.retryableFailures.isEmpty
+    }
+
     /// Saves the run's report to Run Reports. A failure is shown in the run
     /// sheet and the activity log; the run itself is not affected.
     private func saveReport(_ report: RunReport, file: RunReportFile) {
         var file = file
         file.report = report
         file.finished = Date()
-        file.wasStopped = runWasStopped
+        file.wasStopped = report.wasStopped
         do {
             let url = try file.save(in: runReportsFolder ?? dataDirectory.appendingPathComponent("Run Reports", isDirectory: true))
             reportFileURL = url
@@ -859,6 +933,28 @@ final class AppState {
             reportSaveError = error.localizedDescription
             AppActivity.record("The run report couldn’t be saved: \(error.localizedDescription)",
                                category: "Run report", connection: file.destinationName, level: .error)
+        }
+    }
+
+    // MARK: Clone Tenant's connection check
+
+    /// Checks that both tenants answer and their permissions, for the types
+    /// selected. The result belongs to the tenants it checked: when they
+    /// change while it runs, it is dropped.
+    func runPreflight() {
+        guard let sourceTenant, let destTenant, !isPlanning, !isRunning else { return }
+        let source = tenantStore.client(for: sourceTenant)
+        let dest = tenantStore.client(for: destTenant)
+        let typeKeys = selectedTypeKeys
+        let tenantKey = tenantPairKey
+        isPlanning = true
+        preflight = nil
+        runTask = Task { [weak self] in
+            let report = await Preflight.run(source: source, dest: dest, typeKeys: typeKeys)
+            guard let self, !Task.isCancelled else { return }
+            self.isPlanning = false
+            guard self.tenantPairKey == tenantKey else { return }
+            self.preflight = report
         }
     }
 
@@ -892,11 +988,25 @@ final class AppState {
         let pair = Self.connectionKey(sourceTenant) + ">" + Self.connectionKey(destTenant)
         let source = tenantStore.client(for: sourceTenant)
         let dest = tenantStore.client(for: destTenant)
+        // a list that can't be read says why, never that the tenant has none
+        func read(_ list: () async throws -> [ObjectRef], _ name: String, _ tenant: Tenant) async -> ([ObjectRef], String?) {
+            do {
+                return (try await list(), nil)
+            } catch {
+                AppActivity.record("\(name) couldn’t be read: \(error.localizedDescription)", category: "Mappings",
+                                   connection: tenant.name, level: .warning)
+                return ([], error.localizedDescription)
+            }
+        }
         Task { [weak self] in
-            let sourceADE = (try? await MappingCatalog.adeInstances(on: source)) ?? []
-            let destADE = (try? await MappingCatalog.adeInstances(on: dest)) ?? []
-            let sourceDPs = (try? await MappingCatalog.distributionPoints(on: source)) ?? []
-            let destDPs = (try? await MappingCatalog.distributionPoints(on: dest)) ?? []
+            let (sourceADE, sourceADEError) = await read({ try await MappingCatalog.adeInstances(on: source) },
+                                                         "The ADE instances", sourceTenant)
+            let (destADE, destADEError) = await read({ try await MappingCatalog.adeInstances(on: dest) },
+                                                     "The ADE instances", destTenant)
+            let (sourceDPs, sourceDPError) = await read({ try await MappingCatalog.distributionPoints(on: source) },
+                                                        "The distribution points", sourceTenant)
+            let (destDPs, destDPError) = await read({ try await MappingCatalog.distributionPoints(on: dest) },
+                                                    "The distribution points", destTenant)
             guard let self, load == self.mappingLoad else { return }
             guard pair == Self.connectionKey(self.sourceTenant) + ">" + Self.connectionKey(self.destTenant) else {
                 // the tenants changed while it loaded: none of this is theirs
@@ -907,6 +1017,9 @@ final class AppState {
             self.destADEInstances = destADE
             self.sourceDistributionPoints = sourceDPs
             self.destDistributionPoints = destDPs
+            self.mappingReadErrors = MappingReadErrors(sourceADE: sourceADEError, destADE: destADEError,
+                                                       sourceDistributionPoints: sourceDPError,
+                                                       destDistributionPoints: destDPError)
             if self.mappings.isEmpty {
                 self.mappings = MappingCatalog.propose(sourceADE: sourceADE, destADE: destADE,
                                                        sourceDPs: sourceDPs, destDPs: destDPs)
@@ -941,8 +1054,10 @@ final class AppState {
         activeExporter = exporter
         // the types Preview plans: never the gateway-only ones a direct tenant can't reach
         let typeKeys = previewTypeKeys
+        let planId = plan?.id
         Task { [weak self] in
-            let result = await exporter.backup(typeKeys: typeKeys, to: root)
+            var result = await exporter.backup(typeKeys: typeKeys, to: root)
+            result.planId = planId
             guard let self else { return }
             self.backupResult = result
             self.isBackingUp = false
@@ -959,9 +1074,10 @@ final class AppState {
         verifyReport = nil
         let source = tenantStore.client(for: sourceTenant)
         let dest = tenantStore.client(for: destTenant)
-        // after a run: what it carried out; otherwise the selection
-        let typeKeys = lastRunTypeKeys ?? previewTypeKeys
-        let excluding = lastRunTypeKeys == nil ? [:] : lastRunExcluded
+        // after a run on these tenants: what it carried out; otherwise the selection
+        let afterRun = lastRunTenantKey == tenantPairKey ? lastRunTypeKeys : nil
+        let typeKeys = afterRun ?? previewTypeKeys
+        let excluding = afterRun == nil ? [:] : lastRunExcluded
         let mappings = mappings
         let progress: @Sendable (String) -> Void = { [weak self] name in
             Task { @MainActor [weak self] in self?.planningStatus = name }
@@ -970,6 +1086,7 @@ final class AppState {
             let report = await Verifier.verify(source: source, dest: dest,
                                                typeKeys: typeKeys, excluding: excluding,
                                                secrets: secrets, mappings: mappings,
+                                               signedInUsername: destTenant.usesGateway ? nil : destTenant.username,
                                                progress: progress)
             guard let self else { return }
             self.verifyReport = report

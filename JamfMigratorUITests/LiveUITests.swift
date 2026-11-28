@@ -4,7 +4,7 @@ import JTKitLiveCheck
 import JTKitUITestSupport
 
 /// The real app under JTKit's live-check switch (JTKit 1.1.0), run only by
-/// `scripts/release-check.sh` in its live stage. Every request, the app's
+/// `Scripts/release-check.sh` in its live stage. Every request, the app's
 /// and the test's, goes through the release check's gateway
 /// (`jtkit-live-gateway`), which decides it by the release check's rules
 /// (allow-list, ledger, prefix, access levels). The app holds only the

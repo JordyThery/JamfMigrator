@@ -28,14 +28,15 @@ final class TrapSecretStore: SecretStore, @unchecked Sendable {
 private struct DemoSetup {
     let demo: DemoMode
     let defaults: UserDefaults
+    /// Removes the test's preference suite when the test ends.
+    private let scratch = ScratchDefaults()
     let secrets = TrapSecretStore()
     /// Every request that reached the real network's stand-in.
     let realRequests = Locked<[URL]>([])
     let store: TenantStore
 
     init() {
-        let suite = "jamfmigrator-demo-\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suite)!
+        defaults = scratch.make("demo")
         demo = DemoMode(key: "demoMode", defaults: defaults, arguments: ["app"])
         let realRequests = realRequests
         let session = MockHTTP.session { request in
