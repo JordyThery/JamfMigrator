@@ -1,35 +1,19 @@
 # Changelog
 
-## 1.2.3 — 2026-11-27
-- A run you stop is now shown as stopped, with how far it got, and Resume Run
-  carries on where it left off, in the run window, Clone Tenant and Wipe
-  Tenant alike.
-- LDAP and directory binding passwords containing `$` or `\` are now written
-  to the destination exactly as entered in Settings › Secrets.
-- Wipe Tenant only accepts a backup made for the current Preview; a new
-  Preview or a change of the selected types asks for a new backup.
-- Backups and exports keep scripts and other object text as they are; only
-  passwords and other secret fields, configuration profile passwords and
-  license serial numbers included, are replaced by `<redacted>`.
-- Copying no longer changes the destination accounts that keep it reachable:
-  the account the destination signs in with and its full-access
-  administrators are shown as Blocked, with the reason.
-- Delete mode checks each Jamf Pro account again right before deleting it: if
-  one became a full-access administrator since Preview, the run stops before
-  deleting it and asks for a new Preview.
-- A delete run that ends early lists the objects Jamf Pro refused and why, and
-  an object still refused after every retry keeps Jamf Pro’s own reason.
-- Run stays off after a tenant’s connection is edited in Settings until a new
-  Preview. Jamf Migrator now has a single main window; Run, Clone Tenant and
-  Wipe Tenant in the menu bar bring it back when it’s closed.
-- Clone Tenant says when the ADE instances or distribution points couldn’t be
-  read, with Load Again, instead of showing an empty tenant, and its
-  connection check always matches the tenants shown.
-- A Self Service icon whose file name contains quotes or line breaks now
-  copies correctly.
+## 1.2.3 — 2026-11-28
+
+- A stopped run now shows as stopped, with how far it got, and Resume Run carries on where it left off, in the run window, Clone Tenant and Wipe Tenant alike.
+- LDAP and directory binding passwords containing `$` or `\` are now written to the destination exactly as entered in Settings › Secrets.
+- Wipe Tenant only accepts a backup made for the current Preview; a new Preview or a change of the selected types asks for a new backup.
+- Backups and exports keep scripts and other object text as they are; only passwords and other secret fields, configuration profile passwords and license serial numbers included, are replaced by `<redacted>`.
+- Copying no longer changes the destination accounts that keep it reachable: the account the destination signs in with and its full-access administrators are shown as Blocked, with the reason.
+- Delete mode checks each Jamf Pro account again right before deleting it: if one became a full-access administrator since Preview, the run stops before deleting it and asks for a new Preview.
+- A delete run that ends early lists the objects Jamf Pro refused and why, and an object still refused after every retry keeps Jamf Pro’s own reason.
+- Run stays off after a tenant’s connection is edited in Settings until a new Preview. Jamf Migrator now has a single main window; Run, Clone Tenant and Wipe Tenant in the menu bar bring it back when it’s closed.
+- Clone Tenant says when the ADE instances or distribution points couldn’t be read, with Load Again, instead of showing an empty tenant, and its connection check always matches the tenants shown.
+- A Self Service icon whose file name contains quotes or line breaks now copies correctly.
 - Jamf Migrator no longer asks for access to the Downloads folder.
-- Settings › Export names the folder exports go to, also in Demo Mode, and the
-  saved Verify report uses plain labels.
+- Settings › Export names the folder exports go to, also in Demo Mode, and the saved Verify report uses plain labels.
 
 ## 1.2.2 — 2026-11-23
 - Policies with Fix Disk Permissions turned on now show a warning when copied
